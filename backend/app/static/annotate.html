@@ -123,10 +123,25 @@ function durum(mesaj, tur = "") {
   el.className = tur;
 }
 
+// Kanıt olarak kabul edilen en uzun seçim.
+//
+// ⚠️ Kanıt bir İFADEDİR, sayfa değil. Kılavuz (§4.5 kural 2) "birebir
+// kopyala" diyor; bir cümlelik alıntı kastediliyor. Sınır olmayınca
+// tüm metni seçmek mümkün oluyordu ve 236 etiketin 191'inde kanıt,
+// içinde sol menü de bulunan koca bir sayfa öneki olarak kaydedilmişti.
+const KANIT_MAX = 220;
+
 // Metinden yapılan seçim, tıklanan alana yazılacak kanıttır.
 $("#metin").addEventListener("mouseup", () => {
   const s = window.getSelection().toString().trim();
-  if (s) secim = s;
+  if (!s) return;
+  if (s.length > KANIT_MAX) {
+    secim = "";
+    durum(`Seçim çok uzun (${s.length} karakter). Kanıt tek bir ifade olmalı.`, "hata");
+    return;
+  }
+  secim = s;
+  durum("");
 });
 
 function alanSatiri(ad, tanim) {
@@ -155,10 +170,16 @@ function alanSatiri(ad, tanim) {
   const kanit = satir.querySelector(".kanit");
 
   // Alana tıklanınca, metinden seçilen parça kanıt olarak yazılır.
+  //
+  // ⚠️ Seçim TÜKETİLİR: bir seçim yalnızca BİR alana yazılır. Önceden
+  // temizlenmiyordu; aynı seçim, sonradan tıklanan her alana da
+  // kopyalanıyordu. Bir kampanyanın 7 alanının kanıtı bu yüzden birebir
+  // aynı metin oluyordu — hangi değerin nereden geldiği kaybolmuştu.
   girdi.addEventListener("focus", () => {
     if (secim && !kanit.textContent) {
       kanit.textContent = secim;
       if (!girdi.value) girdi.value = sayiTahmini(secim, birim);
+      secim = "";
       isaretle(satir);
     }
   });

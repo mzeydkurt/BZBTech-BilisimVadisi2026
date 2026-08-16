@@ -57,8 +57,23 @@ def main(argv: list[str] | None = None) -> int:
 
     fark = sonuc.bias_gap
     if fark is not None:
-        isaret = "ihmal edilebilir" if fark <= 0.05 else "⚠️ ANA METRİK KÖR ALT KÜME OLMALI"
-        print(f"\nYanlılık farkı     : {fark:.3f}  ({isaret})")
+        kor = sonuc.by_method.get("blind")
+        yardimli = sonuc.by_method.get("assisted")
+        print("\nYanlılık kontrolü (§4.4)")
+        if kor:
+            print(f"  kör            : F1={kor.f1:.3f}  destek={kor.support}")
+        if yardimli:
+            print(f"  ön-doldurmalı  : F1={yardimli.f1:.3f}  destek={yardimli.support}")
+        print(f"  fark           : {fark:.3f}  (eşik 0.05)")
+
+        # ⚠️ Ön-doldurma yanlılık taşır: sistemin cevabını gören etiketleyici
+        # ona meyleder ve F1 sahte şişer. Fark eşiği aşınca ana metrik
+        # KÖR alt kümedir; mikro F1 ikincil bilgidir. Bunu raporun en görünür
+        # yerinde söylemek, sonraki okuyucunun yanlış sayıyı alıntılamasını
+        # engeller.
+        if fark > 0.05 and kor:
+            print(f"\n  ⚠️  ANA METRİK: kör alt küme F1 = {kor.f1:.3f}")
+            print(f"      (mikro F1 {o.f1:.3f} ön-doldurmalı kayıtları da içerir, ikincildir)")
 
     RAPOR_YOLU.parent.mkdir(parents=True, exist_ok=True)
     RAPOR_YOLU.write_text(build_report(sonuc), encoding="utf-8")

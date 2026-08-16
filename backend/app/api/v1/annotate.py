@@ -9,6 +9,7 @@ eklemeden çözülemez.
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 from typing import Any, Final
 
@@ -19,6 +20,7 @@ from sqlalchemy import select
 from app.ai.extraction import extract_rule_based
 from app.ai.fields import EXTRACTABLE_FIELDS, options_for, unit_of
 from app.api.deps import DbSession
+from app.core.normalization.date_tr import parse_date_tr
 from app.core.vocab import ANNOTATION_METHODS
 from app.db.models import Bank, Campaign, GoldAnnotation, SourceDocument
 from app.schemas.annotate import (
@@ -112,6 +114,38 @@ def read_campaign(session: DbSession, campaign_id: int) -> CampaignForAnnotation
     return _build(session, campaign_id)
 
 
+def _normalize_gold(deger: str | None, birim: str) -> str | None:
+    """Etiket değerini kılavuzun biçimine getirir.
+
+    ⚠️ Şu an yalnızca TARİH normalize edilir. Kılavuz (§4.5) `2026-08-31`
+    diyor ama arayüzden `31.08.2026` de yazılabiliyor; 67 tarih etiketinin
+    14'ü böyle kaydedilmişti. Değerlendirici artık iki biçimi de anlıyor
+    ama gold set'in KENDİSİ tutarlı olmalı: dosyaya dışa aktarıldığında
+    (`gold_set.jsonl`) biçim karışıklığı sonraki her tüketiciye taşınır.
+
+    ⚠️ Ayrıştırılamayan değer DEĞİŞTİRİLMEDEN saklanır. Etiketleyicinin
+    yazdığını sessizce atmak, düzeltilemeyecek bir veri kaybıdır.
+
+    Args:
+        deger: Etiketleyicinin yazdığı ham değer.
+        birim: Alanın birimi.
+
+    Returns:
+        Normalize edilmiş değer.
+    """
+    if deger is None or birim != "date":
+        return deger
+
+    ham = deger.strip()
+    if not ham:
+        return deger
+    try:
+        return date.fromisoformat(ham).isoformat()
+    except ValueError:
+        ayristirilan = parse_date_tr(ham)
+        return ayristirilan.isoformat() if ayristirilan else deger
+
+
 @router.post(
     "/{campaign_id}",
     response_model=list[AnnotationOut],
@@ -165,8 +199,9 @@ def save_annotations(
             )
             session.add(kayit)
 
-        kayit.gold_value = alan.value
-        kayit.unit = alan.unit or unit_of(alan_adi)
+        birim = alan.unit or unit_of(alan_adi)
+        kayit.gold_value = _normalize_gold(alan.value, birim)
+        kayit.unit = birim
         kayit.evidence_text = alan.evidence
         kayit.method = payload.method
         kayit.is_difficult = payload.is_difficult
