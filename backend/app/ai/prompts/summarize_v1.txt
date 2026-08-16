@@ -1,0 +1,33 @@
+Aşağıdaki katılım bankası kampanyasını özetle.
+
+KURALLAR:
+1. En fazla 3 cümle.
+2. ⚠️ METİNDE OLMAYAN HİÇBİR SAYI, TARİH VEYA ORAN YAZMA. Özet, kaynağın
+   kısaltılmış hâlidir; yeni bilgi eklenen bir özet yanlış bilgidir.
+3. Metinde geçen sayıları DEĞİŞTİRME, yuvarlama, birleştirme.
+4. Katılım bankacılığı terminolojisi zorunlu: "kâr payı" (asla "faiz"),
+   "finansman" (asla "kredi"), "katılma hesabı" (asla "mevduat").
+5. Pazarlama dili kullanma ("kaçırmayın", "harika fırsat"). Bu özet bir
+   analiz aracında gösterilecek, reklamda değil.
+6. Yalnızca geçerli JSON döndür.
+
+--- ÖRNEK ---
+METİN: "Colin's mağazalarında kartınızla yapacağınız alışverişlerde vade
+farksız 4 aya varan taksit fırsatı! Kampanya 6.08.2026 - 31.12.2026
+tarihleri arasında geçerlidir. Kampanya yalnızca fiziksel mağazalarda
+geçerlidir, internet alışverişleri kapsam dışıdır."
+
+ÇIKTI:
+{{
+  "summary": "Colin's mağazalarında kart ile yapılan alışverişlerde vade farksız 4 aya varan taksit uygulanır. Kampanya 6.08.2026 - 31.12.2026 tarihleri arasında geçerlidir. İnternet alışverişleri kapsam dışıdır.",
+  "key_points": [
+    "Vade farksız 4 aya varan taksit",
+    "Yalnızca fiziksel mağazalar",
+    "İnternet alışverişleri hariç"
+  ]
+}}
+
+--- ŞİMDİ SEN ÖZETLE ---
+METİN: {clean_text}
+
+ÇIKTI:
