@@ -304,6 +304,11 @@ def cikarim() -> int:
     return _calistir([_python(), "-m", "scripts.extract", *_ek_argumanlar()], cwd=BACKEND)
 
 
+def degerlendir() -> int:
+    """Gold set'e karşı çıkarım kalitesini ölçer (ağa çıkmaz)."""
+    return _calistir([_python(), "-m", "scripts.evaluate", *_ek_argumanlar()], cwd=BACKEND)
+
+
 def _ek_argumanlar() -> list[str]:
     """Komut adından sonraki argümanları alt betiğe geçirir.
 
@@ -384,6 +389,7 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "etiketle": (etiketle, "Gold set etiketleme arayüzünü açar"),
     "gold-durum": (gold_durum, "Etiketleme ilerlemesini raporlar"),
     "cikarim": (cikarim, "Kampanya metinlerinden bilgi çıkarır (ağa çıkmaz)"),
+    "degerlendir": (degerlendir, "Gold set'e karşı F1 ölçer (ağa çıkmaz)"),
     "kesif-endpoint": (kesif_endpoint, "Kampanya listesi JSON uçlarını arar (Playwright)"),
     "kesif-hesaplayici": (
         kesif_hesaplayici,

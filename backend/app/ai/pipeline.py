@@ -31,7 +31,14 @@ from sqlalchemy.orm import Session
 from app.ai.extraction import ExtractedField, extract_rule_based
 from app.config import get_settings
 from app.db.base import utc_now
-from app.db.models import Bank, Campaign, CampaignExtraction, ExtractionRun, SourceDocument
+from app.db.models import (
+    Bank,
+    Campaign,
+    CampaignCategory,
+    CampaignExtraction,
+    ExtractionRun,
+    SourceDocument,
+)
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -41,6 +48,16 @@ PROGRESS_EVERY: Final[int] = 50
 
 # SPRINT 3A'da uygulanmış kipler.
 IMPLEMENTED_MODES: Final[tuple[str, ...]] = ("rule_only",)
+
+# ⚠️ KATMAN 1 — YAPISAL VERİ. Bu üç alan metinden çıkarılmaz; SPRINT 2'de
+# `campaign_categories` tablosuna zaten yazıldı (URL yolu, bankanın kendi
+# etiketi, marka sözlüğü). Yeniden regex ile çıkarmaya çalışmak, güveni
+# 1.00 olan kaynak veriyi 0.90'lık bir tahminle değiştirmek olurdu.
+TAXONOMY_FIELDS: Final[dict[str, str]] = {
+    "product_type": "product_type",
+    "sector": "sector",
+    "target_customer": "audience",
+}
 
 
 @dataclass
@@ -103,6 +120,49 @@ def _campaigns(
     return [(kampanya, metin) for kampanya, metin in session.execute(sorgu) if metin.strip()]
 
 
+def _taxonomy_fields(session: Session, campaign: Campaign) -> list[CampaignExtraction]:
+    """Taksonomi etiketlerini çıkarım kaydına çevirir (Katman 1).
+
+    ⚠️ Bu veri ÜRETİLMEZ, TAŞINIR. `campaign_categories` SPRINT 2'de kaynağa
+    dayanarak dolduruldu; güveni oradaki değerden alınır ve
+    `extraction_method='table'` ile işaretlenir.
+
+    ⚠️ Bir eksende birden çok etiket varsa EN YÜKSEK GÜVENLİ olan seçilir:
+    çıkarım şeması alan başına tek değer bekliyor.
+    """
+    satirlar = session.execute(
+        select(CampaignCategory)
+        .where(CampaignCategory.campaign_id == campaign.id)
+        .order_by(CampaignCategory.confidence.desc())
+    ).scalars()
+
+    secilen: dict[str, CampaignCategory] = {}
+    for kayit in satirlar:
+        secilen.setdefault(kayit.axis, kayit)
+
+    kayitlar: list[CampaignExtraction] = []
+    for alan_adi, eksen in TAXONOMY_FIELDS.items():
+        kaynak = secilen.get(eksen)
+        if kaynak is None:
+            continue
+        kayitlar.append(
+            CampaignExtraction(
+                campaign_id=campaign.id,
+                field_name=alan_adi,
+                value_raw=kaynak.evidence,
+                value_normalized=kaynak.value,
+                unit="enum",
+                evidence_text=kaynak.evidence,
+                evidence_source_url=campaign.source_url,
+                confidence=kaynak.confidence,
+                extraction_method="table",
+                prompt_version=get_settings().prompt_version,
+                extracted_at=utc_now(),
+            )
+        )
+    return kayitlar
+
+
 def run_extraction(
     session: Session,
     *,
@@ -158,9 +218,14 @@ def run_extraction(
             session.execute(
                 delete(CampaignExtraction).where(
                     CampaignExtraction.campaign_id == kampanya.id,
-                    CampaignExtraction.extraction_method == "rule",
+                    CampaignExtraction.extraction_method.in_(("rule", "table")),
                 )
             )
+
+            for kayit in _taxonomy_fields(session, kampanya):
+                session.add(kayit)
+                alan_sayaci[kayit.field_name] = alan_sayaci.get(kayit.field_name, 0) + 1
+                toplam_alan += 1
 
             for alan in bulgular:
                 session.add(_to_row(kampanya, alan, ayarlar.prompt_version))
