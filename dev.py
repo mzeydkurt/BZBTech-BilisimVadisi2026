@@ -316,6 +316,24 @@ def cikarim() -> int:
     return _calistir([_python(), "-m", "scripts.extract", *_ek_argumanlar()], cwd=BACKEND)
 
 
+def kart_uret() -> int:
+    """Varlık kartlarını üretir (ağa çıkmaz).
+
+    Kartlar SPRINT 5'te gömülecek metinlerdir; yalnızca DOĞRULANMIŞ
+    alanları içerir.
+    """
+    return _calistir([_python(), "-m", "scripts.build_cards", *_ek_argumanlar()], cwd=BACKEND)
+
+
+def ablation() -> int:
+    """Üç konfigürasyonu karşılaştırır ve ablasyon tablosunu üretir.
+
+    ⚠️ Bu sprint'te yalnızca `rule_only` gerçek sayı üretir; diğer ikisi
+    MockProvider ile çalışır ve anlamlı değildir (tablo iskeleti kurulur).
+    """
+    return _calistir([_python(), "-m", "scripts.ablation", *_ek_argumanlar()], cwd=BACKEND)
+
+
 def degerlendir() -> int:
     """Gold set'e karşı çıkarım kalitesini ölçer (ağa çıkmaz)."""
     return _calistir([_python(), "-m", "scripts.evaluate", *_ek_argumanlar()], cwd=BACKEND)
@@ -403,6 +421,8 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "gold-durum": (gold_durum, "Etiketleme ilerlemesini raporlar"),
     "cikarim": (cikarim, "Kampanya metinlerinden bilgi çıkarır (ağa çıkmaz)"),
     "degerlendir": (degerlendir, "Gold set'e karşı F1 ölçer (ağa çıkmaz)"),
+    "ablation": (ablation, "Üç kipi karşılaştırır, ablasyon tablosunu üretir"),
+    "kart-uret": (kart_uret, "Varlık kartlarını üretir (ağa çıkmaz)"),
     "kesif-endpoint": (kesif_endpoint, "Kampanya listesi JSON uçlarını arar (Playwright)"),
     "kesif-hesaplayici": (
         kesif_hesaplayici,

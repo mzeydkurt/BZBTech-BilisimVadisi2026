@@ -40,6 +40,7 @@ tamamlamak değil, eksik olduğunu doğru bildirmek.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date
 from typing import Final
@@ -67,6 +68,15 @@ PERIOD_MARKERS: Final[tuple[str, ...]] = (
     "sona erecektir",
     "devam edecektir",
     "gecerlilik suresi",
+)
+
+# Satır içindeki tarih ifadesini yakalayan kalıp (sayısal ve Türkçe aylı).
+_DATE_IN_LINE_RE: Final[re.Pattern[str]] = re.compile(
+    r"\d{1,2}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{2,4}"
+    r"|\d{1,2}\s+(?:ocak|şubat|subat|mart|nisan|mayıs|mayis|haziran|temmuz|"
+    r"ağustos|agustos|eylül|eylul|ekim|kasım|kasim|aralık|aralik)"
+    r"(?:\s+\d{4})?",
+    re.IGNORECASE,
 )
 
 # Kesinlik sıralaması — daha kesin bulgu daha zayıfının yerine geçer.
@@ -137,6 +147,29 @@ def find_campaign_period(text: str | None) -> tuple[date | None, date | None, st
     return donem.start, donem.end, donem.precision
 
 
+def _date_span_in_line(line: str) -> tuple[int, int] | None:
+    """Satır içindeki tarih ifadesinin dar aralığını döndürür.
+
+    ⚠️ KANIT OLABİLDİĞİNCE DAR OLMALI. Kanıt satırın tamamı bırakılırsa,
+    tek paragraflık bir girdide (ör. `POST /extract` ucuna yapıştırılan
+    metin) "bu tarih nereden geldi?" sorusunun yanıtı 300 karakterlik bir
+    paragraf olur ve açıklanabilirlik pratikte kaybolur.
+
+    Satırda birden çok tarih varsa ilkinden sonuncuya kadarki aralık
+    alınır: `1 Ağustos - 31 Ağustos 2026` tek bir ifadedir.
+
+    Args:
+        line: Dönem ifadesi taşıyan satır.
+
+    Returns:
+        Satır içindeki (başlangıç, bitiş) ya da tarih bulunamazsa None.
+    """
+    eslesmeler = list(_DATE_IN_LINE_RE.finditer(line))
+    if not eslesmeler:
+        return None
+    return eslesmeler[0].start(), eslesmeler[-1].end()
+
+
 def find_campaign_period_detailed(text: str | None) -> CampaignPeriod:
     """`find_campaign_period` ile aynıdır, ayrıca kanıt ofsetlerini döndürür.
 
@@ -144,7 +177,7 @@ def find_campaign_period_detailed(text: str | None) -> CampaignPeriod:
         text: Kampanyanın temiz metni.
 
     Returns:
-        Bulunan dönem ve onu taşıyan satırın karakter aralığı.
+        Bulunan dönem ve onu taşıyan tarih ifadesinin karakter aralığı.
     """
     if not text:
         return CampaignPeriod(None, None, "unknown")
@@ -166,7 +199,12 @@ def find_campaign_period_detailed(text: str | None) -> CampaignPeriod:
 
         puan = _PRECISION_RANK.get(precision, 0)
         if puan > en_iyi_puan:
-            en_iyi = CampaignPeriod(start, end, precision, bas, bas + len(line))
+            # Kanıt satırın tamamı değil, tarih ifadesinin kendisidir.
+            aralik = _date_span_in_line(line)
+            if aralik is None:
+                en_iyi = CampaignPeriod(start, end, precision, bas, bas + len(line))
+            else:
+                en_iyi = CampaignPeriod(start, end, precision, bas + aralik[0], bas + aralik[1])
             en_iyi_puan = puan
             if puan == _PRECISION_RANK["exact"]:
                 break

@@ -26,12 +26,22 @@ from typing import Final
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.validation.merger import METHOD_PRIORITY
 from app.core.normalization.date_tr import parse_date_tr
 from app.db.models import Bank, Campaign, CampaignExtraction, GoldAnnotation
 
 # Oran karşılaştırmasında kabul edilen sapma. Tutar, vade ve taksitte
 # tolerans YOKTUR: "36 ay" ile "35 ay" farklı ürünlerdir.
 RATE_TOLERANCE: Final[Decimal] = Decimal("0.01")
+
+# ⚠️ KİP → ÖLÇÜME GİREN ÇIKARIM KATMANLARI. Ablasyon tablosunun temeli.
+# `llm_only` tablo katmanını da DIŞARIDA bırakır: "kural ve yapısal veri
+# olmasaydı ne olurdu?" sorusunun yanıtı ancak böyle alınır.
+MODE_METHODS: Final[dict[str, tuple[str, ...]]] = {
+    "rule_only": ("table", "rule"),
+    "hybrid": ("table", "rule", "llm"),
+    "llm_only": ("llm",),
+}
 
 # Bu sayının altında örneği olan alan için F1 raporlanmaz.
 # ⚠️ Üç örnekle hesaplanan bir F1 gürültüdür; yazmak yanıltıcı olur.
@@ -203,13 +213,29 @@ def _tally(hedefler: list[Counts], durum: str) -> None:
 def evaluate(session: Session, *, mode: str = "rule_only") -> EvaluationResult:
     """Gold set'e karşı çıkarım kalitesini ölçer.
 
+    ⚠️ `mode` YALNIZCA BİR ETİKET DEĞİLDİR; hangi çıkarım katmanlarının
+    ölçüme gireceğini de belirler (`MODE_METHODS`). Önceki sürümde etiket
+    olarak kalıyordu: `hybrid` çalıştırmasından sonra `--mod llm_only`
+    denince dosya yanlış adla yazılıyor ve ablasyon tablosu aynı sayıyı üç
+    kolona kopyalıyordu.
+
+    Bu sayede TEK çalıştırmadan üç kipin ölçümü çıkarılabilir: `hybrid`
+    koşusu tablo, kural ve LLM kayıtlarının hepsini yazar; ablasyon her
+    kipte yalnızca ilgili alt kümeyi okur.
+
     Args:
         session: Veritabanı oturumu.
-        mode: Raporda görünecek kip etiketi.
+        mode: `rule_only` | `hybrid` | `llm_only`.
 
     Returns:
         Alan, banka, yöntem ve zorluk kırılımlarıyla ölçüm sonucu.
+
+    Raises:
+        ValueError: Tanımsız kip verildiyse.
     """
+    if mode not in MODE_METHODS:
+        raise ValueError(f"Tanımsız kip: {mode!r}. Geçerli: {tuple(MODE_METHODS)}")
+
     sonuc = EvaluationResult(mode=mode)
 
     etiketler = list(
@@ -223,14 +249,27 @@ def evaluate(session: Session, *, mode: str = "rule_only") -> EvaluationResult:
         return sonuc
 
     # Sistemin ürettikleri: (kampanya, alan) → değer.
-    uretilen: dict[tuple[int, str], str] = {}
+    #
+    # ⚠️ REDDEDİLEN KAYITLAR ÖLÇÜME GİRMEZ. Guard'ın (KAPI A7) elediği bir
+    # çıkarım sisteme sunulmaz; onu "sistem bunu üretti" saymak, guard'ın
+    # işini görmezden gelmek olurdu.
+    #
+    # ⚠️ ÇAKIŞMADA MERGER ÖNCELİĞİ UYGULANIR (tablo > kural > LLM), "ilk
+    # gelen" değil. Aksi hâlde ölçüm satır sırasına bağlı olur ve aynı
+    # veritabanı farklı sonuç verebilir.
+    yontemler = MODE_METHODS[mode]
+    uretilen: dict[tuple[int, str], tuple[int, str]] = {}
     for kayit in session.scalars(
-        select(CampaignExtraction).where(CampaignExtraction.rejected_reason.is_(None))
+        select(CampaignExtraction).where(
+            CampaignExtraction.rejected_reason.is_(None),
+            CampaignExtraction.extraction_method.in_(yontemler),
+        )
     ):
         anahtar = (kayit.campaign_id, kayit.field_name)
-        # Aynı alan için birden çok bulgu varsa ilki esas alınır (merger
-        # KAPI A7'de gelecek; şimdilik deterministik davranış yeterli).
-        uretilen.setdefault(anahtar, kayit.value_normalized or "")
+        oncelik = METHOD_PRIORITY.get(kayit.extraction_method, 0)
+        mevcut = uretilen.get(anahtar)
+        if mevcut is None or oncelik > mevcut[0]:
+            uretilen[anahtar] = (oncelik, kayit.value_normalized or "")
 
     kampanyalar: set[int] = set()
 
@@ -244,7 +283,8 @@ def evaluate(session: Session, *, mode: str = "rule_only") -> EvaluationResult:
         zorluk_sayaci = sonuc.difficult if etiket.is_difficult else sonuc.easy
         hedefler = [sonuc.overall, alan_sayaci, banka_sayaci, yontem_sayaci, zorluk_sayaci]
 
-        sistem = uretilen.get((etiket.campaign_id, etiket.field_name))
+        bulgu = uretilen.get((etiket.campaign_id, etiket.field_name))
+        sistem = bulgu[1] if bulgu is not None else None
 
         if etiket.gold_value is None:
             # Gold: "metinde yok".
