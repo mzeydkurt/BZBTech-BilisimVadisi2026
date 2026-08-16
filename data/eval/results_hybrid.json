@@ -1,5 +1,5 @@
 {
-  "mode": "rule_only",
+  "mode": "hybrid",
   "gold_campaigns": 40,
   "gold_annotations": 880,
   "micro_f1": 0.5291,
