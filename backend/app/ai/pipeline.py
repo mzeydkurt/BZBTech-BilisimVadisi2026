@@ -39,10 +39,13 @@ from typing import Final
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.ai.classification import complete_classification
 from app.ai.extraction import ExtractedField, extract_rule_based
 from app.ai.extraction.llm_extractor import extract_llm
 from app.ai.providers.base import LLMProvider
+from app.ai.summarization import summarize
 from app.ai.validation import Conflict, guard_fields, merge_extractions
+from app.ai.validation.terminology import load_forbidden_terms
 from app.config import get_settings
 from app.db.base import utc_now
 from app.db.models import (
@@ -99,6 +102,12 @@ class ExtractionSummary:
     logic_violations: int = 0
     rejected_by_layer: dict[str, int] | None = None
     conflicts: list[Conflict] | None = None
+    labels_added: int = 0
+    labels_rejected: int = 0
+    axes_requested: int = 0
+    summaries_written: int = 0
+    summaries_rejected: int = 0
+    summary_rejections: dict[str, int] | None = None
     status: str = "success"
 
 
@@ -306,6 +315,8 @@ async def run_extraction(
         llm_atlanan=sayac.llm_atlanan,
         reddedilen=sayac.reddedilen,
         mantik_ihlali=sayac.mantik_ihlali,
+        etiket=sayac.etiket_eklendi,
+        ozet=sayac.ozet_uretildi,
         saniye=sure,
     )
 
@@ -324,6 +335,12 @@ async def run_extraction(
         logic_violations=sayac.mantik_ihlali,
         rejected_by_layer=dict(sayac.katman_sayaci),
         conflicts=sayac.catismalar,
+        labels_added=sayac.etiket_eklendi,
+        labels_rejected=sayac.etiket_reddedildi,
+        axes_requested=sayac.eksen_soruldu,
+        summaries_written=sayac.ozet_uretildi,
+        summaries_rejected=sayac.ozet_reddedildi,
+        summary_rejections=dict(sayac.ozet_red_sayaci),
         status=run.status,
     )
 
@@ -340,9 +357,17 @@ class _Sayaclar:
     llm_atlanan: int = 0
     reddedilen: int = 0
     mantik_ihlali: int = 0
+    etiket_eklendi: int = 0
+    etiket_reddedildi: int = 0
+    eksen_soruldu: int = 0
+    ozet_uretildi: int = 0
+    ozet_reddedildi: int = 0
+    # Sözlük çalıştırma başına bir kez okunur.
+    yasakli_terimler: dict[str, str | None] | None = None
     alan_sayaci: dict[str, int] = dataclass_field(default_factory=dict)
     katman_sayaci: dict[str, int] = dataclass_field(default_factory=dict)
     catismalar: list[Conflict] = dataclass_field(default_factory=list)
+    ozet_red_sayaci: dict[str, int] = dataclass_field(default_factory=dict)
 
     def say(self, alan_adi: str) -> None:
         """Bir alanı sayaçlara işler."""
@@ -398,6 +423,66 @@ def _write_metrics(session: Session, campaign: Campaign, fields: list[ExtractedF
         deger = _coerce(alan.value_normalized, alan.unit)
         if deger is not None:
             setattr(kayit, alan.field_name, deger)
+
+
+async def _classify_and_summarize(
+    session: Session,
+    provider: LLMProvider,
+    kampanya: Campaign,
+    metin: str,
+    *,
+    prompt_version: str,
+    sayac: _Sayaclar,
+    use_cache: bool,
+) -> None:
+    """Sınıflandırma boşluklarını doldurur ve özet üretir (KAPI A8).
+
+    ⚠️ İKİSİ DE ÇIKARIMDAN AYRIDIR ve hatası çıkarımı düşürmez. Özet
+    üretilemeyen bir kampanyanın alanları yine de çıkarılmış olmalıdır;
+    tersi, ikincil bir özelliğin birincil veriyi götürmesi olurdu.
+
+    ⚠️ ÖZET YALNIZCA DOĞRULAMAYI GEÇERSE yazılır. Geçemezse `summary_ai`
+    None kalır — yanlış özet göstermektense özet göstermemek doğrudur.
+    """
+    siniflandirma = await complete_classification(
+        provider,
+        session,
+        kampanya,
+        metin,
+        prompt_version=prompt_version,
+        use_cache=use_cache,
+    )
+    sayac.llm_cagri += siniflandirma.llm_calls
+    sayac.onbellek += siniflandirma.cache_hits
+    sayac.etiket_eklendi += len(siniflandirma.added)
+    sayac.etiket_reddedildi += len(siniflandirma.rejected_labels)
+    sayac.eksen_soruldu += len(siniflandirma.requested_axes)
+
+    if sayac.yasakli_terimler is None:
+        # Sözlük çalıştırma başına BİR KEZ okunur; 495 kampanyada
+        # 495 sorgu anlamsız olurdu.
+        sayac.yasakli_terimler = load_forbidden_terms(session)
+
+    ozet = await summarize(
+        provider,
+        session,
+        kampanya,
+        metin,
+        sayac.yasakli_terimler,
+        prompt_version=prompt_version,
+        use_cache=use_cache,
+    )
+    sayac.llm_cagri += ozet.llm_calls
+    sayac.onbellek += ozet.cache_hits
+
+    if ozet.accepted:
+        kampanya.summary_ai = ozet.summary
+        sayac.ozet_uretildi += 1
+    elif ozet.rejected_reason:
+        sayac.ozet_reddedildi += 1
+        sayac.ozet_red_sayaci[ozet.rejected_reason] = (
+            sayac.ozet_red_sayaci.get(ozet.rejected_reason, 0) + 1
+        )
 
 
 async def _process_campaign(
@@ -459,6 +544,17 @@ async def _process_campaign(
         if sonuc.skipped_reason:
             sayac.llm_atlanan += 1
         bulgular.extend(sonuc.fields)
+
+        # ── KAPI A8 — sınıflandırma + özetleme ────────────
+        await _classify_and_summarize(
+            session,
+            provider,
+            kampanya,
+            metin,
+            prompt_version=prompt_version,
+            sayac=sayac,
+            use_cache=use_cache,
+        )
 
     # ── KAPI A7 — halüsinasyon guard'ı ────────────────────
     guard = guard_fields(bulgular, metin)
