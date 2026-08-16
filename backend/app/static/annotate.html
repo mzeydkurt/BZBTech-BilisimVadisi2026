@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gold Set Etiketleme</title>
+<style>
+  :root {
+    --zemin: #f6f7f9; --kart: #ffffff; --cizgi: #d8dde5; --metin: #1c2430;
+    --soluk: #5b6675; --vurgu: #1f5f8b; --uyari: #8a5a00; --uyari-zemin: #fff6e0;
+    --bos: #7a4b8a; --bos-zemin: #f4ecf7; --iyi: #1f6b3a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.55 "Segoe UI", system-ui, sans-serif;
+         color: var(--metin); background: var(--zemin); }
+  header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+           padding: 10px 16px; background: var(--kart); border-bottom: 1px solid var(--cizgi);
+           position: sticky; top: 0; z-index: 10; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .rozet { font-size: 12px; padding: 2px 8px; border-radius: 3px;
+           border: 1px solid var(--cizgi); background: var(--zemin); }
+  .rozet.kor { background: #e8eef4; border-color: #b9cde0; color: var(--vurgu); font-weight: 600; }
+  .rozet.zor { background: var(--uyari-zemin); border-color: #e3c78a; color: var(--uyari); }
+  .buyu { flex: 1; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px;
+         align-items: start; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--kart); border: 1px solid var(--cizgi); border-radius: 5px; }
+  .baslik { padding: 8px 12px; border-bottom: 1px solid var(--cizgi);
+            font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; }
+  #metin { padding: 12px; white-space: pre-wrap; max-height: calc(100vh - 150px);
+           overflow-y: auto; font-size: 13.5px; user-select: text; }
+  #metin::selection { background: #cfe3f2; }
+  #alanlar { padding: 6px 12px 12px; max-height: calc(100vh - 150px); overflow-y: auto; }
+  .alan { display: grid; grid-template-columns: 190px 1fr auto; gap: 6px;
+          align-items: center; padding: 5px 0; border-bottom: 1px solid #eef1f5; }
+  .alan label { font-size: 12.5px; }
+  .alan .birim { color: var(--soluk); font-size: 11px; }
+  .alan input[type=text] { width: 100%; padding: 4px 6px; font: inherit; font-size: 13px;
+                           border: 1px solid var(--cizgi); border-radius: 3px; }
+  .alan input:focus { outline: 2px solid var(--vurgu); outline-offset: -1px; }
+  .alan.bos input[type=text] { background: var(--bos-zemin); color: var(--bos); }
+  .alan.dolu label { font-weight: 600; }
+  .kanit { grid-column: 2 / 4; font-size: 11.5px; color: var(--soluk);
+           padding: 0 0 2px 2px; min-height: 14px; word-break: break-word; }
+  .kanit.yok { color: var(--bos); }
+  button { font: inherit; font-size: 13px; padding: 4px 10px; cursor: pointer;
+           border: 1px solid var(--cizgi); background: var(--kart); border-radius: 3px; }
+  button:hover { background: #eef1f5; }
+  button.bosla { min-width: 34px; font-weight: 700; color: var(--bos); }
+  button.bosla.etkin { background: var(--bos); color: #fff; border-color: var(--bos); }
+  button.birincil { background: var(--vurgu); color: #fff; border-color: var(--vurgu);
+                    font-weight: 600; }
+  button.birincil:hover { background: #17496b; }
+  footer { display: flex; gap: 8px; align-items: center; padding: 10px 16px;
+           background: var(--kart); border-top: 1px solid var(--cizgi);
+           position: sticky; bottom: 0; }
+  .ipucu { font-size: 11.5px; color: var(--soluk); }
+  #durum { font-size: 12.5px; }
+  #durum.iyi { color: var(--iyi); } #durum.hata { color: #a12; }
+  .aciklama { padding: 8px 12px; background: var(--uyari-zemin); border-bottom: 1px solid #e3c78a;
+              font-size: 12px; color: var(--uyari); }
+  input#not { width: 260px; padding: 4px 6px; font: inherit; font-size: 13px;
+              border: 1px solid var(--cizgi); border-radius: 3px; }
+  a { color: var(--vurgu); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Gold Set Etiketleme</h1>
+  <span class="rozet" id="ilerleme">—</span>
+  <span class="rozet" id="yontem">—</span>
+  <span class="rozet zor" id="zorluk" hidden></span>
+  <span class="buyu"></span>
+  <label class="ipucu">Etiketleyen:
+    <input id="etiketleyen" style="width:110px;padding:3px 5px;font:inherit;font-size:12px;
+           border:1px solid var(--cizgi);border-radius:3px">
+  </label>
+</header>
+
+<div class="aciklama">
+  <strong>∅ = "bu bilgi metinde YOK"</strong> (bilinçli karar) &nbsp;·&nbsp;
+  <strong>boş bırakmak = "henüz etiketlemedim"</strong>. İkisi farklı kaydedilir.
+  Metinden parça seçip alana tıkla — değer ve kanıt otomatik dolar.
+</div>
+
+<main>
+  <section>
+    <div class="baslik">
+      <span id="kampanya-basligi">Kampanya</span>
+      <a id="kaynak" href="#" target="_blank" rel="noopener">kaynak ↗</a>
+    </div>
+    <div id="metin">Yükleniyor…</div>
+  </section>
+
+  <section>
+    <div class="baslik"><span>Alanlar</span><span class="ipucu" id="sayac"></span></div>
+    <div id="alanlar"></div>
+  </section>
+</main>
+
+<footer>
+  <button id="onceki">‹ Önceki</button>
+  <button id="kaydet" class="birincil">Kaydet (Ctrl+S)</button>
+  <button id="sonraki">Sonraki › (Ctrl+→)</button>
+  <label class="ipucu"><input type="checkbox" id="zor-vaka"> zor vaka</label>
+  <input id="not" placeholder="not (isteğe bağlı)">
+  <span id="durum"></span>
+</footer>
+
+<script>
+const API = "/api/v1/annotate";
+let alanlar = {};          // alan adı -> birim
+let kampanya = null;       // yüklü kampanya
+let secim = "";            // metinden seçilen son parça
+let gecmis = [];           // gezinme geçmişi (kampanya kimlikleri)
+
+const $ = (s) => document.querySelector(s);
+
+function durum(mesaj, tur = "") {
+  const el = $("#durum");
+  el.textContent = mesaj;
+  el.className = tur;
+}
+
+// Metinden yapılan seçim, tıklanan alana yazılacak kanıttır.
+$("#metin").addEventListener("mouseup", () => {
+  const s = window.getSelection().toString().trim();
+  if (s) secim = s;
+});
+
+function alanSatiri(ad, tanim) {
+  const birim = tanim.unit;
+  const secenekler = tanim.options || [];
+  const satir = document.createElement("div");
+  satir.className = "alan";
+  satir.dataset.alan = ad;
+
+  // ⚠️ Enum alanlarda kontrollü sözlük otomatik tamamlama olarak sunulur.
+  // Elle yazılan bir değer ("e-ticaret" yerine "eticaret_pazaryeri")
+  // değerlendirmede sessizce "yanlış" sayılır ve hata gold set'te kalır.
+  const liste = secenekler.length
+    ? `<datalist id="d_${ad}">${secenekler.map((s) => `<option value="${s}">`).join("")}</datalist>`
+    : "";
+
+  satir.innerHTML = `
+    <label for="f_${ad}">${ad} <span class="birim">${birim}</span></label>
+    <input type="text" id="f_${ad}" autocomplete="off"
+           ${secenekler.length ? `list="d_${ad}"` : ""}>
+    <button class="bosla" title="Bu bilgi metinde YOK">∅</button>
+    <div class="kanit"></div>${liste}`;
+
+  const girdi = satir.querySelector("input");
+  const bosBtn = satir.querySelector("button.bosla");
+  const kanit = satir.querySelector(".kanit");
+
+  // Alana tıklanınca, metinden seçilen parça kanıt olarak yazılır.
+  girdi.addEventListener("focus", () => {
+    if (secim && !kanit.textContent) {
+      kanit.textContent = secim;
+      if (!girdi.value) girdi.value = sayiTahmini(secim, birim);
+      isaretle(satir);
+    }
+  });
+  girdi.addEventListener("input", () => { satir.classList.remove("bos"); isaretle(satir); });
+
+  bosBtn.addEventListener("click", () => {
+    const aktif = satir.classList.toggle("bos");
+    bosBtn.classList.toggle("etkin", aktif);
+    if (aktif) { girdi.value = ""; kanit.textContent = "metinde yok"; kanit.classList.add("yok"); }
+    else { kanit.textContent = ""; kanit.classList.remove("yok"); }
+    isaretle(satir);
+  });
+
+  return satir;
+}
+
+// Seçilen metinden sayıyı kestirir; Türkçe biçim (5.000,50 -> 5000.50).
+function sayiTahmini(metin, birim) {
+  if (birim === "pct") {
+    const m = metin.match(/%\s*([\d.,]+)|([\d.,]+)\s*%/);
+    if (m) return normalize(m[1] || m[2]);
+  }
+  if (birim === "TRY") {
+    const m = metin.match(/([\d.,]+)\s*(?:TL|₺)/i);
+    if (m) return normalize(m[1]);
+  }
+  if (birim === "month" || birim === "count") {
+    const m = metin.match(/(\d+)/);
+    if (m) return m[1];
+  }
+  return "";
+}
+
+// Türkçe sayı biçimini normalize eder: nokta binlik, virgül ondalık.
+function normalize(ham) {
+  if (!ham) return "";
+  return ham.replace(/\./g, "").replace(",", ".");
+}
+
+function isaretle(satir) {
+  const dolu = satir.classList.contains("bos") || satir.querySelector("input").value.trim();
+  satir.classList.toggle("dolu", !!dolu);
+  sayacGuncelle();
+}
+
+function sayacGuncelle() {
+  const toplam = Object.keys(alanlar).length;
+  const islenen = document.querySelectorAll(".alan.dolu").length;
+  $("#sayac").textContent = `${islenen} / ${toplam} alan işlendi`;
+}
+
+async function alanlariYukle() {
+  alanlar = await (await fetch(`${API}/fields`)).json();
+  const kap = $("#alanlar");
+  kap.innerHTML = "";
+  for (const [ad, tanim] of Object.entries(alanlar)) kap.appendChild(alanSatiri(ad, tanim));
+  sayacGuncelle();
+}
+
+async function ilerlemeYukle() {
+  const p = await (await fetch(`${API}/progress`)).json();
+  $("#ilerleme").textContent =
+    `${p.annotated_campaigns} / ${p.sample_size} kampanya · kör ${p.blind_campaigns}/${p.blind_target}`;
+}
+
+function formuTemizle() {
+  document.querySelectorAll(".alan").forEach((satir) => {
+    satir.classList.remove("bos", "dolu");
+    satir.querySelector("input").value = "";
+    satir.querySelector("button.bosla").classList.remove("etkin");
+    const k = satir.querySelector(".kanit");
+    k.textContent = ""; k.classList.remove("yok");
+  });
+  secim = "";
+  $("#not").value = "";
+  sayacGuncelle();
+}
+
+function doldur(veri) {
+  kampanya = veri;
+  $("#kampanya-basligi").textContent = `${veri.bank_name} — ${veri.title}`;
+  $("#kaynak").href = veri.source_url;
+  $("#metin").textContent = veri.clean_text || "(metin yok)";
+  $("#yontem").textContent = veri.method === "blind" ? "KÖR etiketleme" : "ön-doldurmalı";
+  $("#yontem").className = "rozet " + (veri.method === "blind" ? "kor" : "");
+  $("#zorluk").hidden = !veri.is_difficult;
+  $("#zorluk").textContent = "zor vaka: " + (veri.difficulty_reasons || []).join(", ");
+  $("#zor-vaka").checked = !!veri.is_difficult;
+
+  formuTemizle();
+
+  // Daha önce kaydedilmişse geri yükle (düzeltme akışı).
+  for (const kayit of veri.existing || []) {
+    const satir = document.querySelector(`.alan[data-alan="${kayit.field_name}"]`);
+    if (!satir) continue;
+    if (kayit.gold_value === null) {
+      satir.querySelector("button.bosla").click();
+    } else {
+      satir.querySelector("input").value = kayit.gold_value;
+      satir.querySelector(".kanit").textContent = kayit.evidence_text || "";
+      isaretle(satir);
+    }
+    if (kayit.note) $("#not").value = kayit.note;
+  }
+
+  // ⚠️ Ön-doldurma YALNIZCA assisted kipte uygulanır; kör kipte asla.
+  if (veri.method !== "blind") {
+    for (const [ad, alan] of Object.entries(veri.prefill || {})) {
+      const satir = document.querySelector(`.alan[data-alan="${ad}"]`);
+      if (!satir || satir.classList.contains("dolu")) continue;
+      satir.querySelector("input").value = alan.value ?? "";
+      satir.querySelector(".kanit").textContent = alan.evidence || "";
+      isaretle(satir);
+    }
+  }
+  window.scrollTo(0, 0);
+}
+
+async function yukle(url) {
+  durum("yükleniyor…");
+  const yanit = await fetch(url);
+  if (!yanit.ok) {
+    durum(yanit.status === 404 ? "Etiketlenecek kampanya kalmadı." : "Yüklenemedi.", "hata");
+    return;
+  }
+  doldur(await yanit.json());
+  durum("");
+  ilerlemeYukle();
+}
+
+async function kaydet() {
+  if (!kampanya) return;
+  const etiketleyen = $("#etiketleyen").value.trim();
+  if (!etiketleyen) { durum("Önce 'Etiketleyen' adını yaz.", "hata"); return; }
+  localStorage.setItem("etiketleyen", etiketleyen);
+
+  // ⚠️ YALNIZCA İŞLENEN ALANLAR gönderilir. Dokunulmamış alan gövdede yer
+  // almaz; "etiketlenmedi" ile "metinde yok" böyle ayrışır.
+  const alanGovdesi = {};
+  document.querySelectorAll(".alan").forEach((satir) => {
+    const ad = satir.dataset.alan;
+    const bos = satir.classList.contains("bos");
+    const deger = satir.querySelector("input").value.trim();
+    if (!bos && !deger) return;
+    alanGovdesi[ad] = {
+      value: bos ? null : deger,
+      evidence: bos ? null : (satir.querySelector(".kanit").textContent || null),
+      unit: alanlar[ad].unit,
+    };
+  });
+
+  const islenen = Object.keys(alanGovdesi).length;
+  if (islenen < Object.keys(alanlar).length) {
+    const eksik = Object.keys(alanlar).length - islenen;
+    if (!confirm(`${eksik} alana dokunulmadı.\n\nBunlar "etiketlenmedi" sayılacak. ` +
+                 `Metinde olmadıkları için boşsa ∅ ile işaretlemelisin.\n\nYine de kaydedilsin mi?`))
+      return;
+  }
+
+  const yanit = await fetch(`${API}/${kampanya.campaign_id}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      annotator: etiketleyen,
+      method: kampanya.method,
+      is_difficult: $("#zor-vaka").checked,
+      note: $("#not").value.trim() || null,
+      fields: alanGovdesi,
+    }),
+  });
+
+  if (!yanit.ok) { durum("Kaydedilemedi: " + yanit.status, "hata"); return; }
+  durum(`${islenen} alan kaydedildi.`, "iyi");
+  ilerlemeYukle();
+}
+
+$("#kaydet").addEventListener("click", kaydet);
+$("#sonraki").addEventListener("click", async () => {
+  if (kampanya) gecmis.push(kampanya.campaign_id);
+  await yukle(`${API}/next`);
+});
+$("#onceki").addEventListener("click", async () => {
+  const id = gecmis.pop();
+  if (id) await yukle(`${API}/${id}`);
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey && e.key === "s") { e.preventDefault(); kaydet(); }
+  if (e.ctrlKey && e.key === "ArrowRight") { e.preventDefault(); $("#sonraki").click(); }
+  if (e.ctrlKey && e.key === "ArrowLeft") { e.preventDefault(); $("#onceki").click(); }
+});
+
+(async function baslat() {
+  $("#etiketleyen").value = localStorage.getItem("etiketleyen") || "";
+  await alanlariYukle();
+  await ilerlemeYukle();
+  await yukle(`${API}/next`);
+})();
+</script>
+</body>
+</html>
