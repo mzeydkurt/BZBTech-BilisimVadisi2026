@@ -65,6 +65,12 @@ class CampaignExtraction(Base):
     is_validated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     validation_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # ⚠️ REDDEDİLEN ÇIKARIM SİLİNMEZ. Halüsinasyon guard'ı bir alanı
+    # reddettiğinde kayıt bu alan doldurularak saklanır: "modelin ürettiği ama
+    # kaynakta doğrulanamayan" değerlerin oranı ancak böyle raporlanabilir.
+    # Silinirse sistem kusursuz görünür ve guard'ın işe yaradığı kanıtlanamaz.
+    rejected_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     extracted_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utc_now)
 
     campaign: Mapped[Campaign] = relationship(back_populates="extractions")
