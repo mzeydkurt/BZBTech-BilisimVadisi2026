@@ -26,6 +26,7 @@ from app.core.normalization.text import (
     normalize_text,
     strip_boilerplate,
 )
+from app.processing.boilerplate import strip_boilerplate_sections
 
 # İçerik taşımayan, tamamen kaldırılan etiketler.
 #
@@ -454,16 +455,31 @@ def _section_anchor(heading: Tag) -> Tag:
     return node
 
 
-def clean_html(html: str | None, *, remove_boilerplate: bool = True) -> str:
+def clean_html(
+    html: str | None,
+    *,
+    remove_boilerplate: bool = True,
+    bank_code: str | None = None,
+    title: str | None = None,
+) -> str:
     """HTML'i analiz edilebilir temiz metne çevirir.
 
     Sırasıyla: gürültü etiketleri silinir, tablolar metne çevrilir, blok
     yapısı satırlara dönüştürülür, ana içerik seçilir, unicode normalizasyonu
-    uygulanır ve tekrar eden boilerplate satırları atılır.
+    uygulanır, tekrar eden boilerplate satırları atılır ve — banka kodu
+    verildiyse — yabancı kampanya blokları ayıklanır.
+
+    ⚠️ `bank_code` verilmedikçe bölüm ayıklaması ÇALIŞMAZ. Bu bilinçlidir:
+    soft-404 denetimi (`scrapers/soft404.py`) bu fonksiyonun çıktısını
+    içerik parmak izi olarak kullanıyor ve davranışının değişmemesi gerekir.
+    Kampanya metni üreten çağrılar banka kodunu geçer.
 
     Args:
         html: Ham HTML.
         remove_boilerplate: Çerez/KVKK/telif satırlarının atılıp atılmayacağı.
+        bank_code: Bankaya özel bölüm ayıklaması için banka kodu.
+        title: Kampanya başlığı; gezinme bloğu kesiminin çıpası
+            (bkz. `boilerplate.strip_leading_navigation`).
 
     Returns:
         Temizlenmiş metin; girdi boşsa boş dize.
@@ -472,5 +488,7 @@ def clean_html(html: str | None, *, remove_boilerplate: bool = True) -> str:
     if not text:
         return ""
     if remove_boilerplate:
-        return strip_boilerplate(text)
+        text = strip_boilerplate(text)
+    if bank_code is not None:
+        text = strip_boilerplate_sections(text, bank_code=bank_code, title=title)
     return text

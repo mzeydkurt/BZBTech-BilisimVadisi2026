@@ -22,7 +22,8 @@ from app.core.exceptions import NotFoundError
 from app.db.base import utc_now
 from app.db.models import Bank, Campaign, ScrapeRun, SourceDocument
 from app.logging_config import get_logger
-from app.processing.cleaner import clean_html
+from app.processing.cleaner import clean_html, extract_title
+from app.processing.dates import find_campaign_period
 from app.scrapers.fetcher import Fetcher
 from app.scrapers.models import DiscoveredUrl, FetchResult, RawCampaign, ScrapeRunResult
 from app.services.campaign_service import compute_status
@@ -36,6 +37,11 @@ class BaseScraper(ABC):
 
     bank_code: str = ""
     version: str = "1.0.0"
+
+    # Başlık sayılmayacak marka metinleri. Sayfanın tepesindeki logo metni de
+    # `<h1>` olabiliyor ve gerçek kampanya adının önüne geçiyor; gerekçe
+    # `cleaner.extract_title` içinde. Yalnızca Ziraat Katılım dolduruyor.
+    brand_headings: tuple[str, ...] = ()
 
     def __init__(
         self,
@@ -201,7 +207,13 @@ class BaseScraper(ABC):
         result.urls_fetched += 1
         recorded_urls.add(hint.url)
 
-        clean_text = clean_html(fetch.html) if fetch.html else ""
+        # Başlık, yabancı kampanya bloklarının kesiminde çıpa olarak kullanılır
+        # (bkz. `processing/boilerplate.py`). `parse_detail()` henüz
+        # çalışmadığı için burada doğrudan çıkarılır.
+        title = extract_title(fetch.html, ignore_headings=self.brand_headings)
+        clean_text = (
+            clean_html(fetch.html, bank_code=self.bank_code, title=title) if fetch.html else ""
+        )
 
         document = self._build_source_document(bank, hint, fetch, clean_text)
         if not dry_run:
@@ -227,8 +239,47 @@ class BaseScraper(ABC):
             logger.info("kampanya_cikarilamadi", url=hint.url, banka=self.bank_code)
             return
 
+        self._fill_missing_dates(raw, clean_text)
+
         seen_slugs.add(raw.external_slug)
         self._upsert_campaign(session, bank, raw, document, result, dry_run=dry_run)
+
+    @staticmethod
+    def _fill_missing_dates(raw: RawCampaign, clean_text: str) -> None:
+        """Scraper tarih bulamadıysa dönemi METİNDEN çıkarmayı dener.
+
+        ⚠️ Yalnızca scraper HİÇBİR tarih bulamadığında çalışır; bulunmuş bir
+        tarihin üzerine ASLA yazmaz. Yapısal alan her zaman daha güvenilirdir.
+
+        Gerekçe (canlı veride ölçüldü): Türkiye Finans'ın 22 kampanyasının
+        tamamı `unknown` kayıtlıydı; oysa 18'inin metninde tarih açıkça
+        yazıyor ("Kampanya 25 Mayıs - 31 Aralık 2026 tarihleri arasında
+        geçerlidir"). Scraper yapısal alan aradığı için bunları göremiyordu.
+        "Veri yok" ile "veri okunmadı" ayrı şeylerdir.
+
+        Bulgu güvenilir değilse alanlar `NULL` kalır — tarih uydurulmaz.
+
+        Args:
+            raw: Scraper'ın ürettiği kampanya; yerinde güncellenir.
+            clean_text: Kampanyanın temiz metni.
+        """
+        if raw.start_date is not None or raw.end_date is not None:
+            return
+
+        start, end, precision = find_campaign_period(clean_text)
+        if precision == "unknown":
+            return
+
+        raw.start_date = start
+        raw.end_date = end
+        raw.date_precision = precision
+        logger.info(
+            "tarih_metinden_cikarildi",
+            slug=raw.external_slug,
+            baslangic=str(start),
+            bitis=str(end),
+            kesinlik=precision,
+        )
 
     def _build_source_document(
         self,
@@ -385,6 +436,10 @@ class BaseScraper(ABC):
             )
             # XML (sitemap) belgelerinde temiz metin üretilmez: HTML temizleyicisi
             # XML üzerinde anlamlı çıktı vermez. Ham içerik yine arşivlenmiştir.
+            #
+            # ⚠️ Burada `bank_code` GEÇİLMEZ. Bunlar liste sayfalarıdır; sayfanın
+            # tamamı kampanya listesidir. "Tüm Kampanyalar" başlığından kesmek
+            # liste sayfasının kendi içeriğini silerdi.
             clean_text = "" if is_xml or not fetch.html else clean_html(fetch.html)
             session.add(self._build_source_document(bank, hint, fetch, clean_text))
 
