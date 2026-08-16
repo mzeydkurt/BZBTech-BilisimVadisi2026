@@ -56,11 +56,11 @@ def banka(db_session: Session) -> Bank:
     return bank
 
 
-def test_cikarim_kaydediliyor(db_session: Session, banka: Bank) -> None:
+async def test_cikarim_kaydediliyor(db_session: Session, banka: Bank) -> None:
     """Bulunan alanlar `campaign_extractions` tablosuna yazılır."""
     _kampanya(db_session, banka, "test", METIN)
 
-    ozet = run_extraction(db_session, mode="rule_only")
+    ozet = await run_extraction(db_session, mode="rule_only")
 
     assert ozet.campaigns_processed == 1
     assert ozet.fields_extracted > 0
@@ -71,7 +71,7 @@ def test_cikarim_kaydediliyor(db_session: Session, banka: Bank) -> None:
     assert alanlar["min_spend_try"].value_normalized == "3000"
 
 
-def test_prompt_surumu_her_kayda_yazilir(db_session: Session, banka: Bank) -> None:
+async def test_prompt_surumu_her_kayda_yazilir(db_session: Session, banka: Bank) -> None:
     """⚠️ KAPI A2 geçiş koşulu burada kapanır.
 
     Sürümü bilinmeyen bir sonuç yeniden üretilemez ve ablasyon
@@ -79,7 +79,7 @@ def test_prompt_surumu_her_kayda_yazilir(db_session: Session, banka: Bank) -> No
     """
     _kampanya(db_session, banka, "surum", METIN)
 
-    run_extraction(db_session, mode="rule_only")
+    await run_extraction(db_session, mode="rule_only")
 
     bossuz = db_session.scalar(
         select(func.count())
@@ -89,18 +89,18 @@ def test_prompt_surumu_her_kayda_yazilir(db_session: Session, banka: Bank) -> No
     assert bossuz == 0
 
 
-def test_ofset_veritabaninda_da_korunur(db_session: Session, banka: Bank) -> None:
+async def test_ofset_veritabaninda_da_korunur(db_session: Session, banka: Bank) -> None:
     """Kanıt aralığı kaydedilirken kaymamalı."""
     _kampanya(db_session, banka, "ofset", METIN)
 
-    run_extraction(db_session, mode="rule_only")
+    await run_extraction(db_session, mode="rule_only")
 
     for kayit in db_session.scalars(select(CampaignExtraction)):
         assert kayit.evidence_char_start is not None
         assert METIN[kayit.evidence_char_start : kayit.evidence_char_end] == kayit.evidence_text
 
 
-def test_yeniden_calistirma_kayitlari_katlamaz(db_session: Session, banka: Bank) -> None:
+async def test_yeniden_calistirma_kayitlari_katlamaz(db_session: Session, banka: Bank) -> None:
     """⚠️ Aynı kampanya iki kez işlenince kayıtlar ÇOĞALMAMALI.
 
     Çoğalırsa "kaç alan çıkarıldı" sayısı şişer ve kural katmanı ablasyon
@@ -108,19 +108,19 @@ def test_yeniden_calistirma_kayitlari_katlamaz(db_session: Session, banka: Bank)
     """
     _kampanya(db_session, banka, "tekrar", METIN)
 
-    ilk = run_extraction(db_session, mode="rule_only")
-    ikinci = run_extraction(db_session, mode="rule_only")
+    ilk = await run_extraction(db_session, mode="rule_only")
+    ikinci = await run_extraction(db_session, mode="rule_only")
 
     toplam = db_session.scalar(select(func.count()).select_from(CampaignExtraction))
     assert ilk.fields_extracted == ikinci.fields_extracted
     assert toplam == ilk.fields_extracted
 
 
-def test_calistirma_kaydi_sayaclariyla_kapanir(db_session: Session, banka: Bank) -> None:
+async def test_calistirma_kaydi_sayaclariyla_kapanir(db_session: Session, banka: Bank) -> None:
     """`extraction_runs` doğru sayılarla kapatılır."""
     _kampanya(db_session, banka, "kayit", METIN)
 
-    ozet = run_extraction(db_session, mode="rule_only")
+    ozet = await run_extraction(db_session, mode="rule_only")
 
     run = db_session.get(ExtractionRun, ozet.run_id)
     assert run is not None
@@ -132,7 +132,7 @@ def test_calistirma_kaydi_sayaclariyla_kapanir(db_session: Session, banka: Bank)
     assert run.llm_calls == 0
 
 
-def test_metni_bos_kampanya_atlanir(db_session: Session, banka: Bank) -> None:
+async def test_metni_bos_kampanya_atlanir(db_session: Session, banka: Bank) -> None:
     """⚠️ Okunacak metin yokken çıkarım denenmez.
 
     Denenirse boş sonuç "sistem bulamadı" olarak kaydedilir ve
@@ -140,25 +140,25 @@ def test_metni_bos_kampanya_atlanir(db_session: Session, banka: Bank) -> None:
     """
     _kampanya(db_session, banka, "bos", "   ")
 
-    ozet = run_extraction(db_session, mode="rule_only")
+    ozet = await run_extraction(db_session, mode="rule_only")
 
     assert ozet.campaigns_processed == 0
 
 
-def test_banka_filtresi_calisir(db_session: Session, banka: Bank) -> None:
+async def test_banka_filtresi_calisir(db_session: Session, banka: Bank) -> None:
     """Tek banka işlenebilir."""
     _kampanya(db_session, banka, "a", METIN)
 
-    ozet = run_extraction(db_session, mode="rule_only", bank_code="baska_banka")
+    ozet = await run_extraction(db_session, mode="rule_only", bank_code="baska_banka")
 
     assert ozet.campaigns_processed == 0
 
 
-def test_uygulanmamis_kip_acik_hata_verir(db_session: Session) -> None:
+async def test_uygulanmamis_kip_acik_hata_verir(db_session: Session) -> None:
     """⚠️ `hybrid` sessizce kural kipine DÜŞMEZ.
 
     Düşseydi ablasyon tablosu iki farklı kipi aynı kolonda toplar ve LLM'in
     katkısı ölçülemezdi.
     """
     with pytest.raises(ValueError, match="hybrid"):
-        run_extraction(db_session, mode="hybrid")
+        await run_extraction(db_session, mode="hybrid")
