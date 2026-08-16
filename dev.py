@@ -264,6 +264,37 @@ def llm_saglik() -> int:
     return _calistir([_python(), "-m", "scripts.llm_health", *_ek_argumanlar()], cwd=BACKEND)
 
 
+def gold_ornek() -> int:
+    """Gold set örneklemi seçer (ağa çıkmaz).
+
+    Dengeli ve zor vaka ağırlıklı 100 kampanya seçip
+    `data/gold/gold_sample.jsonl` dosyasına yazar.
+    """
+    return _calistir([_python(), "-m", "scripts.sample_gold", *_ek_argumanlar()], cwd=BACKEND)
+
+
+def etiketle() -> int:
+    """Gold set etiketleme arayüzünü açar.
+
+    Backend'i başlatır; arayüz http://localhost:8000/api/v1/annotate/ui
+    adresinde çalışır. AĞA ÇIKMAZ, yalnızca yerel veritabanını okur.
+    """
+    print("")
+    print("Etiketleme arayüzü: http://localhost:8000/api/v1/annotate/ui")
+    print("Kılavuz: docs/gold_annotation_guide.md")
+    print("Durdurmak için Ctrl+C")
+    print("")
+    return _calistir(
+        [_python(), "-m", "uvicorn", "app.main:app", "--reload", "--port", "8000"],
+        cwd=BACKEND,
+    )
+
+
+def gold_durum() -> int:
+    """Etiketleme ilerlemesini yazar (ağa çıkmaz)."""
+    return _calistir([_python(), "-m", "scripts.gold_status", *_ek_argumanlar()], cwd=BACKEND)
+
+
 def _ek_argumanlar() -> list[str]:
     """Komut adından sonraki argümanları alt betiğe geçirir.
 
@@ -340,6 +371,9 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "geri-doldur": (geri_doldur, "Banka kategorisini arşivden geri doldurur (ağa çıkmaz)"),
     "siniflandir": (siniflandir, "Kampanyaları dört eksende sınıflandırır (ağa çıkmaz)"),
     "llm-saglik": (llm_saglik, "LLM sağlayıcısının durumunu kontrol eder"),
+    "gold-ornek": (gold_ornek, "Gold set örneklemi seçer (ağa çıkmaz)"),
+    "etiketle": (etiketle, "Gold set etiketleme arayüzünü açar"),
+    "gold-durum": (gold_durum, "Etiketleme ilerlemesini raporlar"),
     "kesif-endpoint": (kesif_endpoint, "Kampanya listesi JSON uçlarını arar (Playwright)"),
     "kesif-hesaplayici": (
         kesif_hesaplayici,

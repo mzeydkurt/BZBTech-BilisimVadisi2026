@@ -15,6 +15,19 @@ from __future__ import annotations
 
 from typing import Any, Final
 
+from app.core.taxonomy import AUDIENCES, PRODUCT_TYPES, SECTORS
+
+# Ödülün türü. Kaynak: kural tabanlı çıkarıcının eşleme tablosu —
+# "nakit iade" → nakit_iade, "puan/lira/parafpara" → puan, "çek/hediye" → hediye.
+REWARD_TYPES: Final[tuple[str, ...]] = (
+    "nakit_iade",
+    "puan",
+    "indirim",
+    "taksit",
+    "hediye",
+    "ucret_muafiyeti",
+)
+
 # Alan adı → birim. Birimler `campaign_extractions.unit` ile aynı sözlükten.
 EXTRACTABLE_FIELDS: Final[dict[str, str]] = {
     # ── Kâr payı ve maliyet ───────────────────────────────
@@ -57,6 +70,30 @@ EXTRACTABLE_FIELDS: Final[dict[str, str]] = {
 # Küçük yerel modellerin bağlam penceresi 4096 token; Türkçe metinde
 # ~2.5 karakter/token oranıyla bu sınır güvenli tarafta kalır.
 MAX_PROMPT_CHARS: Final[int] = 6000
+
+
+# ⚠️ ENUM ALANLAR KONTROLLÜ SÖZLÜKTEN SEÇİLİR, serbest yazılmaz.
+# Etiketleyici `eticaret_pazaryeri` yerine `e-ticaret` yazarsa değerlendirme
+# bunu "sistem yanlış buldu" sayar; hata sistemde değil gold set'tedir ve
+# fark edilmesi neredeyse imkânsızdır.
+ENUM_VOCAB: Final[dict[str, tuple[str, ...]]] = {
+    "reward_type": REWARD_TYPES,
+    "target_customer": AUDIENCES,
+    "product_type": PRODUCT_TYPES,
+    "sector": SECTORS,
+}
+
+
+def options_for(field: str) -> tuple[str, ...]:
+    """Alanın izin verilen değerlerini döndürür.
+
+    Args:
+        field: Alan adı.
+
+    Returns:
+        Kontrollü sözlük; alan enum değilse boş demet.
+    """
+    return ENUM_VOCAB.get(field, ())
 
 
 def build_extraction_schema(fields: list[str] | tuple[str, ...] | None = None) -> dict[str, Any]:
