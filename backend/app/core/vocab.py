@@ -207,3 +207,42 @@ PROBE_METHODS: Final[tuple[str, ...]] = (
     "playwright",
     "payment_plan_derived",
 )
+
+
+# ── Çıkarım motoru (SPRINT 3) ─────────────────────────────
+
+# Çıkarım çalıştırmasının kipi. `rule_only` LLM'e hiç çağrı yapmaz ve
+# ablasyon tablosunun baseline kolonudur; `llm_only` kuralı devre dışı
+# bırakır ve yalnızca karşılaştırma için kullanılır.
+EXTRACTION_MODES: Final[tuple[str, ...]] = ("hybrid", "rule_only", "llm_only")
+
+# Çalıştırmanın bitiş durumu. `partial` bazı kampanyaların atlandığını,
+# `cancelled` kullanıcının durdurduğunu belirtir; ikisinde de o ana kadar
+# kaydedilen çıkarımlar KORUNUR.
+EXTRACTION_RUN_STATUSES: Final[tuple[str, ...]] = (
+    "running",
+    "success",
+    "partial",
+    "failed",
+    "cancelled",
+)
+
+# ⚠️ Gold set etiketleme yöntemi — YANLILIK KONTROLÜNÜN TEMELİ.
+# `blind`: etiketleyici sistemin çıktısını GÖRMEDEN etiketler.
+# `assisted`: kural tabanlı çıkarım ön-doldurur, etiketleyici onaylar/düzeltir.
+# İkisi ayrı tutulmazsa F1 sahte şişer: sistemin cevabını gören etiketleyici
+# ona meyleder ve model kendi cevabına karşı ölçülmüş olur.
+ANNOTATION_METHODS: Final[tuple[str, ...]] = ("blind", "assisted")
+
+# Kart ve gömme üretilebilen varlık türleri.
+ENTITY_TYPES: Final[tuple[str, ...]] = (
+    "campaign",
+    "product",
+    "product_rate",
+    "glossary",
+    "bank",
+)
+
+# LLM önbelleğindeki görev türü. Önbellek anahtarı göreve göre ayrışır:
+# aynı metin farklı görevlerde farklı yanıt üretir.
+LLM_TASKS: Final[tuple[str, ...]] = ("extract", "classify", "summarize")
