@@ -47,6 +47,9 @@ from app.db.session import SessionLocal
 from app.logging_config import configure_logging, get_logger
 from app.processing.cleaner import clean_html
 from app.processing.dates import find_campaign_period
+from app.scrapers.base import BaseScraper
+from app.scrapers.models import DiscoveredUrl
+from app.scrapers.registry import get_scraper
 from app.services.campaign_service import compute_status
 from app.utils.hashing import sha256_text
 
@@ -79,6 +82,7 @@ class BankaOzeti:
     hash_uyusmazligi: int = 0
     dosya_yok: int = 0
     tarih_kazanildi: int = 0
+    tarih_tazelendi: int = 0
 
     @property
     def oran(self) -> float:
@@ -138,6 +142,84 @@ def _belge_kampanyasi(document: SourceDocument) -> Campaign | None:
     return document.campaigns[0] if document.campaigns else None
 
 
+def _tarih_tazele(
+    campaign: Campaign | None,
+    html: str,
+    clean_text: str,
+    scraper: BaseScraper | None,
+    *,
+    kuru: bool,
+) -> tuple[int, int] | None:
+    """Kampanya tarihlerini arşivdeki HTML'den YENİDEN türetir.
+
+    ⚠️ `--tarihleri-tazele` ile açılır; varsayılan DEĞİLDİR çünkü mevcut
+    değerlerin üzerine yazar.
+
+    NEDEN GEREKLİ: `parse_detail()` gövdeyi `clean_html()`'den okuyor. Ön
+    işleme düzeltilmeden önce bu gövde komşu kampanya kartlarını da
+    içeriyordu ve Ziraat'te tarih bölümü kartlardaki "Son Gün" satırından
+    okunabiliyordu. Ölçüldü: 20 kampanyanın `end_date` değeri komşu
+    kampanyadan gelmiş (ör. #195 sayfada 09-02-2026 diyor, veritabanında
+    31-08-2026 yazıyordu). Scraper'da hata YOK — kayıtlar düzeltme öncesi
+    kazımadan kalma. Aynı HTML bugün ayrıştırılınca doğru tarih çıkıyor.
+
+    YALNIZCA tarih alanları güncellenir. `parse_detail()` başlık, açıklama
+    ve koşul metnini de üretir ama onlara dokunulmaz: bu betiğin işi metin
+    tazelemektir, kampanya kaydını yeniden yazmak değil.
+
+    Args:
+        campaign: Belgeye bağlı kampanya.
+        html: Arşivden okunan ham HTML.
+        clean_text: Yeniden üretilmiş temiz metin (tarih geri dolgusu için).
+        scraper: Bankanın scraper örneği.
+        kuru: True ise yalnızca sayar, yazmaz.
+
+    Returns:
+        Değişiklik varsa (eski, yeni) tarih çifti yerine basit bir işaret
+        olarak `(1, 1)`; değişiklik yoksa None.
+    """
+    if campaign is None or scraper is None:
+        return None
+
+    hint = DiscoveredUrl(url=campaign.source_url, doc_type="campaign", discovery_method="listing")
+    try:
+        raw = scraper.parse_detail(html, campaign.source_url, hint)
+    except Exception as hata:  # pragma: no cover - tek kaydın hatası akışı durdurmaz
+        logger.warning("tarih_tazeleme_basarisiz", kampanya_id=campaign.id, hata=str(hata))
+        return None
+
+    if raw is None:
+        return None
+
+    # ⚠️ Scraper'ın kazıma akışındaki SON adımı burada da uygulanmalı.
+    # `_fill_missing_dates()` `_process_url()` içinde çağrılıyor, `parse_detail()`
+    # içinde değil. Atlanınca Türkiye Finans'ın metinden çıkarılmış 16 tarihi
+    # `None`'a geri dönüyordu: tazeleme, kazımanın ürettiğinden DAHA AZ veri
+    # üretmiş oluyordu.
+    BaseScraper._fill_missing_dates(raw, clean_text)
+
+    if raw.start_date == campaign.start_date and raw.end_date == campaign.end_date:
+        return None
+
+    # ⚠️ Dolu bir tarih BOŞALTILMAZ. Tazelemenin işi yanlış değeri düzeltmek;
+    # veriyi silmek değil. Ayrıştırma bir gerileme yaşarsa bu koruma, sessiz
+    # veri kaybını engeller.
+    if raw.start_date is None and raw.end_date is None:
+        logger.warning(
+            "tarih_tazeleme_bos_dondu",
+            kampanya_id=campaign.id,
+            mevcut_bitis=str(campaign.end_date),
+        )
+        return None
+
+    if not kuru:
+        campaign.start_date = raw.start_date
+        campaign.end_date = raw.end_date
+        campaign.date_precision = raw.date_precision
+        campaign.status = compute_status(raw.start_date, raw.end_date)
+    return (1, 1)
+
+
 def _tarih_geri_doldur(campaign: Campaign | None, yeni: str, *, kuru: bool) -> bool:
     """Tarihi hiç olmayan kampanyanın dönemini temiz metinden geri doldurur.
 
@@ -182,11 +264,15 @@ def _isle(
     banka_kodu: str | None,
     kuru: bool,
     ornek_sayisi: int,
+    tarihleri_tazele: bool = False,
 ) -> dict[str, BankaOzeti]:
     """Arşivi tarar, temiz metni yeniden üretir ve özet döndürür."""
     kok = get_settings().raw_html_path
     ozet: dict[str, BankaOzeti] = defaultdict(BankaOzeti)
     ornek_havuzu: list[tuple[str, int, str, str]] = []
+    # Scraper örnekleri banka başına bir kez kurulur; ağ kullanılmaz,
+    # yalnızca `parse_detail()` çağrılır.
+    scraperlar: dict[str, BaseScraper | None] = {}
 
     sorgu = (
         select(SourceDocument, Bank.code)
@@ -199,6 +285,12 @@ def _isle(
 
     for document, kod in session.execute(sorgu):
         istatistik = ozet[kod]
+        if tarihleri_tazele and kod not in scraperlar:
+            try:
+                scraperlar[kod] = get_scraper(kod)
+            except Exception:
+                # Scraper'ı olmayan banka (ör. arşiv artığı) akışı durdurmaz.
+                scraperlar[kod] = None
         dosya = kok / str(document.raw_html_path)
 
         if not dosya.is_file():
@@ -232,7 +324,12 @@ def _isle(
         if _kapsam_kaybi(campaign, eski, yeni):
             istatistik.kapsam_kaybi.append(campaign.id if campaign else document.id)
 
-        if _tarih_geri_doldur(campaign, yeni, kuru=kuru):
+        if tarihleri_tazele:
+            if _tarih_tazele(
+                campaign, ham.decode("utf-8", "replace"), yeni, scraperlar.get(kod), kuru=kuru
+            ):
+                istatistik.tarih_tazelendi += 1
+        elif _tarih_geri_doldur(campaign, yeni, kuru=kuru):
             istatistik.tarih_kazanildi += 1
 
         if ornek_sayisi and campaign is not None:
@@ -259,9 +356,7 @@ def _ornek_bas(havuz: list[tuple[str, int, str, str]], adet: int) -> None:
     print("\n" + "=" * 78)
     print(f"GÖZLE DENETİM — {adet} rastgele kampanya")
     print("=" * 78)
-    for kod, kampanya_id, baslik, metin in random.Random(42).sample(
-        havuz, min(adet, len(havuz))
-    ):
+    for kod, kampanya_id, baslik, metin in random.Random(42).sample(havuz, min(adet, len(havuz))):
         print(f"\n── {kod} · kampanya {kampanya_id} · {baslik[:60]}")
         print(f"   ({len(metin)} karakter)")
         for satir in metin.split("\n"):
@@ -292,17 +387,20 @@ def _rapor_bas(ozet: dict[str, BankaOzeti], *, kuru: bool) -> int:
         toplam.kapsam_kaybi.extend(v.kapsam_kaybi)
         toplam.hash_uyusmazligi += v.hash_uyusmazligi
         toplam.tarih_kazanildi += v.tarih_kazanildi
+        toplam.tarih_tazelendi += v.tarih_tazelendi
+        v_tarih = v.tarih_kazanildi + v.tarih_tazelendi
         print(
             f"{kod:18s} {v.islenen:8d} {v.guncellenen:7d} {v.oran:6.2f} "
             f"{v.coklu_tarih_once:5d}->{v.coklu_tarih_sonra:<5d} {v.bosalan:8d} "
-            f"{len(v.kapsam_kaybi):7d} {v.hash_uyusmazligi:5d} {v.tarih_kazanildi:7d}"
+            f"{len(v.kapsam_kaybi):7d} {v.hash_uyusmazligi:5d} {v_tarih:7d}"
         )
 
     print("-" * 92)
+    t_tarih = toplam.tarih_kazanildi + toplam.tarih_tazelendi
     print(
         f"{'TOPLAM':18s} {toplam.islenen:8d} {toplam.guncellenen:7d} {toplam.oran:6.2f} "
         f"{toplam.coklu_tarih_once:5d}->{toplam.coklu_tarih_sonra:<5d} {toplam.bosalan:8d} "
-        f"{len(toplam.kapsam_kaybi):7d} {toplam.hash_uyusmazligi:5d} {toplam.tarih_kazanildi:7d}"
+        f"{len(toplam.kapsam_kaybi):7d} {toplam.hash_uyusmazligi:5d} {t_tarih:7d}"
     )
 
     if toplam.bosalan:
@@ -334,6 +432,12 @@ def main(argv: list[str] | None = None) -> int:
     ayristirici.add_argument(
         "--ornek", type=int, default=0, help="Gözle denetim için N kampanya metni bas"
     )
+    ayristirici.add_argument(
+        "--tarihleri-tazele",
+        dest="tarihleri_tazele",
+        action="store_true",
+        help="Kampanya tarihlerini arsivden YENIDEN turetir (mevcut degerin uzerine yazar)",
+    )
     argumanlar = ayristirici.parse_args(argv)
 
     configure_logging()
@@ -351,6 +455,7 @@ def main(argv: list[str] | None = None) -> int:
             banka_kodu=argumanlar.banka,
             kuru=argumanlar.kuru,
             ornek_sayisi=argumanlar.ornek,
+            tarihleri_tazele=argumanlar.tarihleri_tazele,
         )
         if argumanlar.kuru:
             session.rollback()
