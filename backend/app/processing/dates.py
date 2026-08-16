@@ -40,6 +40,7 @@ tamamlamak değil, eksik olduğunu doğru bildirmek.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 from typing import Final
 
@@ -77,6 +78,26 @@ _PRECISION_RANK: Final[dict[str, int]] = {
 }
 
 
+@dataclass(frozen=True)
+class CampaignPeriod:
+    """Bulunan kampanya dönemi ve onu taşıyan satırın konumu.
+
+    Ofsetler, çıkarım kaydının `evidence_text` alanının kaynaktan BİREBİR
+    dilimlenebilmesi için gereklidir (KAPI A4 ofset doğrulaması).
+    """
+
+    start: date | None
+    end: date | None
+    precision: str
+    evidence_start: int = -1
+    evidence_end: int = -1
+
+    @property
+    def bulundu(self) -> bool:
+        """Güvenilir bir dönem bulundu mu?"""
+        return self.precision != "unknown"
+
+
 def _has_marker(line: str) -> bool:
     """Satır bir kampanya dönemi ifadesi taşıyor mu?
 
@@ -112,13 +133,30 @@ def find_campaign_period(text: str | None) -> tuple[date | None, date | None, st
         (başlangıç, bitiş, kesinlik) üçlüsü. Güvenilir bulgu yoksa
         `(None, None, "unknown")` — tarih UYDURULMAZ.
     """
-    if not text:
-        return None, None, "unknown"
+    donem = find_campaign_period_detailed(text)
+    return donem.start, donem.end, donem.precision
 
-    en_iyi: tuple[date | None, date | None, str] = (None, None, "unknown")
+
+def find_campaign_period_detailed(text: str | None) -> CampaignPeriod:
+    """`find_campaign_period` ile aynıdır, ayrıca kanıt ofsetlerini döndürür.
+
+    Args:
+        text: Kampanyanın temiz metni.
+
+    Returns:
+        Bulunan dönem ve onu taşıyan satırın karakter aralığı.
+    """
+    if not text:
+        return CampaignPeriod(None, None, "unknown")
+
+    en_iyi = CampaignPeriod(None, None, "unknown")
     en_iyi_puan = 0
+    imlec = 0
 
     for line in text.split("\n"):
+        bas = imlec
+        imlec += len(line) + 1
+
         if not _has_marker(line):
             continue
 
@@ -128,7 +166,8 @@ def find_campaign_period(text: str | None) -> tuple[date | None, date | None, st
 
         puan = _PRECISION_RANK.get(precision, 0)
         if puan > en_iyi_puan:
-            en_iyi, en_iyi_puan = (start, end, precision), puan
+            en_iyi = CampaignPeriod(start, end, precision, bas, bas + len(line))
+            en_iyi_puan = puan
             if puan == _PRECISION_RANK["exact"]:
                 break
 

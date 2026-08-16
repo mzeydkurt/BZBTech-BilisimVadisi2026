@@ -19,12 +19,14 @@ etiketleyicinin bitirmediği işten sorumlu tutulmuş olur.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Final
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.normalization.date_tr import parse_date_tr
 from app.db.models import Bank, Campaign, CampaignExtraction, GoldAnnotation
 
 # Oran karşılaştırmasında kabul edilen sapma. Tutar, vade ve taksitte
@@ -128,6 +130,24 @@ def _sayi(deger: str | None) -> Decimal | None:
         return None
 
 
+def _tarih(deger: str) -> date | None:
+    """Tarih dizesini `date` nesnesine çevirir; çeviremezse None.
+
+    Hem ISO (`2026-08-31`) hem Türkçe yazım (`31.08.2026`, `31 Ağustos 2026`)
+    desteklenir: gold etiketleri elle yazıldığı için ikisi de görülüyor.
+
+    Args:
+        deger: Ayrıştırılacak dize.
+
+    Returns:
+        Tarih veya None.
+    """
+    try:
+        return date.fromisoformat(deger.strip())
+    except ValueError:
+        return parse_date_tr(deger)
+
+
 def values_match(gold: str, sistem: str, unit: str) -> bool:
     """İki değerin eşleşip eşleşmediğine birime göre karar verir.
 
@@ -156,7 +176,21 @@ def values_match(gold: str, sistem: str, unit: str) -> bool:
         # ⚠️ Tolerans YALNIZCA oranda. Tutar ve vadede "36" ile "35" farklıdır.
         return abs(gs - ss) <= RATE_TOLERANCE if unit == "pct" else gs == ss
 
-    # date ve enum: tam eşleşme (küçük/büyük harf duyarsız).
+    if unit == "date":
+        # ⚠️ Tarihler DEĞER olarak karşılaştırılır, dize olarak değil.
+        #
+        # Kılavuz (§4.5) gold biçimi olarak `2026-08-31` diyor ama 67 tarih
+        # etiketinin 14'ü `31.08.2026` / `08-06-2026` yazılmış. Dize
+        # karşılaştırması bunları sistemin `isoformat()` çıktısıyla asla
+        # eşleştiremiyor: aynı gün, farklı yazım, hem FN hem FP sayılıyordu.
+        # Tarih alanlarının F1'i bu yüzden yapay bir tavana çarpıyordu.
+        #
+        # Ayrıştırılamayan değerde dize karşılaştırmasına düşülür.
+        gt, st = _tarih(g), _tarih(s)
+        if gt is not None and st is not None:
+            return gt == st
+
+    # enum ve ayrıştırılamayan tarih: tam eşleşme (küçük/büyük harf duyarsız).
     return g.casefold() == s.casefold()
 
 
