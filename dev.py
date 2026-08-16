@@ -255,6 +255,15 @@ def siniflandir() -> int:
     return _calistir([_python(), "-m", "scripts.categorize", *_ek_argumanlar()], cwd=BACKEND)
 
 
+def llm_saglik() -> int:
+    """Yapılandırılmış LLM sağlayıcısına ulaşılıp ulaşılamadığını söyler.
+
+    SPRINT 3A'da `local` için "servis yok" çıktısı BEKLENEN sonuçtur: model
+    SPRINT 3B'de kurulacak.
+    """
+    return _calistir([_python(), "-m", "scripts.llm_health", *_ek_argumanlar()], cwd=BACKEND)
+
+
 def _ek_argumanlar() -> list[str]:
     """Komut adından sonraki argümanları alt betiğe geçirir.
 
@@ -330,6 +339,7 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "scrape-deneme": (scrape_deneme, "Kazımayı veritabanına yazmadan dener"),
     "geri-doldur": (geri_doldur, "Banka kategorisini arşivden geri doldurur (ağa çıkmaz)"),
     "siniflandir": (siniflandir, "Kampanyaları dört eksende sınıflandırır (ağa çıkmaz)"),
+    "llm-saglik": (llm_saglik, "LLM sağlayıcısının durumunu kontrol eder"),
     "kesif-endpoint": (kesif_endpoint, "Kampanya listesi JSON uçlarını arar (Playwright)"),
     "kesif-hesaplayici": (
         kesif_hesaplayici,

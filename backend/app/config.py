@@ -60,10 +60,23 @@ class Settings(BaseSettings):
     # kurulumda ayrı bir Node çalışma zamanı gerekmez.
     frontend_dist_dir: str = "../frontend/dist"
 
-    # ── PART 3'te kullanılacak (PART 1'de okunmaz, sadece tanımlı) ──
-    llm_provider: str = "local"
+    # ── Çıkarım motoru / LLM (SPRINT 3) ───────────────────
+    # ⚠️ SPRINT 3A varsayılanı `mock`: bu sprintte tek bir gerçek model çağrısı
+    # yapılmaz. SPRINT 3B modeli kurup bu değeri `local` yapacak.
+    llm_provider: str = "mock"
     local_llm_base_url: str = "http://localhost:11434/v1"
-    local_llm_model: str = "qwen2.5:7b-instruct"
+    # ⚠️ Boş bırakıldı — model seçimi SPRINT 3B'nin kararı. Uydurma bir
+    # varsayılan, kurulu olmayan bir modeli "yapılandırılmış" gösterirdi.
+    local_llm_model: str = ""
+    local_llm_context: int = 4096
+    llm_timeout_seconds: float = 180.0
+    llm_max_retries: int = 2
+    # Prompt sürümü her çıkarım kaydına yazılır ve önbellek anahtarına girer:
+    # prompt değişince eski yanıtlar kendiliğinden geçersizleşir.
+    prompt_version: str = "v1"
+    # null | fixture | invalid | timeout | halluc  (yalnızca MockProvider için)
+    mock_llm_mode: str = "null"
+    # SPRINT 5'te kullanılacak.
     embedding_model: str = "BAAI/bge-m3"
 
     # ── Türetilmiş değerler ───────────────────────────────
