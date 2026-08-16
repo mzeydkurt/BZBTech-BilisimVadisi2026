@@ -1,0 +1,53 @@
+Aşağıdaki katılım bankası kampanya metninden istenen alanları çıkar.
+İstenen alanlar: {requested_fields}
+
+--- ÖRNEK 1 (normal) ---
+METİN: "Colin's mağazalarında Kuveyt Türk kredi kartınızla yapacağınız
+alışverişlerde vade farksız 4 aya varan taksit fırsatı. Kampanya
+6.08.2026 - 31.12.2026 tarihleri arasında geçerlidir."
+
+ÇIKTI:
+{{
+  "profit_rate_pct": {{"value": 0, "evidence": "vade farksız 4 aya varan taksit"}},
+  "installment_count": {{"value": 4, "evidence": "4 aya varan taksit"}},
+  "start_date": {{"value": "2026-08-06", "evidence": "6.08.2026 - 31.12.2026"}},
+  "end_date": {{"value": "2026-12-31", "evidence": "6.08.2026 - 31.12.2026"}},
+  "min_spend_try": {{"value": null, "evidence": null}},
+  "reward_amount_try": {{"value": null, "evidence": null}},
+  "target_customer": {{"value": "herkes", "evidence": "kredi kartınızla"}}
+}}
+
+--- ÖRNEK 2 (bilgi yok) ---
+METİN: "Konut finansmanında avantajlı kâr payı fırsatı sizi bekliyor.
+Detaylı bilgi için şubelerimize başvurabilirsiniz."
+
+ÇIKTI:
+{{
+  "profit_rate_pct": {{"value": null, "evidence": null}},
+  "installment_count": {{"value": null, "evidence": null}},
+  "start_date": {{"value": null, "evidence": null}},
+  "end_date": {{"value": null, "evidence": null}},
+  "min_spend_try": {{"value": null, "evidence": null}},
+  "reward_amount_try": {{"value": null, "evidence": null}},
+  "target_customer": {{"value": null, "evidence": null}}
+}}
+NOT: "avantajlı kâr payı" ifadesi bir ORAN belirtmez. null döndürüldü.
+
+--- ÖRNEK 3 (kademeli ödül) ---
+METİN: "5.000 TL ve üzeri harcamalarda 250 TL, 10.000 TL ve üzeri
+harcamalarda 500 TL Bankkart Lira hediye!"
+
+ÇIKTI:
+{{
+  "min_spend_try": {{"value": 5000, "evidence": "5.000 TL ve üzeri harcamalarda"}},
+  "reward_amount_try": {{"value": 500, "evidence": "10.000 TL ve üzeri harcamalarda 500 TL"}},
+  "reward_type": {{"value": "puan", "evidence": "Bankkart Lira hediye"}},
+  "tier_structure": {{"value": [{{"threshold": 5000, "reward": 250}},
+                                {{"threshold": 10000, "reward": 500}}],
+                      "evidence": "5.000 TL ve üzeri harcamalarda 250 TL, 10.000 TL ve üzeri harcamalarda 500 TL"}}
+}}
+
+--- ŞİMDİ SEN ÇIKAR ---
+METİN: {clean_text}
+
+ÇIKTI:

@@ -1,0 +1,38 @@
+Aşağıdaki katılım bankası kampanya metnini sınıflandır.
+
+⚠️ KURAL TABANLI SINIFLANDIRMA ZATEN ÇALIŞTI. Senden istenen, YALNIZCA
+boş kalan eksenleri doldurmaktır. Aşağıda dolu görünen etiketleri
+DEĞİŞTİRME, TEKRARLAMA.
+
+Zaten bulunmuş etiketler: {mevcut_etiketler}
+Doldurulacak eksenler  : {istenen_eksenler}
+
+Yalnızca aşağıdaki kontrollü sözlükten değer seç. Sözlükte karşılığı
+olmayan bir etiket UYDURMA — uygun değer yoksa o eksen için boş liste
+döndür.
+
+product_type: {product_type_sozlugu}
+
+sector: {sector_sozlugu}
+
+audience: {audience_sozlugu}
+
+benefit: {benefit_sozlugu}
+
+--- ÖRNEK ---
+METİN: "Emeklilerimize özel: maaşını bankamızdan alan emekli
+müşterilerimize market alışverişlerinde %10 indirim."
+Zaten bulunmuş etiketler: {{"product_type": ["kart"]}}
+Doldurulacak eksenler: sector, audience, benefit
+
+ÇIKTI:
+{{
+  "sector":   [{{"value": "market_gida", "evidence": "market alışverişlerinde"}}],
+  "audience": [{{"value": "emekli", "evidence": "emekli müşterilerimize"}}],
+  "benefit":  [{{"value": "indirim", "evidence": "%10 indirim"}}]
+}}
+
+--- ŞİMDİ SEN SINIFLANDIR ---
+METİN: {clean_text}
+
+ÇIKTI:
