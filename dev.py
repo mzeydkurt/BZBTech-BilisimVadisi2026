@@ -295,6 +295,15 @@ def gold_durum() -> int:
     return _calistir([_python(), "-m", "scripts.gold_status", *_ek_argumanlar()], cwd=BACKEND)
 
 
+def cikarim() -> int:
+    """Kampanya metinlerinden bilgi çıkarır (ağa çıkmaz).
+
+    SPRINT 3A'da yalnızca kural tabanlı katman çalışır; LLM katmanı
+    KAPI A6'da eklenecek.
+    """
+    return _calistir([_python(), "-m", "scripts.extract", *_ek_argumanlar()], cwd=BACKEND)
+
+
 def _ek_argumanlar() -> list[str]:
     """Komut adından sonraki argümanları alt betiğe geçirir.
 
@@ -374,6 +383,7 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "gold-ornek": (gold_ornek, "Gold set örneklemi seçer (ağa çıkmaz)"),
     "etiketle": (etiketle, "Gold set etiketleme arayüzünü açar"),
     "gold-durum": (gold_durum, "Etiketleme ilerlemesini raporlar"),
+    "cikarim": (cikarim, "Kampanya metinlerinden bilgi çıkarır (ağa çıkmaz)"),
     "kesif-endpoint": (kesif_endpoint, "Kampanya listesi JSON uçlarını arar (Playwright)"),
     "kesif-hesaplayici": (
         kesif_hesaplayici,
