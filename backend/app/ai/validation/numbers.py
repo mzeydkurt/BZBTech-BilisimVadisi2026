@@ -112,3 +112,85 @@ def validate_number_in_source(
             return True
 
     return False
+
+
+# Metinden sayı yakalayan kalıp: `%2,05` · `5.000` · `120` · `2.05`
+_NUMBER_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"\d+(?:[.,]\d+)*")
+
+# ⚠️ TARİHLER SAYI SAYILMAZ ve taramadan ÖNCE maskelenir.
+#
+# `31.12.2026` üzerinde sayı kuralı çalıştırılırsa iki nokta binlik ayracı
+# sanılır ve token `31122026` diye okunur. Bu sayı kaynakta hiçbir zaman
+# bulunmaz; sonuç olarak KAYNAKLA BİREBİR AYNI bir özet bile "uydurma sayı
+# içeriyor" diye reddedilirdi (ölçüldü).
+#
+# Tarihin kendisi zaten `date_tr` ile ayrıştırılıyor ve `start_date` /
+# `end_date` alanlarında kendi doğrulamasından geçiyor; burada ikinci kez
+# denetlenmesi gerekmez.
+_DATE_TOKEN_RE: Final[re.Pattern[str]] = re.compile(
+    r"\b\d{1,2}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{2,4}\b"
+)
+
+
+def numbers_in_text(text: str | None) -> list[Decimal]:
+    """Metindeki tüm sayıları Türkçe biçimi çözerek döndürür.
+
+    `5.000` beş bin, `2,05` iki virgül sıfır beş olarak okunur.
+
+    Args:
+        text: Taranacak metin.
+
+    Returns:
+        Bulunan sayılar (yinelenenler ayıklanmış, ilk görülme sırasında).
+    """
+    if not text:
+        return []
+
+    # Tarihler taramadan önce maskelenir (bkz. `_DATE_TOKEN_RE`).
+    maskeli = _DATE_TOKEN_RE.sub(" ", text)
+
+    bulunan: list[Decimal] = []
+    gorulen: set[Decimal] = set()
+
+    for eslesme in _NUMBER_TOKEN_RE.finditer(maskeli):
+        ham = eslesme.group()
+        # Türkçe biçim: nokta binlik, virgül ondalık ayracıdır.
+        if "," in ham:
+            duz = ham.replace(".", "").replace(",", ".")
+        elif ham.count(".") == 1 and len(ham.split(".")[1]) != 3:
+            # Tek nokta ve ondalık kısmı 3 basamak DEĞİLSE ondalıktır:
+            # `2.05` iki virgül sıfır beş, `5.000` ise beş bindir.
+            duz = ham
+        else:
+            duz = ham.replace(".", "")
+
+        try:
+            sayi = Decimal(duz)
+        except InvalidOperation:
+            continue
+        if sayi not in gorulen:
+            gorulen.add(sayi)
+            bulunan.append(sayi)
+
+    return bulunan
+
+
+def unsupported_numbers(text: str | None, clean_text: str) -> list[Decimal]:
+    """Üretilen metinde geçip KAYNAKTA GEÇMEYEN sayıları döndürür.
+
+    Özet doğrulamasının çekirdeği (KAPI A8): kaynağın kısaltılmış hâli olan
+    bir özet, kaynakta bulunmayan bir sayı içeremez. İçeriyorsa bu bir
+    halüsinasyondur ve özet reddedilir.
+
+    Args:
+        text: Modelin ürettiği metin (özet).
+        clean_text: Kaynak metin.
+
+    Returns:
+        Kaynakta karşılığı bulunamayan sayılar; temizse boş liste.
+    """
+    return [
+        sayi
+        for sayi in numbers_in_text(text)
+        if not validate_number_in_source(sayi, "TRY", clean_text)
+    ]

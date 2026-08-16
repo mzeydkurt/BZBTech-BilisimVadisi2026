@@ -127,6 +127,17 @@ def main(argv: list[str] | None = None) -> int:
         yol = _cakismalari_yaz(ozet.conflicts, ozet.mode)
         print(f"  Çakışma          : {len(ozet.conflicts)} → {yol}")
 
+    # ── KAPI A8 — sınıflandırma + özetleme ────────────────
+    if kip != "rule_only":
+        print("\nSınıflandırma + özetleme")
+        print(f"  Sorulan eksen    : {ozet.axes_requested}")
+        print(f"  Eklenen etiket   : {ozet.labels_added}")
+        print(f"  Sözlük dışı red  : {ozet.labels_rejected}")
+        print(f"  Yazılan özet     : {ozet.summaries_written}")
+        print(f"  Reddedilen özet  : {ozet.summaries_rejected}")
+        for gerekce, sayi in sorted((ozet.summary_rejections or {}).items(), key=lambda p: -p[1]):
+            print(f"    {gerekce:30} {sayi}")
+
     if ozet.by_field:
         print("\nAlan bazında:")
         for alan, sayi in ozet.by_field.items():
