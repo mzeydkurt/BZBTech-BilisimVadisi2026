@@ -33,6 +33,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
+from decimal import Decimal, InvalidOperation
 from typing import Final
 
 from sqlalchemy import delete, select
@@ -41,6 +42,7 @@ from sqlalchemy.orm import Session
 from app.ai.extraction import ExtractedField, extract_rule_based
 from app.ai.extraction.llm_extractor import extract_llm
 from app.ai.providers.base import LLMProvider
+from app.ai.validation import Conflict, guard_fields, merge_extractions
 from app.config import get_settings
 from app.db.base import utc_now
 from app.db.models import (
@@ -48,6 +50,7 @@ from app.db.models import (
     Campaign,
     CampaignCategory,
     CampaignExtraction,
+    CampaignMetric,
     ExtractionRun,
     SourceDocument,
 )
@@ -92,6 +95,10 @@ class ExtractionSummary:
     llm_calls: int = 0
     cache_hits: int = 0
     llm_skipped: int = 0
+    fields_rejected: int = 0
+    logic_violations: int = 0
+    rejected_by_layer: dict[str, int] | None = None
+    conflicts: list[Conflict] | None = None
     status: str = "success"
 
 
@@ -142,7 +149,7 @@ def _campaigns(
     return [(kampanya, metin) for kampanya, metin in session.execute(sorgu) if metin.strip()]
 
 
-def _taxonomy_fields(session: Session, campaign: Campaign) -> list[CampaignExtraction]:
+def _taxonomy_fields(session: Session, campaign: Campaign) -> list[ExtractedField]:
     """Taksonomi etiketlerini çıkarım kaydına çevirir (Katman 1).
 
     ⚠️ Bu veri ÜRETİLMEZ, TAŞINIR. `campaign_categories` SPRINT 2'de kaynağa
@@ -162,24 +169,26 @@ def _taxonomy_fields(session: Session, campaign: Campaign) -> list[CampaignExtra
     for kayit in satirlar:
         secilen.setdefault(kayit.axis, kayit)
 
-    kayitlar: list[CampaignExtraction] = []
+    kayitlar: list[ExtractedField] = []
     for alan_adi, eksen in TAXONOMY_FIELDS.items():
         kaynak = secilen.get(eksen)
         if kaynak is None:
             continue
         kayitlar.append(
-            CampaignExtraction(
-                campaign_id=campaign.id,
+            ExtractedField(
                 field_name=alan_adi,
-                value_raw=kaynak.evidence,
+                value_raw=kaynak.evidence or "",
                 value_normalized=kaynak.value,
                 unit="enum",
-                evidence_text=kaynak.evidence,
-                evidence_source_url=campaign.source_url,
-                confidence=kaynak.confidence,
-                extraction_method="table",
-                prompt_version=get_settings().prompt_version,
-                extracted_at=utc_now(),
+                evidence_text=kaynak.evidence or "",
+                # ⚠️ Taksonomi etiketi metinden DİLİMLENMEZ; URL yolundan ya
+                # da bankanın kendi etiketinden gelir. Ofset uydurmak,
+                # arayüzde metnin rastgele bir yerini kanıt diye göstermek
+                # olurdu.
+                evidence_char_start=None,
+                evidence_char_end=None,
+                confidence=kaynak.confidence or Decimal("1.000"),
+                method="table",
             )
         )
     return kayitlar
@@ -279,6 +288,7 @@ async def run_extraction(
     run.campaigns_processed = sayac.kampanya
     run.fields_extracted = sayac.alan
     run.errors_count = sayac.hata
+    run.fields_rejected = sayac.reddedilen
     run.llm_calls = sayac.llm_cagri
     run.cache_hits = sayac.onbellek
     run.duration_seconds = sure
@@ -294,6 +304,8 @@ async def run_extraction(
         llm_cagri=sayac.llm_cagri,
         onbellek=sayac.onbellek,
         llm_atlanan=sayac.llm_atlanan,
+        reddedilen=sayac.reddedilen,
+        mantik_ihlali=sayac.mantik_ihlali,
         saniye=sure,
     )
 
@@ -308,6 +320,10 @@ async def run_extraction(
         llm_calls=sayac.llm_cagri,
         cache_hits=sayac.onbellek,
         llm_skipped=sayac.llm_atlanan,
+        fields_rejected=sayac.reddedilen,
+        logic_violations=sayac.mantik_ihlali,
+        rejected_by_layer=dict(sayac.katman_sayaci),
+        conflicts=sayac.catismalar,
         status=run.status,
     )
 
@@ -322,12 +338,66 @@ class _Sayaclar:
     llm_cagri: int = 0
     onbellek: int = 0
     llm_atlanan: int = 0
+    reddedilen: int = 0
+    mantik_ihlali: int = 0
     alan_sayaci: dict[str, int] = dataclass_field(default_factory=dict)
+    katman_sayaci: dict[str, int] = dataclass_field(default_factory=dict)
+    catismalar: list[Conflict] = dataclass_field(default_factory=list)
 
     def say(self, alan_adi: str) -> None:
         """Bir alanı sayaçlara işler."""
         self.alan_sayaci[alan_adi] = self.alan_sayaci.get(alan_adi, 0) + 1
         self.alan += 1
+
+
+def _coerce(value: str | None, unit: str | None) -> object | None:
+    """Metin değeri `campaign_metrics` kolonunun tipine çevirir.
+
+    ⚠️ Para ve oran `Decimal`dir; `float` YASAKTIR (CLAUDE.md). İkili kayan
+    nokta gösterimi finansal değerlerde yuvarlama hatası üretir.
+
+    Args:
+        value: Normalize edilmiş metin değer.
+        unit: Alanın birimi.
+
+    Returns:
+        Kolona yazılabilir değer; çevrilemezse None.
+    """
+    if value is None:
+        return None
+    try:
+        if unit in {"pct", "TRY"}:
+            return Decimal(value)
+        if unit in {"month", "count"}:
+            return int(Decimal(value))
+        if unit == "bool":
+            return value.strip().casefold() in {"true", "1", "evet"}
+    except (InvalidOperation, ValueError):
+        return None
+    return value
+
+
+def _write_metrics(session: Session, campaign: Campaign, fields: list[ExtractedField]) -> None:
+    """Merger çıktısını `campaign_metrics` tablosuna yazar.
+
+    ⚠️ YALNIZCA GUARD'I GEÇEN DEĞERLER (§8.6). Bu tablo arayüzün ve
+    karşılaştırma motorunun okuduğu yerdir; reddedilmiş bir çıkarımın
+    buraya sızması, halüsinasyonun kullanıcıya gösterilmesi demektir.
+
+    ⚠️ Tabloda kolonu OLMAYAN alanlar atlanır: `start_date`, `sector` gibi
+    alanlar `campaigns` ve `campaign_categories` tablolarına aittir.
+    """
+    kayit = session.scalar(select(CampaignMetric).where(CampaignMetric.campaign_id == campaign.id))
+    if kayit is None:
+        kayit = CampaignMetric(campaign_id=campaign.id)
+        session.add(kayit)
+
+    for alan in fields:
+        if not hasattr(kayit, alan.field_name):
+            continue
+        deger = _coerce(alan.value_normalized, alan.unit)
+        if deger is not None:
+            setattr(kayit, alan.field_name, deger)
 
 
 async def _process_campaign(
@@ -360,17 +430,16 @@ async def _process_campaign(
         )
     )
 
+    bulgular: list[ExtractedField] = []
     bulunan_alanlar: set[str] = set()
 
     if mode in RULE_MODES:
-        for kayit in _taxonomy_fields(session, kampanya):
-            session.add(kayit)
-            sayac.say(kayit.field_name)
-            bulunan_alanlar.add(kayit.field_name)
+        for alan in _taxonomy_fields(session, kampanya):
+            bulgular.append(alan)
+            bulunan_alanlar.add(alan.field_name)
 
         for alan in extract_rule_based(metin):
-            session.add(_to_row(kampanya, alan, prompt_version))
-            sayac.say(alan.field_name)
+            bulgular.append(alan)
             bulunan_alanlar.add(alan.field_name)
 
     if mode in LLM_MODES and provider is not None:
@@ -389,9 +458,41 @@ async def _process_campaign(
         sayac.onbellek += sonuc.cache_hits
         if sonuc.skipped_reason:
             sayac.llm_atlanan += 1
+        bulgular.extend(sonuc.fields)
 
-        for alan in sonuc.fields:
-            session.add(_to_row(kampanya, alan, prompt_version))
-            sayac.say(alan.field_name)
+    # ── KAPI A7 — halüsinasyon guard'ı ────────────────────
+    guard = guard_fields(bulgular, metin)
+
+    for alan, gerekce in guard.rejected:
+        # ⚠️ REDDEDİLEN KAYIT SİLİNMEZ. Halüsinasyon oranı ancak
+        # reddedilenler kayıtlıysa raporlanabilir.
+        satir = _to_row(kampanya, alan, prompt_version)
+        satir.rejected_reason = gerekce
+        satir.is_validated = False
+        session.add(satir)
+        sayac.reddedilen += 1
+        sayac.katman_sayaci[gerekce] = sayac.katman_sayaci.get(gerekce, 0) + 1
+
+    for alan in guard.accepted:
+        satir = _to_row(kampanya, alan, prompt_version)
+        ihlal = guard.logic_violations.get(alan.field_name)
+        # Mantık ihlali kaydı REDDETMEZ, doğrulanmamış işaretler.
+        satir.is_validated = ihlal is None
+        if ihlal:
+            satir.validation_note = ihlal
+            sayac.mantik_ihlali += 1
+        session.add(satir)
+        sayac.say(alan.field_name)
+
+    # ── Merger + campaign_metrics ─────────────────────────
+    birlesim = merge_extractions(guard.accepted, campaign_id=kampanya.id)
+    sayac.catismalar.extend(birlesim.conflicts)
+    # ⚠️ `campaign_metrics` YALNIZCA guard'ı geçmiş ve mantık ihlali
+    # olmayan değerlerle doldurulur (§8.6).
+    _write_metrics(
+        session,
+        kampanya,
+        [alan for alan in birlesim.fields if alan.field_name not in guard.logic_violations],
+    )
 
     sayac.kampanya += 1

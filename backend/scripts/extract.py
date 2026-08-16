@@ -18,12 +18,23 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from pathlib import Path
 
 from app.ai.pipeline import run_extraction
+from app.ai.validation import Conflict
 from app.ai.providers import get_provider
 from app.config import get_settings
 from app.db.session import SessionLocal
 from app.logging_config import configure_logging
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# Kip → raporda gösterilecek CLI bayrağı.
+_BAYRAK: dict[str, str] = {
+    "rule_only": "--sadece-kural",
+    "hybrid": "--tumu",
+    "llm_only": "--sadece-llm",
+}
 
 # CLI bayrağı → çalıştırma kipi.
 KIPLER: dict[str, str] = {
@@ -105,6 +116,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Önbellek isabeti : {ozet.cache_hits}")
         print(f"LLM atlanan      : {ozet.llm_skipped} kampanya")
 
+    # ── KAPI A7 — guard raporu ────────────────────────────
+    print(f"\nHalüsinasyon guard'ı")
+    print(f"  Reddedilen alan  : {ozet.fields_rejected}")
+    print(f"  Mantık ihlali    : {ozet.logic_violations}")
+    for katman, sayi in sorted((ozet.rejected_by_layer or {}).items(), key=lambda p: -p[1]):
+        print(f"    {katman:24} {sayi}")
+
+    if ozet.conflicts:
+        yol = _cakismalari_yaz(ozet.conflicts, ozet.mode)
+        print(f"  Çakışma          : {len(ozet.conflicts)} → {yol}")
+
     if ozet.by_field:
         print("\nAlan bazında:")
         for alan, sayi in ozet.by_field.items():
@@ -112,6 +134,34 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"\nSonraki adım: python dev.py degerlendir --mod {kip}")
     return 0
+
+
+def _cakismalari_yaz(catismalar: list[Conflict], kip: str) -> Path:
+    """Çakışmaları `docs/conflicts.md` dosyasına yazar.
+
+    ⚠️ Çakışma sessiz geçilmez: kural ile modelin ayrıştığı her alan,
+    prompt ince ayarında (SPRINT 3B) bakılacak ilk yerdir.
+    """
+    yol = REPO_ROOT / "docs" / "conflicts.md"
+    yol.parent.mkdir(parents=True, exist_ok=True)
+
+    satirlar = [
+        "# Çıkarım çakışmaları",
+        "",
+        f"> `python dev.py cikarim {_BAYRAK.get(kip, kip)}` çıktısı. Otomatik üretilir.",
+        "",
+        "Aynı alan için birden fazla katman FARKLI değer üretti. Kazanan",
+        "önceliğe göre seçildi (tablo > kural > LLM) ve güveni 0.15 düşürüldü;",
+        "kaybeden kayıt SİLİNMEDİ, kendi satırında duruyor.",
+        "",
+        f"Toplam: **{len(catismalar)}** çakışma",
+        "",
+        "| Kampanya | Alan | Kazanan | Kaybeden |",
+        "|---|---|---|---|",
+    ]
+    satirlar += [c.as_row() for c in catismalar]
+    yol.write_text("\n".join(satirlar) + "\n", encoding="utf-8")
+    return yol
 
 
 if __name__ == "__main__":
