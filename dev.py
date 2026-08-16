@@ -246,6 +246,18 @@ def geri_doldur() -> int:
     )
 
 
+def yeniden_isle() -> int:
+    """Temiz metni ham HTML arşivinden yeniden üretir (ağa çıkmaz).
+
+    Ön işlemede yabancı kampanya blokları (§6.1) ayıklanmıyordu; kural
+    eklendikten sonra metin, bankalara yeni istek atmadan tazelenir.
+    Tarihi hiç olmayan kampanyaların dönemi de metinden geri doldurulur.
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.reprocess_clean_text", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
 def siniflandir() -> int:
     """Kampanyaları dört eksende sınıflandırır ve raporu üretir.
 
@@ -383,6 +395,7 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "scrape": (scrape, "Tüm scraper'ları çalıştırır"),
     "scrape-deneme": (scrape_deneme, "Kazımayı veritabanına yazmadan dener"),
     "geri-doldur": (geri_doldur, "Banka kategorisini arşivden geri doldurur (ağa çıkmaz)"),
+    "yeniden-isle": (yeniden_isle, "Temiz metni arşivden yeniden üretir (ağa çıkmaz)"),
     "siniflandir": (siniflandir, "Kampanyaları dört eksende sınıflandırır (ağa çıkmaz)"),
     "llm-saglik": (llm_saglik, "LLM sağlayıcısının durumunu kontrol eder"),
     "gold-ornek": (gold_ornek, "Gold set örneklemi seçer (ağa çıkmaz)"),
