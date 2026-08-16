@@ -13,22 +13,34 @@ hata sayılır, loglanır ve devam edilir.
 eski çıkarımlar SİLİNİP yenileri yazılır. Aksi hâlde her çalıştırmada kayıtlar
 katlanır ve "kaç alan çıkarıldı" sorusunun yanıtı anlamsızlaşır.
 
-⚠️ SPRINT 3A'DA YALNIZCA `rule_only` KİPİ ÇALIŞIR. `hybrid` ve `llm_only`
-KAPI A6'da LLM katmanı eklendiğinde açılacak; şimdiden çağrılırsa açık hata
-verir — sessizce kural kipine düşmek, ablasyon tablosunda iki kipi aynı
-kolonda toplardı.
+ÜÇ KİP (ablasyon tablosunun kolonları):
+
+    rule_only  tablo → kural                    LLM'e HİÇ çağrı yok
+    hybrid     tablo → kural → (already_found) → LLM
+    llm_only   LLM                              kural devre dışı
+
+⚠️ `llm_only` KİPİ KURALI DEVRE DIŞI BIRAKIR ve bu bilinçlidir: ablasyon
+tablosu "kural olmasaydı ne olurdu?" sorusuna ancak böyle yanıt verebilir.
+Üretimde kullanılacak kip `hybrid`tir.
+
+⚠️ İPTAL EDİLEBİLİR. Ctrl+C çalıştırmayı `cancelled` olarak kapatır ve O ANA
+KADAR yazılanları KORUR. Yerel modelle 495 kampanya saatler sürebilir;
+yarıda kesmenin her şeyi çöpe atması, denemeyi imkânsız kılardı.
 """
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from typing import Final
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.ai.extraction import ExtractedField, extract_rule_based
+from app.ai.extraction.llm_extractor import extract_llm
+from app.ai.providers.base import LLMProvider
 from app.config import get_settings
 from app.db.base import utc_now
 from app.db.models import (
@@ -46,8 +58,14 @@ logger = get_logger(__name__)
 # İlerleme kaç kampanyada bir loglanır.
 PROGRESS_EVERY: Final[int] = 50
 
-# SPRINT 3A'da uygulanmış kipler.
-IMPLEMENTED_MODES: Final[tuple[str, ...]] = ("rule_only",)
+# Uygulanmış kipler (ablasyon tablosunun kolonları).
+IMPLEMENTED_MODES: Final[tuple[str, ...]] = ("rule_only", "hybrid", "llm_only")
+
+# LLM'e çağrı yapan kipler.
+LLM_MODES: Final[tuple[str, ...]] = ("hybrid", "llm_only")
+
+# Kural ve tablo katmanının çalıştığı kipler.
+RULE_MODES: Final[tuple[str, ...]] = ("rule_only", "hybrid")
 
 # ⚠️ KATMAN 1 — YAPISAL VERİ. Bu üç alan metinden çıkarılmaz; SPRINT 2'de
 # `campaign_categories` tablosuna zaten yazıldı (URL yolu, bankanın kendi
@@ -71,6 +89,10 @@ class ExtractionSummary:
     errors_count: int = 0
     duration_seconds: int = 0
     by_field: dict[str, int] | None = None
+    llm_calls: int = 0
+    cache_hits: int = 0
+    llm_skipped: int = 0
+    status: str = "success"
 
 
 def _to_row(campaign: Campaign, alan: ExtractedField, prompt_version: str) -> CampaignExtraction:
@@ -163,32 +185,38 @@ def _taxonomy_fields(session: Session, campaign: Campaign) -> list[CampaignExtra
     return kayitlar
 
 
-def run_extraction(
+async def run_extraction(
     session: Session,
+    provider: LLMProvider | None = None,
     *,
     mode: str = "rule_only",
     bank_code: str | None = None,
     limit: int | None = None,
+    use_cache: bool = True,
 ) -> ExtractionSummary:
     """Çıkarımı çalıştırır ve sonuçları kaydeder.
 
     Args:
         session: Veritabanı oturumu.
-        mode: `rule_only` (SPRINT 3A'da tek uygulanan kip).
+        mode: `rule_only` | `hybrid` | `llm_only`.
+        provider: LLM sağlayıcısı; `hybrid` ve `llm_only` için ZORUNLU.
         bank_code: Yalnızca bu bankayı işle.
         limit: En fazla bu kadar kampanya işle.
+        use_cache: False ise LLM önbelleği okunmaz (`--yeniden`).
 
     Returns:
         Çalıştırma özeti.
 
     Raises:
-        ValueError: Henüz uygulanmamış bir kip istendiyse.
+        ValueError: Tanımsız kip ya da LLM kipinde sağlayıcı verilmediyse.
     """
     if mode not in IMPLEMENTED_MODES:
-        raise ValueError(
-            f"{mode!r} kipi SPRINT 3A'da uygulanmadı (KAPI A6'da gelecek). "
-            f"Geçerli: {IMPLEMENTED_MODES}"
-        )
+        raise ValueError(f"Tanımsız çıkarım kipi: {mode!r}. Geçerli: {IMPLEMENTED_MODES}")
+    if mode in LLM_MODES and provider is None:
+        # ⚠️ Sessizce kural kipine DÜŞÜLMEZ: ablasyon tablosunda `hybrid`
+        # kolonuna kural sonuçlarını yazmak, LLM'in katkısını olduğundan
+        # büyük ya da küçük gösterirdi.
+        raise ValueError(f"{mode!r} kipi bir LLM sağlayıcısı gerektirir.")
 
     ayarlar = get_settings()
     baslangic = time.monotonic()
@@ -198,56 +226,61 @@ def run_extraction(
         scope=bank_code,
         status="running",
         prompt_version=ayarlar.prompt_version,
+        model_name=provider.model_info.name if provider else None,
     )
     session.add(run)
     session.flush()
 
     kampanyalar = _campaigns(session, bank_code=bank_code, limit=limit)
-    logger.info("cikarim_basladi", kip=mode, kampanya=len(kampanyalar), kapsam=bank_code)
+    logger.info(
+        "cikarim_basladi",
+        kip=mode,
+        kampanya=len(kampanyalar),
+        kapsam=bank_code,
+        model=run.model_name,
+    )
 
-    alan_sayaci: dict[str, int] = {}
-    toplam_alan = 0
-    hata = 0
+    sayac = _Sayaclar()
+    durum = "success"
 
-    for sira, (kampanya, metin) in enumerate(kampanyalar, start=1):
-        try:
-            bulgular = extract_rule_based(metin)
-
-            # ⚠️ Aynı yöntemle üretilmiş eski kayıtlar silinir: yeniden
-            # çalıştırma kayıtları KATLAMAMALI.
-            session.execute(
-                delete(CampaignExtraction).where(
-                    CampaignExtraction.campaign_id == kampanya.id,
-                    CampaignExtraction.extraction_method.in_(("rule", "table")),
+    try:
+        for sira, (kampanya, metin) in enumerate(kampanyalar, start=1):
+            try:
+                await _process_campaign(
+                    session,
+                    provider,
+                    kampanya,
+                    metin,
+                    mode=mode,
+                    prompt_version=ayarlar.prompt_version,
+                    sayac=sayac,
+                    use_cache=use_cache,
                 )
-            )
+                session.flush()
+            except Exception as exc:
+                sayac.hata += 1
+                logger.warning(
+                    "kampanya_islenemedi",
+                    kampanya_id=kampanya.id,
+                    hata=f"{type(exc).__name__}: {exc}",
+                )
 
-            for kayit in _taxonomy_fields(session, kampanya):
-                session.add(kayit)
-                alan_sayaci[kayit.field_name] = alan_sayaci.get(kayit.field_name, 0) + 1
-                toplam_alan += 1
-
-            for alan in bulgular:
-                session.add(_to_row(kampanya, alan, ayarlar.prompt_version))
-                alan_sayaci[alan.field_name] = alan_sayaci.get(alan.field_name, 0) + 1
-                toplam_alan += 1
-
-            session.flush()
-        except Exception as exc:
-            hata += 1
-            logger.warning(
-                "kampanya_islenemedi", kampanya_id=kampanya.id, hata=f"{type(exc).__name__}: {exc}"
-            )
-
-        if sira % PROGRESS_EVERY == 0:
-            logger.info("cikarim_ilerleme", islenen=sira, toplam=len(kampanyalar))
+            if sira % PROGRESS_EVERY == 0:
+                logger.info("cikarim_ilerleme", islenen=sira, toplam=len(kampanyalar))
+    except KeyboardInterrupt:
+        # ⚠️ O ANA KADAR YAZILANLAR KORUNUR. Uzun çalıştırmayı yarıda kesmek
+        # her şeyi çöpe atmamalı.
+        durum = "cancelled"
+        logger.warning("cikarim_iptal_edildi", islenen=sayac.kampanya)
 
     sure = int(time.monotonic() - baslangic)
     run.finished_at = utc_now()
-    run.status = "partial" if hata else "success"
-    run.campaigns_processed = len(kampanyalar)
-    run.fields_extracted = toplam_alan
-    run.errors_count = hata
+    run.status = durum if durum == "cancelled" else ("partial" if sayac.hata else "success")
+    run.campaigns_processed = sayac.kampanya
+    run.fields_extracted = sayac.alan
+    run.errors_count = sayac.hata
+    run.llm_calls = sayac.llm_cagri
+    run.cache_hits = sayac.onbellek
     run.duration_seconds = sure
     session.commit()
 
@@ -255,18 +288,110 @@ def run_extraction(
         "cikarim_bitti",
         kip=mode,
         durum=run.status,
-        kampanya=len(kampanyalar),
-        alan=toplam_alan,
-        hata=hata,
+        kampanya=sayac.kampanya,
+        alan=sayac.alan,
+        hata=sayac.hata,
+        llm_cagri=sayac.llm_cagri,
+        onbellek=sayac.onbellek,
+        llm_atlanan=sayac.llm_atlanan,
         saniye=sure,
     )
 
     return ExtractionSummary(
         run_id=run.id,
         mode=mode,
-        campaigns_processed=len(kampanyalar),
-        fields_extracted=toplam_alan,
-        errors_count=hata,
+        campaigns_processed=sayac.kampanya,
+        fields_extracted=sayac.alan,
+        errors_count=sayac.hata,
         duration_seconds=sure,
-        by_field=dict(sorted(alan_sayaci.items(), key=lambda p: -p[1])),
+        by_field=dict(sorted(sayac.alan_sayaci.items(), key=lambda p: -p[1])),
+        llm_calls=sayac.llm_cagri,
+        cache_hits=sayac.onbellek,
+        llm_skipped=sayac.llm_atlanan,
+        status=run.status,
     )
+
+
+@dataclass
+class _Sayaclar:
+    """Çalıştırma boyunca biriken sayaçlar."""
+
+    kampanya: int = 0
+    alan: int = 0
+    hata: int = 0
+    llm_cagri: int = 0
+    onbellek: int = 0
+    llm_atlanan: int = 0
+    alan_sayaci: dict[str, int] = dataclass_field(default_factory=dict)
+
+    def say(self, alan_adi: str) -> None:
+        """Bir alanı sayaçlara işler."""
+        self.alan_sayaci[alan_adi] = self.alan_sayaci.get(alan_adi, 0) + 1
+        self.alan += 1
+
+
+async def _process_campaign(
+    session: Session,
+    provider: LLMProvider | None,
+    kampanya: Campaign,
+    metin: str,
+    *,
+    mode: str,
+    prompt_version: str,
+    sayac: _Sayaclar,
+    use_cache: bool = True,
+) -> None:
+    """Tek kampanyayı işler ve çıkarımlarını yazar.
+
+    ⚠️ ESKİ KAYITLAR ÖNCE SİLİNİR. Yeniden çalıştırma kayıtları katlamamalı;
+    aksi hâlde "kaç alan çıkarıldı" sorusunun yanıtı her koşuda büyür.
+    Yalnızca BU KİPİN ürettiği yöntemler silinir: `rule_only` çalıştırmak
+    `hybrid`in LLM kayıtlarını düşürmemeli.
+    """
+    silinecek: list[str] = []
+    if mode in RULE_MODES:
+        silinecek += ["rule", "table"]
+    if mode in LLM_MODES:
+        silinecek.append("llm")
+    session.execute(
+        delete(CampaignExtraction).where(
+            CampaignExtraction.campaign_id == kampanya.id,
+            CampaignExtraction.extraction_method.in_(silinecek),
+        )
+    )
+
+    bulunan_alanlar: set[str] = set()
+
+    if mode in RULE_MODES:
+        for kayit in _taxonomy_fields(session, kampanya):
+            session.add(kayit)
+            sayac.say(kayit.field_name)
+            bulunan_alanlar.add(kayit.field_name)
+
+        for alan in extract_rule_based(metin):
+            session.add(_to_row(kampanya, alan, prompt_version))
+            sayac.say(alan.field_name)
+            bulunan_alanlar.add(alan.field_name)
+
+    if mode in LLM_MODES and provider is not None:
+        # ⚠️ `llm_only` kipinde `bulunan_alanlar` BOŞTUR: kural devre dışı
+        # olduğu için modele tüm alanlar sorulur. Ablasyonun anlamı budur.
+        sonuc = await extract_llm(
+            provider,
+            session,
+            metin,
+            kampanya,
+            bulunan_alanlar,
+            prompt_version=prompt_version,
+            use_cache=use_cache,
+        )
+        sayac.llm_cagri += sonuc.llm_calls
+        sayac.onbellek += sonuc.cache_hits
+        if sonuc.skipped_reason:
+            sayac.llm_atlanan += 1
+
+        for alan in sonuc.fields:
+            session.add(_to_row(kampanya, alan, prompt_version))
+            sayac.say(alan.field_name)
+
+    sayac.kampanya += 1

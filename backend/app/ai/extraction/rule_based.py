@@ -46,8 +46,13 @@ class ExtractedField:
     value_normalized: str
     unit: str
     evidence_text: str
-    evidence_char_start: int
-    evidence_char_end: int
+    # ⚠️ Kural ve tablo katmanında DAİMA doludur. LLM katmanında (KAPI A6)
+    # None olabilir: model, kaynakta bulunmayan bir kanıt üretmiş demektir ve
+    # ofset hesaplanamaz. Bu kayıt SİLİNMEZ — halüsinasyon guard'ı (KAPI A7)
+    # onu reddedecek ve `rejected_reason` ile saklayacak; halüsinasyon oranı
+    # ancak reddedilenler kayıtlıysa raporlanabilir.
+    evidence_char_start: int | None
+    evidence_char_end: int | None
     confidence: Decimal
     method: str = "rule"
     validation_note: str | None = None

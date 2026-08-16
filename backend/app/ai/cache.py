@@ -63,6 +63,7 @@ async def cached_generate(
     text: str,
     task: str,
     prompt_version: str,
+    use_cache: bool = True,
     **kwargs: Any,
 ) -> LLMResponse:
     """Yanıtı önbellekten döndürür, yoksa modeli çağırıp önbelleğe yazar.
@@ -77,6 +78,10 @@ async def cached_generate(
         text: Modele gönderilecek istem (anahtar bundan türetilir).
         task: Görev türü.
         prompt_version: Etkin prompt sürümü.
+        use_cache: False ise önbellek OKUNMAZ ama yine YAZILIR
+            (`python dev.py cikarim --yeniden`). Prompt metni değişmeden
+            model davranışını yeniden görmek gerektiğinde kullanılır;
+            anahtar aynı kaldığı için kayıt tazelenir.
         **kwargs: `provider.generate()`e aktarılır (`system`, `schema`, ...).
 
     Returns:
@@ -86,7 +91,7 @@ async def cached_generate(
     anahtar = cache_key(sha256_text(text), task, prompt_version, model_adi)
 
     kayit = session.scalar(select(LLMCache).where(LLMCache.cache_key == anahtar))
-    if kayit is not None:
+    if kayit is not None and use_cache:
         logger.debug("onbellek_isabet", gorev=task, model=model_adi)
         return LLMResponse(
             text=kayit.response_json,
@@ -98,14 +103,18 @@ async def cached_generate(
 
     yanit = await provider.generate(text, **kwargs)
 
-    session.add(
-        LLMCache(
-            cache_key=anahtar,
-            task=task,
-            response_json=yanit.text,
-            model_name=model_adi,
-            prompt_version=prompt_version,
+    if kayit is not None:
+        # ⚠️ Anahtar benzersizdir; yeni satır eklemek kısıtı ihlal ederdi.
+        kayit.response_json = yanit.text
+    else:
+        session.add(
+            LLMCache(
+                cache_key=anahtar,
+                task=task,
+                response_json=yanit.text,
+                model_name=model_adi,
+                prompt_version=prompt_version,
+            )
         )
-    )
     session.flush()
     return yanit
