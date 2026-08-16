@@ -242,7 +242,7 @@ class KuveytTurkScraper(BaseScraper):
         if not title:
             return None
 
-        body_text = clean_html(html)
+        body_text = clean_html(html, bank_code=self.bank_code, title=title)
         # ⚠️ Oran/taksit bilgisi yapısal alanda değil, koşul metninde geçiyor.
         conditions = extract_section_text(html, CONDITION_KEYWORDS)
         start_date, end_date, precision = self._parse_dates(conditions, body_text)

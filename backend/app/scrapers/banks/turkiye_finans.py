@@ -15,11 +15,25 @@ sanar ve keşif çöp kayıtla dolar.
 bağlantıyla ("Detaylı Bilgi", görsel, başlık) tekrarlanıyor — tekilleştirme
 zorunludur.
 
-⚠️ TARİH VERİSİ YOK. Hiçbir kampanya sayfasında yapısal ya da metinsel tarih
-bulunmuyor. `date_precision="unknown"` kalır ve durum `unknown` olur.
-Biten kampanyalar bile "expired" İŞARETLENMEZ: durum yalnızca tarihten
-hesaplanır (`compute_status()` tek doğruluk kaynağıdır). Bitmiş olma bilgisi
-`is_archived=True` ile taşınır.
+⚠️ YAPISAL TARİH ALANI YOK — ama METİNDE TARİH VAR. Bu scraper tarihi kendi
+başına çıkarmaz; sayfada tarih için ayrılmış bir HTML alanı bulunmuyor.
+Tarih, koşul cümlesinin içinde düz metin olarak geçiyor:
+
+    "Kampanya 25 Mayıs - 31 Aralık 2026 tarihleri arasında geçerlidir."
+    "Kampanya 31.12.2026 tarihine kadar geçerlidir."
+
+Bu yüzden dönem, `BaseScraper._fill_missing_dates()` tarafından temiz
+metinden çıkarılır (`app/processing/dates.py`). Ölçüldü: 22 kampanyanın
+16'sının dönemi bu yolla bulunuyor; kalan 6'sında metinde yalnızca uygunluk
+koşulu tarihi ya da yılsız aralık var ve `unknown` KALIR — tarih uydurulmaz.
+
+Önceki sürüm burada koşulsuz `date_precision="unknown"` yazıyordu; 22
+kampanyanın tamamı tarihsiz kaydedilmişti. "Veri yok" ile "veri okunmadı"
+ayrı şeylerdir.
+
+Durum yalnızca tarihten hesaplanır (`compute_status()` tek doğruluk
+kaynağıdır); tarihi bulunamayan kampanya "expired" İŞARETLENMEZ. Bitmiş olma
+bilgisi `is_archived=True` ile taşınır.
 
 ⚠️ GÖRÜNMEZ KARAKTER TUZAĞI — canlı sayfada ölçüldü. Başlıklarda zero-width
 space (U+200B) ve non-breaking space (U+00A0) var, hem de kelimenin İÇİNDE:
@@ -258,7 +272,7 @@ class TurkiyeFinansScraper(BaseScraper):
         if not title:
             return None
 
-        body_text = clean_html(html)
+        body_text = clean_html(html, bank_code=self.bank_code, title=title)
 
         return RawCampaign(
             external_slug=slug_from_url_path(url),

@@ -126,6 +126,7 @@ class ZiraatKatilimScraper(BaseScraper):
 
     bank_code = "ziraat_katilim"
     version = "2.0.0"
+    brand_headings = BRAND_HEADINGS
 
     def discover(self) -> list[DiscoveredUrl]:
         """Ana liste ve arşiv sayfasından kampanya adreslerini toplar.
@@ -246,7 +247,7 @@ class ZiraatKatilimScraper(BaseScraper):
         if not title:
             return None
 
-        body_text = clean_html(html)
+        body_text = clean_html(html, bank_code=self.bank_code, title=title)
         conditions = extract_section_text(html, CONDITION_KEYWORDS)
         exclusions = extract_section_text(html, EXCLUSION_KEYWORDS)
 
