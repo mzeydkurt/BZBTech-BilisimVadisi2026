@@ -118,9 +118,7 @@ def main(argv: list[str] | None = None) -> int:
                 continue
 
             guncellenen = 0
-            for campaign in session.scalars(
-                select(Campaign).where(Campaign.bank_id == bank.id)
-            ):
+            for campaign in session.scalars(select(Campaign).where(Campaign.bank_id == bank.id)):
                 etiket = esleme.get(campaign.external_slug)
                 if etiket and campaign.bank_category != etiket:
                     campaign.bank_category = etiket

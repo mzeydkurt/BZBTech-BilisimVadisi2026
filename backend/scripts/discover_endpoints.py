@@ -201,7 +201,7 @@ def _hedefi_incele(hedef: Hedef) -> HedefSonucu:
 
 
 def _tetikleyicileri_dene(page: Any, hedef: Hedef) -> int:
-    """"Daha fazla" türü düğmelere basmayı dener.
+    """ "Daha fazla" türü düğmelere basmayı dener.
 
     Returns:
         Yapılan etkileşim sayısı.
@@ -260,7 +260,12 @@ def _rapor_yaz(sonuclar: list[HedefSonucu], *, playwright_var: bool) -> None:
             "",
         ]
 
-    satirlar += ["## Özet", "", "| Banka | Sonuç | JSON uç sayısı | Etkileşim |", "|---|---|---|---|"]
+    satirlar += [
+        "## Özet",
+        "",
+        "| Banka | Sonuç | JSON uç sayısı | Etkileşim |",
+        "|---|---|---|---|",
+    ]
     for sonuc in sonuclar:
         durum = "✅ BULUNDU" if sonuc.bulundu else "❌ BULUNAMADI"
         satirlar.append(

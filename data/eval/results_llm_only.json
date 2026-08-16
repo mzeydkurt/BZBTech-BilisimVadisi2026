@@ -1,0 +1,219 @@
+{
+  "mode": "llm_only",
+  "gold_campaigns": 40,
+  "gold_annotations": 880,
+  "micro_f1": 0.0,
+  "macro_f1": 0.0,
+  "hallucination_rate": 0.0,
+  "correct_silence_rate": 1.0,
+  "overall": {
+    "tp": 0,
+    "fp": 0,
+    "fn": 305,
+    "tn": 575
+  },
+  "by_field": {
+    "profit_rate_pct": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 7,
+      "tn": 33
+    },
+    "profit_share_rate_pct": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 2,
+      "tn": 38
+    },
+    "allocation_fee_pct": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 3,
+      "tn": 37
+    },
+    "file_fee_try": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "tn": 40
+    },
+    "has_no_fee": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 10,
+      "tn": 30
+    },
+    "term_months_min": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 5,
+      "tn": 35
+    },
+    "term_months_max": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 6,
+      "tn": 34
+    },
+    "installment_count": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 12,
+      "tn": 28
+    },
+    "financing_amount_min": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 3,
+      "tn": 37
+    },
+    "financing_amount_max": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 4,
+      "tn": 36
+    },
+    "min_spend_try": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 17,
+      "tn": 23
+    },
+    "max_spend_try": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 6,
+      "tn": 34
+    },
+    "reward_amount_try": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 14,
+      "tn": 26
+    },
+    "reward_type": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 22,
+      "tn": 18
+    },
+    "cashback_pct": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 6,
+      "tn": 34
+    },
+    "discount_pct": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 2,
+      "tn": 38
+    },
+    "loyalty_points": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 4,
+      "tn": 36
+    },
+    "start_date": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 29,
+      "tn": 11
+    },
+    "end_date": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 38,
+      "tn": 2
+    },
+    "target_customer": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 40,
+      "tn": 0
+    },
+    "product_type": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 40,
+      "tn": 0
+    },
+    "sector": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 35,
+      "tn": 5
+    }
+  },
+  "by_method": {
+    "blind": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 226,
+      "tn": 434
+    },
+    "assisted": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 79,
+      "tn": 141
+    }
+  },
+  "by_bank": {
+    "ziraat_katilim": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 87,
+      "tn": 155
+    },
+    "hayat_finans": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 19,
+      "tn": 47
+    },
+    "dunya_katilim": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 25,
+      "tn": 63
+    },
+    "kuveyt_turk": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 36,
+      "tn": 52
+    },
+    "albaraka": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 25,
+      "tn": 41
+    },
+    "vakif_katilim": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 18,
+      "tn": 48
+    },
+    "emlak_katilim": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 30,
+      "tn": 80
+    },
+    "tom_bank": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 26,
+      "tn": 40
+    },
+    "turkiye_finans": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 39,
+      "tn": 49
+    }
+  }
+}

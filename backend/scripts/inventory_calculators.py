@@ -421,7 +421,12 @@ def _hedef_bolumu(sonuc: EnvanterSonucu) -> list[str]:
 
     adaylar = variant_candidates(sonuc.form)
     if adaylar:
-        satirlar += ["### Ürün varyantı adayları", "", "| Etiket | Değer | Kanonik anahtar |", "|---|---|---|"]
+        satirlar += [
+            "### Ürün varyantı adayları",
+            "",
+            "| Etiket | Değer | Kanonik anahtar |",
+            "|---|---|---|",
+        ]
         for aday in adaylar:
             anahtar = f"`{aday.variant_key}`" if aday.is_mapped else "**eşlenmedi**"
             satirlar.append(f"| {aday.label} | `{aday.value}` | {anahtar} |")

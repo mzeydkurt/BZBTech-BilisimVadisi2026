@@ -79,9 +79,13 @@ def main(argv: list[str] | None = None) -> int:
     zor = sonuc.difficult_count
     print(f"Seçilen kampanya  : {len(sonuc.candidates)} / {sonuc.total_available} uygun aday")
     print(f"Zor vaka          : {zor} (hedef ≥{MIN_DIFFICULT})")
-    print(f"Kör / ön-doldurma : {min(BLIND_COUNT, len(sonuc.candidates))} / "
-          f"{max(0, len(sonuc.candidates) - BLIND_COUNT)}")
-    print(f"Few-shot elenen   : {sonuc.excluded_few_shot}  ·  metni boş: {sonuc.excluded_empty_text}")
+    print(
+        f"Kör / ön-doldurma : {min(BLIND_COUNT, len(sonuc.candidates))} / "
+        f"{max(0, len(sonuc.candidates) - BLIND_COUNT)}"
+    )
+    print(
+        f"Few-shot elenen   : {sonuc.excluded_few_shot}  ·  metni boş: {sonuc.excluded_empty_text}"
+    )
 
     print("\nBanka dağılımı:")
     for kod, sayi in sorted(sonuc.by_bank.items(), key=lambda p: -p[1]):
