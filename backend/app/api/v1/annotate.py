@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
+from app.ai.extraction import extract_rule_based
 from app.ai.fields import EXTRACTABLE_FIELDS, options_for, unit_of
 from app.api.deps import DbSession
 from app.core.vocab import ANNOTATION_METHODS
@@ -211,18 +212,39 @@ def _build(session: DbSession, campaign_id: int) -> CampaignForAnnotation:
         is_difficult=bool(ornek.get("is_difficult", False)),
         difficulty_reasons=list(ornek.get("difficulty_reasons", [])),
         existing=[AnnotationOut.model_validate(k) for k in mevcut],
-        # ⚠️ KAPI A4 tamamlanana kadar boş: kural tabanlı çıkarıcı henüz yok.
-        # Kör etiketleme (ilk 30 kayıt) zaten ön-doldurma KULLANMAZ.
-        prefill=_prefill(campaign_id),
+        # ⚠️ Kör kipte arayüz bu değerleri GÖSTERMEZ; yalnızca `assisted`
+        # kipte ön-doldurma olarak kullanılır.
+        prefill=_prefill(clean_text),
     )
 
 
-def _prefill(campaign_id: int) -> dict[str, AnnotatedField]:
-    """Ön-doldurma değerlerini üretir (KAPI A4'te bağlanacak).
+def _prefill(clean_text: str | None) -> dict[str, AnnotatedField]:
+    """Kural tabanlı çıkarımdan ön-doldurma değerleri üretir.
 
-    ⚠️ Şu an BOŞ döner ve bu bilinçlidir: ön-doldurma yalnızca `assisted`
-    kipte kullanılır, kör etiketleme ona bağımlı değildir. Kural tabanlı
-    çıkarıcı geldiğinde burası ona bağlanacak.
+    ⚠️ YALNIZCA `assisted` KİPTE KULLANILIR. Kör etiketlemede (ilk 30 kayıt)
+    arayüz bu değerleri hiç göstermez: sistemin cevabını gören etiketleyici
+    ona meyleder ve F1 sahte şişer. Yanlılık ölçümü tam olarak bu iki kipin
+    farkına dayanıyor.
+
+    ⚠️ Aynı alan için birden çok eşleşme varsa İLKİ korunur. Ön-doldurma bir
+    ÖNERİDİR; karar etiketleyicinindir.
+
+    Args:
+        clean_text: Kampanyanın temizlenmiş metni.
+
+    Returns:
+        Alan adı → önerilen değer ve kanıt.
     """
-    del campaign_id
-    return {}
+    if not clean_text:
+        return {}
+
+    oneriler: dict[str, AnnotatedField] = {}
+    for bulgu in extract_rule_based(clean_text):
+        if bulgu.field_name in oneriler:
+            continue
+        oneriler[bulgu.field_name] = AnnotatedField(
+            value=bulgu.value_normalized,
+            evidence=bulgu.evidence_text,
+            unit=bulgu.unit,
+        )
+    return oneriler
