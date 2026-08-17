@@ -101,3 +101,30 @@ class TestParsePageAdaptoru:
             scraper.close()
 
         assert sonuc == []
+
+
+class TestBosKesif:
+    """Sıfır keşif başarı sayılmaz."""
+
+    class _BosScraper(BaseScraper):
+        bank_code = "adil_katilim"
+
+        def discover(self) -> list[DiscoveredUrl]:
+            return []
+
+        def parse_detail(self, html: str, url: str, hint: DiscoveredUrl) -> RawCampaign | None:
+            return None
+
+    def test_sifir_kesif_partial_kapanir(self, seeded_session) -> None:  # type: ignore[no-untyped-def]
+        """ÖLÇÜLDÜ: Türkiye Finans `kesif=0` verdi ve `success` kapandı;
+        22 kampanya sessizce veri setinden düştü."""
+        scraper = self._BosScraper()
+        try:
+            sonuc = scraper.run(seeded_session, dry_run=True)
+        finally:
+            scraper.close()
+
+        assert sonuc.urls_discovered == 0
+        assert sonuc.status == "partial"
+        assert sonuc.errors_count == 1
+        assert "sıfır adres" in sonuc.errors[0]

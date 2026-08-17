@@ -255,6 +255,20 @@ class BaseScraper(ABC):
         result.urls_discovered = len(discovered)
         logger.info("kesif_tamamlandi", banka=self.bank_code, adres_sayisi=len(discovered))
 
+        if not discovered:
+            # ⚠️ SIFIR KEŞİF BAŞARI DEĞİLDİR. Ölçüldü: Türkiye Finans bir
+            # çalıştırmada `kesif=0` verdi ve çalıştırma `success` kapandı;
+            # 22 kampanya sessizce veri setinden düştü. Site geçici olarak
+            # erişilemezdi, kod sağlamdı — ama fark yalnızca elle sayım
+            # yapıldığında görüldü.
+            #
+            # Hiçbir banka normal durumda sıfır adres keşfetmez; kampanya
+            # sayfası olmayan Adil Katılım bile 9 aday adres üretiyor.
+            result.add_error(
+                "discover() sıfır adres döndürdü — site erişilemez ya da yapı değişmiş"
+            )
+            logger.warning("kesif_bos", banka=self.bank_code)
+
         # Limit keşiften SONRA uygulanır: `urls_discovered` bankada gerçekte
         # kaç kampanya bulunduğunu göstermeye devam eder, yalnızca çekim daralır.
         if self.limit is not None and len(discovered) > self.limit:
