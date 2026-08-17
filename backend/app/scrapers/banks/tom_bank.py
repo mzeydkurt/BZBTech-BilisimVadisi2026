@@ -84,11 +84,27 @@ EXCLUSION_KEYWORDS: Final[tuple[str, ...]] = (
 )
 
 
+# Ürün sayfaları — arşivlenmiş sitemap'ten doğrulandı (17 Ağustos 2026).
+PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
+    ("/hadi-hesap/hadi-hesap", "birikim_katilma_hesabi", "yok"),
+    ("/hadi-hesap/gunluk-kazandiran-hesap", "birikim_katilma_hesabi", "yok"),
+    ("/hadi-vadeli-hesap", "birikim_katilma_hesabi", "yok"),
+    ("/hadi-hesap/altin-biriktiren-hesap", "yatirim_urunu", "diger"),
+    ("/hadi-hesap/gumus-hesabi", "yatirim_urunu", "diger"),
+    ("/hadi-kartlarim/hadi-kredi-karti", "kart", "yok"),
+    ("/hadi-kartlarim/hadi-black-kredi-karti", "kart", "yok"),
+    ("/hadi-kartlarim/hadi-banka-karti", "kart", "yok"),
+    ("/hadi-kartlarim/hadi-sanal-kart", "kart", "yok"),
+)
+
+
 class TomBankScraper(BaseScraper):
     """T.O.M. Katılım Bankası kampanya scraper'ı."""
 
     bank_code = "tom_bank"
     version = "1.0.0"
+    product_base_url = BASE_URL
+    product_pages = PRODUCT_PAGES
 
     def discover(self) -> list[DiscoveredUrl]:
         """Sitemap'ten kampanya adreslerini toplar ve SLUG bazında tekilleştirir.

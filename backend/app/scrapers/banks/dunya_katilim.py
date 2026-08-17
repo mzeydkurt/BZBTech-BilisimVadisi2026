@@ -47,13 +47,7 @@ from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.scrapers.base import BaseScraper
-from app.scrapers.calculator_inventory import (
-    find_legal_notice,
-    parse_form_controls,
-    variant_candidates,
-)
-from app.scrapers.models import DiscoveredUrl, RawCampaign, RawProduct
-from app.scrapers.products import limits_from_page, product_external_key, rates_from_tables
+from app.scrapers.models import DiscoveredUrl, RawCampaign
 from app.scrapers.sitemap import extract_urls
 from app.utils.slugify import slug_from_url_path
 from app.utils.urls import dedupe_urls, is_same_site
@@ -81,10 +75,42 @@ MIN_DESCRIPTION_LENGTH: Final[int] = 80
 PRODUCT_LISTING: Final[str] = f"{BASE_URL}/kendim-icin/finansmanlar"
 
 # (yol, ürün türü, teminat türü)
+#
+# ⚠️ TEMİNAT TÜRÜ `core.vocab.COLLATERAL_TYPES` SÖZLÜĞÜNDEN SEÇİLİR
+# (`konut` · `tasit` · `yok` · `diger`) — veritabanında CHECK ile zorlanıyor.
+# Burada eskiden serbest yazılmış üç değer (`teminatsiz`, `arac_ipotegi`,
+# `ipotek`) vardı ve HER ÜRÜN YAZIMI CHECK ihlaliyle düşüyordu; çalıştırma
+# `partial` kapanıyor, tablo boş kalıyordu. Yeni sayfa eklerken sözlüğe bak.
+#
+# ⚠️ ADRESLER SITEMAP'TEN DOĞRULANDI. Eski liste `/arac-finansmani` ve
+# `/konut-finansmani` yazıyordu; ikisi de YOK. Site `/404`'e 302 veriyor,
+# soft-404 denetimi yakalayıp atlıyor ve sayfa sessizce kayboluyordu —
+# çalıştırma "başarılı" görünürken ürün gelmiyordu. Yeni adres eklerken
+# sitemap'ten doğrula, elle tahmin etme.
 PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
-    ("/kendim-icin/finansmanlar/ihtiyac-finansmani", "ihtiyac_finansmani", "teminatsiz"),
-    ("/kendim-icin/finansmanlar/arac-finansmani", "tasit_finansmani", "arac_ipotegi"),
-    ("/kendim-icin/finansmanlar/konut-finansmani", "konut_finansmani", "ipotek"),
+    ("/kendim-icin/finansmanlar/ihtiyac-finansmani", "ihtiyac_finansmani", "yok"),
+    (
+        "/kendim-icin/finansmanlar/ihtiyac-finansmanlari/enerya-ihtiyac-finansmani",
+        "ihtiyac_finansmani",
+        "yok",
+    ),
+    ("/kendim-icin/finansmanlar/arac-finansmanlari/arac-finansmani", "tasit_finansmani", "tasit"),
+    (
+        "/kendim-icin/finansmanlar/arac-finansmanlari/cevre-dostu-arac-finansmani",
+        "tasit_finansmani",
+        "tasit",
+    ),
+    ("/kendim-icin/finansmanlar/konut-finansmanlari", "konut_finansmani", "konut"),
+    (
+        "/kendim-icin/hesaplar/katilma-hesaplari/standart-katilma-hesabi",
+        "birikim_katilma_hesabi",
+        "yok",
+    ),
+    (
+        "/kendim-icin/hesaplar/katilma-hesaplari/gunes-katilma-hesabi",
+        "birikim_katilma_hesabi",
+        "yok",
+    ),
 )
 
 # Ürün listeleme sayfasındaki bağlantıları ayırt eden yol ön eki.
@@ -110,6 +136,8 @@ class DunyaKatilimScraper(BaseScraper):
 
     bank_code = "dunya_katilim"
     version = "1.0.0"
+    product_base_url = BASE_URL
+    product_pages = PRODUCT_PAGES
 
     def discover(self) -> list[DiscoveredUrl]:
         """Sitemap'ten kampanya adreslerini toplar.
@@ -234,23 +262,16 @@ class DunyaKatilimScraper(BaseScraper):
     def discover_products(self) -> list[DiscoveredUrl]:
         """Whitelist'teki finansman sayfalarını döndürür.
 
-        Listeleme sayfası da çekilip whitelist dışı ADAY adresler loglanır;
-        otomatik eklenmez. Yanlış bir sayfayı ürün saymak `parse_rate_tables`'a
-        alakasız bir ücret tablosunu oran tablosu olarak yazdırır.
+        Adresleri taban sınıf `product_pages`'ten kurar; buradaki ek iş
+        listeleme sayfasını çekip whitelist DIŞI aday adresleri loglamaktır.
+        Adaylar otomatik EKLENMEZ: yanlış bir sayfayı ürün saymak
+        `parse_rate_tables`'a alakasız bir ücret tablosunu oran tablosu olarak
+        yazdırır.
 
         Returns:
             Ürün detay adresleri.
         """
-        hedefler = [
-            DiscoveredUrl(
-                url=f"{BASE_URL}{yol}",
-                doc_type="product",
-                category_hint=urun_turu,
-                segment_hint="bireysel",
-                discovery_method="whitelist",
-            )
-            for yol, urun_turu, _ in PRODUCT_PAGES
-        ]
+        hedefler = super().discover_products()
         self._log_product_candidates({h.url for h in hedefler})
         return hedefler
 
@@ -275,70 +296,10 @@ class DunyaKatilimScraper(BaseScraper):
         if yeni:
             logger.info("urun_adayi_bulundu", banka=self.bank_code, adaylar=yeni)
 
-    def parse_products(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawProduct]:
-        """Finansman detay sayfasından ürün, limit ve oranları çıkarır.
+    def product_description(self, body_text: str, title: str) -> str | None:
+        """Ürün açıklamasını gövdenin ilk anlamlı paragrafından alır.
 
-        Args:
-            html: Sayfanın HTML'i.
-            url: Sayfanın adresi.
-            hint: Keşiften gelen ürün türü ve segment.
-
-        Returns:
-            Tek ürün (varsa varyantlarıyla); başlık bulunamazsa boş liste.
+        Kampanya tarafıyla aynı kural: sayfalarda ~800-1.500 kelimelik ağır
+        boilerplate var, başlığın kendisi ve bölüm başlıkları açıklama sayılmaz.
         """
-        title = extract_title(html)
-        if not title:
-            return []
-
-        body_text = clean_html(html, bank_code=self.bank_code, title=title)
-        slug = slug_from_url_path(url)
-        teminat = next((t for yol, _, t in PRODUCT_PAGES if yol.endswith(slug)), None)
-
-        limitler, limit_kaynagi = limits_from_page(html, body_text)
-        form = parse_form_controls(html)
-
-        ana = RawProduct(
-            external_key=product_external_key(slug, None),
-            name=title,
-            source_url=url,
-            product_type=hint.category_hint,
-            segment=hint.segment_hint,
-            description=self._first_paragraph(body_text, title),
-            collateral_type=teminat,
-            limits_source=limit_kaynagi,
-            limits_evidence=None if limit_kaynagi == "none" else body_text[:400],
-            has_calculator=bool(form.input_fields),
-            calculator_url=url if form.input_fields else None,
-            non_binding_notice=find_legal_notice(html),
-            rates=rates_from_tables(html),
-            **limitler,  # type: ignore[arg-type]
-        )
-
-        urunler: list[RawProduct] = [ana]
-
-        # Hesaplayıcı dropdown'ındaki her seçenek bir ürün varyantıdır.
-        # ⚠️ Hesaplayıcıya istek ATILMAZ; yalnızca form nitelikleri okunur.
-        for aday in variant_candidates(form):
-            urunler.append(
-                RawProduct(
-                    external_key=product_external_key(slug, aday.variant_key or aday.label),
-                    name=f"{title} — {aday.label}",
-                    source_url=url,
-                    product_type=hint.category_hint,
-                    segment=hint.segment_hint,
-                    parent_external_key=ana.external_key,
-                    # Eşleşme yoksa anahtar UYDURULMAZ; ham etiket saklanır.
-                    variant_key=aday.variant_key,
-                    variant_label=aday.label,
-                    variant_dimension=aday.variant_dimension,
-                    variant_source="dropdown_option",
-                    collateral_type=teminat,
-                    limits_source=limit_kaynagi,
-                    has_calculator=True,
-                    calculator_url=url,
-                    non_binding_notice=ana.non_binding_notice,
-                    **limitler,  # type: ignore[arg-type]
-                )
-            )
-
-        return urunler
+        return self._first_paragraph(body_text, title)

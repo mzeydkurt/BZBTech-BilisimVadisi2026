@@ -60,72 +60,22 @@ URUN_HTML = """<!DOCTYPE html>
 
 
 class _UrunScraper(BaseScraper):
-    """Whitelist'ten tek ürün sayfası okuyan sahte banka."""
+    """Whitelist'ten tek ürün sayfası okuyan sahte banka.
+
+    ⚠️ `discover_products()` ve `parse_products()` YAZILMAZ — ikisi de
+    `BaseScraper`'ın ortak uygulamasından gelir. Bu test aynı zamanda o ortak
+    hattın sözleşmesini doğrular: banka yalnızca whitelist beyan eder.
+    """
 
     bank_code = "emlak_katilim"
+    product_base_url = "https://x.example"
+    product_pages = (("/urunler/konut-finansmani", "konut_finansmani", "konut"),)
 
     def discover(self) -> list[DiscoveredUrl]:
         return []
 
     def parse_detail(self, html: str, url: str, hint: DiscoveredUrl) -> None:
         return None
-
-    def discover_products(self) -> list[DiscoveredUrl]:
-        return [
-            DiscoveredUrl(
-                url=URUN_URL,
-                doc_type="product",
-                category_hint="konut_finansmani",
-                segment_hint="bireysel",
-                discovery_method="whitelist",
-            )
-        ]
-
-    def parse_products(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawProduct]:
-        from app.processing.cleaner import clean_html, extract_title
-        from app.scrapers.calculator_inventory import (
-            find_legal_notice,
-            parse_form_controls,
-            variant_candidates,
-        )
-        from app.scrapers.products import limits_from_page, rates_from_tables
-
-        title = extract_title(html) or "Ürün"
-        body = clean_html(html, bank_code=self.bank_code, title=title)
-        limitler, kaynak = limits_from_page(html, body)
-        form = parse_form_controls(html)
-
-        ana = RawProduct(
-            external_key=product_external_key("konut-finansmani", None),
-            name=title,
-            source_url=url,
-            product_type=hint.category_hint,
-            segment=hint.segment_hint,
-            limits_source=kaynak,
-            has_calculator=bool(form.input_fields),
-            calculator_url=url,
-            non_binding_notice=find_legal_notice(html),
-            rates=rates_from_tables(html),
-            **limitler,  # type: ignore[arg-type]
-        )
-        urunler = [ana]
-        for aday in variant_candidates(form):
-            urunler.append(
-                RawProduct(
-                    external_key=product_external_key(
-                        "konut-finansmani", aday.variant_key or aday.label
-                    ),
-                    name=f"{title} — {aday.label}",
-                    source_url=url,
-                    parent_external_key=ana.external_key,
-                    variant_key=aday.variant_key,
-                    variant_label=aday.label,
-                    variant_dimension=aday.variant_dimension,
-                    variant_source="dropdown_option",
-                    limits_source=kaynak,
-                )
-            )
-        return urunler
 
 
 def _scraper(tmp_path: Path, transport: httpx.MockTransport) -> _UrunScraper:

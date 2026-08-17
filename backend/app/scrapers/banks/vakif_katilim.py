@@ -93,11 +93,47 @@ DATE_SECTION_KEYWORDS: Final[tuple[str, ...]] = (
 )
 
 
+# Ürün sayfaları — arşivlenmiş sitemap'ten doğrulandı (17 Ağustos 2026).
+# `kar-paylasim-oranlari` §7.6'daki yapısal oran tablosunun kaynağıdır.
+_F = "/tr/kendim-icin/finansmanlar"
+_H = "/tr/kendim-icin/hesaplar"
+_K = "/tr/kendim-icin/kartlar"
+
+PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
+    (f"{_F}/konut-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/arsa-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/kentsel-donusum-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/is-yeri-finansmani", "isyeri_finansmani", "konut"),
+    (f"{_F}/tasit-finansmani", "tasit_finansmani", "tasit"),
+    (f"{_F}/motosiklet-finansmani", "tasit_finansmani", "tasit"),
+    (f"{_F}/ihtiyac-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_H}/katilma-hesaplari/kar-paylasim-oranlari", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (
+        f"{_H}/katilma-hesaplari/ara-donem-kar-payi-odemeli-katilma-hesabi",
+        "birikim_katilma_hesabi",
+        "yok",
+    ),
+    (f"{_H}/katilma-hesaplari/kazandiran-hesap", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/gunluk-hesap", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/ceyiz-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/konut-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/yuvam-hesap", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/altin-katilma-hesabi", "yatirim_urunu", "diger"),
+    (f"{_H}/ceyrek-altin-hesabi", "yatirim_urunu", "diger"),
+    (f"{_K}/kredi-karti/troy-dijital-kredi-karti", "kart", "yok"),
+    (f"{_K}/banka-karti/vkart-debit", "kart", "yok"),
+    (f"{_K}/banka-karti/temassiz-vkart-debit", "kart", "yok"),
+)
+
+
 class VakifKatilimScraper(BaseScraper):
     """Vakıf Katılım kampanya scraper'ı."""
 
     bank_code = "vakif_katilim"
     version = "1.0.0"
+    product_base_url = BASE_URL
+    product_pages = PRODUCT_PAGES
 
     def discover(self) -> list[DiscoveredUrl]:
         """Sitemap'i ve iki segmentin liste sayfalarını tarar.

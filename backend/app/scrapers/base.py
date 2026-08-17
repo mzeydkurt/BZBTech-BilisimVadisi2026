@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from urllib.parse import urljoin, urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -29,6 +30,11 @@ from app.processing.dates import (
     donem_gecerli_mi,
     find_period_in_sources,
 )
+from app.scrapers.calculator_inventory import (
+    find_legal_notice,
+    parse_form_controls,
+    variant_candidates,
+)
 from app.scrapers.fetcher import Fetcher
 from app.scrapers.models import (
     DiscoveredUrl,
@@ -39,6 +45,7 @@ from app.scrapers.models import (
 )
 from app.services.campaign_service import compute_status
 from app.utils.hashing import canonicalize_url, sha256_text, url_hash
+from app.utils.slugify import slug_from_url_path
 
 logger = get_logger(__name__)
 
@@ -53,6 +60,22 @@ class BaseScraper(ABC):
     # `<h1>` olabiliyor ve gerçek kampanya adının önüne geçiyor; gerekçe
     # `cleaner.extract_title` içinde. Yalnızca Ziraat Katılım dolduruyor.
     brand_headings: tuple[str, ...] = ()
+
+    # ── ÜRÜN SAYFASI WHITELIST'İ ──────────────────────────
+    #
+    # `(yol, product_type, collateral_type)` üçlüleri. `product_base_url` ile
+    # birleştirilerek adres kurulur.
+    #
+    # ⚠️ WHITELIST, KEŞFE TERCİH EDİLİR. Ürün sayfaları kampanya sayfalarının
+    # aksine sabit ve azdır; otomatik keşif yanlış bir sayfayı ürün sayarsa
+    # `parse_rate_tables` alakasız bir ücret tablosunu oran tablosu olarak
+    # yazar. Aday adresler loglanır, elle eklenir.
+    #
+    # ⚠️ `collateral_type` sayfadan okunamıyor — ürünün teminat yapısı
+    # bankanın ürün adlandırmasında örtük. Uydurmak yerine burada beyan edilir;
+    # bilinmiyorsa None bırakılır.
+    product_pages: tuple[tuple[str, str, str | None], ...] = ()
+    product_base_url: str = ""
 
     def __init__(
         self,
@@ -139,22 +162,70 @@ class BaseScraper(ABC):
     def discover_products(self) -> list[DiscoveredUrl]:
         """Ürün/finansman sayfası adreslerini keşfeder.
 
-        Varsayılan boş liste: ürün sayfası olmayan banka hiçbir şey yazmaz ve
-        "veri yok" kendiliğinden belgelenir. Kampanya akışı bu metottan
-        etkilenmez.
+        Varsayılan olarak `product_pages` whitelist'ini adrese çevirir.
+        Whitelist boşsa boş liste döner: ürün sayfası olmayan banka hiçbir şey
+        yazmaz ve "veri yok" kendiliğinden belgelenir. Kampanya akışı bu
+        metottan etkilenmez.
 
         Returns:
             Çekilecek ürün adresleri.
         """
-        return []
+        if not self.product_pages:
+            return []
+        return [
+            DiscoveredUrl(
+                url=urljoin(self.product_base_url, yol),
+                doc_type="product",
+                category_hint=urun_turu,
+                segment_hint="bireysel",
+                discovery_method="whitelist",
+            )
+            for yol, urun_turu, _ in self.product_pages
+        ]
 
-    def parse_products(
-        self,
-        html: str,  # noqa: ARG002
-        url: str,  # noqa: ARG002
-        hint: DiscoveredUrl,  # noqa: ARG002
-    ) -> list[RawProduct]:
+    def product_description(self, body_text: str, title: str) -> str | None:  # noqa: ARG002
+        """Ürün sayfasının açıklama metni.
+
+        Varsayılan `None`: boilerplate'i açıklama sanmaktansa alanı boş
+        bırakmak doğrudur. Gövdesi düzenli olan banka override eder.
+
+        Args:
+            body_text: Sayfanın temizlenmiş metni.
+            title: Ürün başlığı.
+
+        Returns:
+            Açıklama veya None.
+        """
+        return None
+
+    def collateral_for(self, url: str) -> str | None:
+        """Adresin whitelist'teki teminat türünü döndürür.
+
+        Args:
+            url: Ürün sayfasının adresi.
+
+        Returns:
+            Teminat türü; whitelist'te yoksa None.
+        """
+        yol = urlsplit(url).path.rstrip("/")
+        for aday, _, teminat in self.product_pages:
+            if yol.endswith(urlsplit(aday).path.rstrip("/")):
+                return teminat
+        return None
+
+    def parse_products(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawProduct]:
         """Ürün sayfasından ürün, varyant ve oranları çıkarır.
+
+        ⚠️ BU UYGULAMA BANKADAN BAĞIMSIZ. Ürün sayfaları kampanya sayfalarının
+        aksine aynı üç kaynağı taşıyor: statik oran tablosu, hesaplayıcı form
+        envanteri ve serbest metin. Üçünün ayrıştırıcısı da ortak
+        (`rate_tables.py`, `calculator_inventory.py`, `limits.py`), bu yüzden
+        banka başına ayrı `parse_products()` yazmak aynı kodu on kez
+        çoğaltmak olurdu. Sayfa yapısı gerçekten farklı olan banka override
+        eder.
+
+        ⚠️ HESAPLAYICIYA İSTEK ATILMAZ. Dropdown seçenekleri yalnızca form
+        niteliklerinden okunur; bu yüzden değerler `is_binding=True` kalır.
 
         Args:
             html: Sayfanın ham HTML'i.
@@ -162,9 +233,69 @@ class BaseScraper(ABC):
             hint: Keşiften gelen ürün türü/segment bilgisi.
 
         Returns:
-            Sayfadaki ürünler; ürün yoksa boş liste.
+            Sayfadaki ürün ve varyantları; başlık bulunamazsa boş liste.
         """
-        return []
+        # ⚠️ YEREL İÇE AKTARMA ZORUNLU: `products.py` bu modülü içe aktarıyor,
+        # modül düzeyinde yazılırsa döngü oluşur.
+        from app.scrapers.products import (
+            limits_from_page,
+            product_external_key,
+            rates_from_tables,
+        )
+
+        title = extract_title(html, ignore_headings=self.brand_headings)
+        if not title:
+            return []
+
+        body_text = clean_html(html, bank_code=self.bank_code, title=title)
+        slug = slug_from_url_path(url)
+        teminat = self.collateral_for(url)
+        limitler, limit_kaynagi = limits_from_page(html, body_text)
+        form = parse_form_controls(html)
+
+        ana = RawProduct(
+            external_key=product_external_key(slug, None),
+            name=title,
+            source_url=url,
+            product_type=hint.category_hint,
+            segment=hint.segment_hint,
+            description=self.product_description(body_text, title),
+            collateral_type=teminat,
+            limits_source=limit_kaynagi,
+            limits_evidence=None if limit_kaynagi == "none" else body_text[:400],
+            has_calculator=bool(form.input_fields),
+            calculator_url=url if form.input_fields else None,
+            non_binding_notice=find_legal_notice(html),
+            rates=rates_from_tables(html),
+            **limitler,  # type: ignore[arg-type]
+        )
+
+        urunler: list[RawProduct] = [ana]
+        for aday in variant_candidates(form):
+            urunler.append(
+                RawProduct(
+                    external_key=product_external_key(slug, aday.variant_key or aday.label),
+                    name=f"{title} — {aday.label}",
+                    source_url=url,
+                    product_type=hint.category_hint,
+                    segment=hint.segment_hint,
+                    parent_external_key=ana.external_key,
+                    # ⚠️ Eşleşme yoksa anahtar UYDURULMAZ; ham etiket saklanır
+                    # ve `docs/variant_mapping.md`'ye "eşlenmedi" düşer.
+                    variant_key=aday.variant_key,
+                    variant_label=aday.label,
+                    variant_dimension=aday.variant_dimension,
+                    variant_source="dropdown_option",
+                    collateral_type=teminat,
+                    limits_source=limit_kaynagi,
+                    has_calculator=True,
+                    calculator_url=url,
+                    non_binding_notice=ana.non_binding_notice,
+                    **limitler,  # type: ignore[arg-type]
+                )
+            )
+
+        return urunler
 
     # ── ALT SINIFIN TARİH KONUSUNDA YAZACAĞI TEK METOD ────
 

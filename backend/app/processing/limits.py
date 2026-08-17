@@ -56,6 +56,24 @@ VEHICLE_AGE_MAX_RE: Final[re.Pattern[str]] = re.compile(r"(\d{1,2})\s*yas\w*\s*k
 ZERO_VEHICLE_RE: Final[re.Pattern[str]] = re.compile(r"(sifir\s*(km|arac|tasit)|0\s*km)")
 USED_VEHICLE_RE: Final[re.Pattern[str]] = re.compile(r"(ikinci\s*el|2\.\s*el|2\s*el)")
 
+# ⚠️ PARA ARALIĞI, PARA BİRİMİ İŞARETİ TAŞIMAK ZORUNDA.
+#
+# GERÇEK VERİDE ÖLÇÜLDÜ (Dünya Katılım, 17 Ağustos 2026). `parse_money_range`
+# kısa ve odaklı metin için yazıldı; buraya ise SAYFANIN TAMAMI geliyor ve
+# içindeki her "N-M" örüntüsünü tutar aralığı sayıyordu:
+#
+#     "40-60"          katılma hesabı PAYLAŞIM ORANI      → tutar 40–60 TL
+#     "1-30 gün arası" kırık VADE                          → tutar 1–30 TL
+#
+# İkisi de sessizce ürün limitine yazılıyordu. En az bir uçta `TL`/`₺`
+# aranması bu iki sınıfı da eliyor; gerçek tutar aralıkları
+# ("1.000 TL - 100.000 TL arası") birimi zaten taşıyor.
+MONEY_RANGE_RE: Final[re.Pattern[str]] = re.compile(
+    r"([\d.][\d.,]*)\s*(?:TL|₺)?\s*[-–—]\s*([\d.][\d.,]*)\s*(?:TL|₺)"
+    r"|([\d.][\d.,]*)\s*(?:TL|₺)\s*[-–—]\s*([\d.][\d.,]*)",
+    re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True)
 class ProductLimits:
@@ -115,11 +133,21 @@ def parse_amount_limit(text: str | None) -> tuple[Decimal | None, Decimal | None
     # (50000, 50000) döndürüyor; bu bir aralık değildir. Aralık sayılırsa
     # "Finansman tutarı 50.000 TL" ifadesi hem alt hem üst sınır olarak
     # kaydedilir ve ürün tek bir tutara kilitlenmiş gibi görünür.
-    aralik = parse_money_range(text)
-    if aralik is not None:
+    #
+    # ⚠️ Aralık `MONEY_RANGE_RE` ile ARANIR: para birimi işareti taşımayan
+    # "40-60" (paylaşım oranı) ve "1-30 gün" (vade) tutar sayılmaz.
+    eslesme = MONEY_RANGE_RE.search(text)
+    if eslesme is not None:
+        ham_alt = eslesme.group(1) or eslesme.group(3)
+        ham_ust = eslesme.group(2) or eslesme.group(4)
+        aralik = parse_money_range(f"{ham_alt} - {ham_ust} TL")
         en_az, en_cok, _ = aralik
+        # ⚠️ Alt sınır SIFIR bir limit değildir. "0 TL'den başlayan finansman"
+        # diye bir ürün yok; sıfır ya biçim artığı ya da "%0 peşinat" gibi
+        # başka bir ifadeden sızmış demektir. Kılavuz kuralıyla aynı: alt
+        # sınır belirtilmemişse ∅, sıfır YAZILMAZ.
         if en_az is not None and en_cok is not None and en_az != en_cok:
-            return en_az, en_cok
+            return (en_az if en_az > 0 else None), en_cok
 
     tutar = parse_money(text)
     if tutar is None:

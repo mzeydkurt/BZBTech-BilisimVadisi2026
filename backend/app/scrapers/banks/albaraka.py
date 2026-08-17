@@ -92,11 +92,79 @@ DATE_SECTION_KEYWORDS: Final[tuple[str, ...]] = (
 )
 
 
+# Ürün/finansman sayfaları. Adresler ARŞİVLENMİŞ SİTEMAP'TEN doğrulandı
+# (17 Ağustos 2026); elle tahmin edilmedi. Başvuru formu, itiraz formu,
+# "faydalı bilgiler" ve kategori indeksi gibi ÜRÜN OLMAYAN sayfalar elendi.
+#
+# ⚠️ Teminat türü `core.vocab.COLLATERAL_TYPES` sözlüğünden
+# (`konut` · `tasit` · `yok` · `diger`); serbest metin CHECK ihlali verir.
+_F = "/tr/bireysel/finansmanlar"
+_H = "/tr/bireysel/hesaplar"
+_K = "/tr/bireysel/kartlar"
+
+PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
+    # ── Gayrimenkul ve konut ──
+    (f"{_F}/konut-finansmani/konut-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/gayrimenkul-finansmani/arsa-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/gayrimenkul-finansmani/2b-arazi-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/gayrimenkul-finansmani/is-yeri-finansman", "isyeri_finansmani", "konut"),
+    # ── Taşıt ──
+    (f"{_F}/tasit-finansmani/tasit-finansmani", "tasit_finansmani", "tasit"),
+    (f"{_F}/tasit-finansmani/dijital-arac-finansmani", "tasit_finansmani", "tasit"),
+    (f"{_F}/tasit-finansmani/togg-finansmani", "tasit_finansmani", "tasit"),
+    (f"{_F}/tasit-finansmani/deniz-tasitlari-finansmani", "tasit_finansmani", "tasit"),
+    (f"{_F}/tasit-finansmani/tasit-kiralama-finansmani", "tasit_finansmani", "tasit"),
+    (f"{_F}/ihtiyac/motosiklet-atv-bisiklet", "tasit_finansmani", "tasit"),
+    # ── İhtiyaç ──
+    (f"{_F}/ihtiyac/egitim-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/hac-ve-umre-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/subesiz-umre-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/jet-finansman", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/sms-li-finansman", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/pratik-finansman-kart", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/eviniz-icin/tadilat-kredisi", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/eviniz-icin/esya-dekorasyon", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/eviniz-icin/dogal-enerji-sistemi", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/eviniz-icin/dogalgaz-donusum", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/eviniz-icin/bina-tamamlama", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/eviniz-icin/prefabrik", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/saglik-harcamalariniz-icin/genel-saglik", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/saglik-harcamalariniz-icin/dis-sagligi", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/tatiliniz-icin/seyahat", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac/cocugunuz-icin/yurt", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/bayide-finansman", "ihtiyac_finansmani", "yok"),
+    # ── Katılma hesapları ──
+    (f"{_H}/katilma-hesaplari/karli-hesap", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/birikimli-katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/ara-donem-kar-payi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/fix-vadeli-hesap", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/ceyiz-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/konut-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/biriktiren-hac-umre-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/fon-biriktiren-hesap", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/ozel-fon-havuzu-katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/cari-hesaplar/birikim-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/altin-hesaplari/karli-altin-hesabi", "yatirim_urunu", "diger"),
+    (f"{_H}/altin-hesaplari/altin-birikim-hesabi", "yatirim_urunu", "diger"),
+    # ── Kartlar ──
+    (f"{_K}/kredi-kartlari/world-klasik-kart", "kart", "yok"),
+    (f"{_K}/kredi-kartlari/world-gold-kart", "kart", "yok"),
+    (f"{_K}/kredi-kartlari/world-platinum-kart", "kart", "yok"),
+    (f"{_K}/kredi-kartlari/troy-kredi-karti", "kart", "yok"),
+    (f"{_K}/kredi-kartlari/eflatun-kredi-karti", "kart", "yok"),
+    (f"{_K}/kredi-kartlari/ozel-kredi-karti", "kart", "yok"),
+    (f"{_K}/banka-kartlari/hicaz-kart", "kart", "yok"),
+    (f"{_K}/banka-kartlari/7-24-albaraka-banka-karti", "kart", "yok"),
+)
+
+
 class AlbarakaScraper(BaseScraper):
     """Albaraka Türk kampanya scraper'ı."""
 
     bank_code = "albaraka"
     version = "1.0.0"
+    product_base_url = BASE_URL
+    product_pages = PRODUCT_PAGES
 
     def discover(self) -> list[DiscoveredUrl]:
         """Liste sayfasını yeni kampanya gelmeyi kesene kadar tarar.

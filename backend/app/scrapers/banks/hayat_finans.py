@@ -79,11 +79,34 @@ EXCLUSION_KEYWORDS: Final[tuple[str, ...]] = ("kampanya dışı", "hariç", "kap
 _LOC_RE: Final[re.Pattern[str]] = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.IGNORECASE)
 
 
+# Ürün sayfaları — arşivlenmiş sitemap'ten doğrulandı (17 Ağustos 2026).
+#
+# ⚠️ `/hesaplar/katilma-hesabi` §7.6'daki paylaşım oranı matrisini taşıyor
+# ama tablo DEVRİK (vadeler sütunda, değerler "%90 - %10" biçiminde).
+# `parse_rate_tables` şu an bu düzeni okumuyor; sayfa yine de alınır, oran
+# ayrıştırıcısı genişletilince veri kendiliğinden gelir.
+PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
+    ("/hesaplar/katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    ("/hesaplar/avantajli-hesap", "birikim_katilma_hesabi", "yok"),
+    ("/hesaplar/avantajli-gunluk-hesap", "birikim_katilma_hesabi", "yok"),
+    ("/hesaplar/cari-hesap", "birikim_katilma_hesabi", "yok"),
+    ("/kartlar/biz-kart", "kart", "yok"),
+    ("/kartlar/hayat-plus-kredi-karti", "kart", "yok"),
+    ("/kartlar/hayat-finans-banka-karti", "kart", "yok"),
+    ("/finansmanlar/bana-bunu-al-is-ortagim", "ihtiyac_finansmani", "yok"),
+    ("/finansmanlar-is/isletme-finansmani", "isyeri_finansmani", "yok"),
+    ("/finansmanlar-is/mikro-finansman", "isyeri_finansmani", "yok"),
+    ("/finansmanlar-is/ticari-finansman", "isyeri_finansmani", "yok"),
+)
+
+
 class HayatFinansScraper(BaseScraper):
     """Hayat Finans kampanya scraper'ı."""
 
     bank_code = "hayat_finans"
     version = "1.0.0"
+    product_base_url = BASE_URL
+    product_pages = PRODUCT_PAGES
 
     def discover(self) -> list[DiscoveredUrl]:
         """Kampanya adreslerini toplar (sitemap + listeleme sayfası).

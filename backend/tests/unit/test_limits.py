@@ -164,3 +164,44 @@ class TestMetindenLimitToplama:
         limitler = extract_limits_from_text("Azami 1 milyon TL finansman.")
         assert limitler.evidence
         assert "milyon" in limitler.evidence
+
+
+# ── Para birimi işareti taşımayan aralık (gerçek veri regresyonu) ──
+
+
+@pytest.mark.parametrize(
+    "metin",
+    [
+        # Katılma hesabı PAYLAŞIM ORANI tablosu — tutar değil.
+        "Türk Lirası | 1 Aylık | 3 Aylık 250 | 250 | 40-60 | 40-60 | 40-60",
+        # Kırık VADE — gün cinsinden, tutar değil.
+        "1-30 gün arası kırık vadede açılabilen günlük hesap türüdür.",
+    ],
+)
+def test_para_birimi_olmayan_aralik_tutar_sayilmaz(metin: str) -> None:
+    """⚠️ GERÇEK VERİDE ÖLÇÜLDÜ (Dünya Katılım).
+
+    Sayfanın tamamı verildiğinde her "N-M" örüntüsü tutar aralığı sanılıyordu;
+    paylaşım oranı 40-60 TL, kırık vade 1-30 TL olarak ürün limitine yazıldı.
+    """
+    assert parse_amount_limit(metin) == (None, None)
+
+
+def test_sifir_alt_sinir_yazilmaz() -> None:
+    """⚠️ "0 TL'den başlayan finansman" diye bir ürün yok.
+
+    Sıfır ya biçim artığıdır ya da "%0 peşinat" gibi başka bir ifadeden
+    sızmıştır. Kılavuz kuralı: alt sınır belirtilmemişse ∅, sıfır YAZILMAZ.
+    """
+    en_az, en_cok = parse_amount_limit("0 - 400.000 TL arası araç finansmanı")
+
+    assert en_az is None
+    assert en_cok == Decimal("400000")
+
+
+def test_birimli_aralik_okunmaya_devam_ediyor() -> None:
+    """Düzeltme gerçek tutar aralıklarını bozmamalı."""
+    assert parse_amount_limit("1.000 TL - 100.000 TL arası") == (
+        Decimal("1000"),
+        Decimal("100000"),
+    )

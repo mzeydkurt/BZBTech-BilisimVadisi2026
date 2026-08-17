@@ -135,17 +135,86 @@ class ProductRunner:
         if self.scraper.limit is not None:
             hedefler = hedefler[: self.scraper.limit]
 
+        # ⚠️ İKİ FAZLI. Önce TÜM sayfalar çekilip ayrıştırılır, sonra yazılır.
+        # Sebep `_site_geneli_secicileri_ele()` — bir dropdown'ın site geneli
+        # seçici mi yoksa ürün varyantı mı olduğu ancak DİĞER sayfalara
+        # bakılarak anlaşılıyor. Tek geçişte yazmak bunu imkânsız kılardı.
+        sayfalar: list[tuple[DiscoveredUrl, SourceDocument, list[RawProduct]]] = []
         for hint in hedefler:
             try:
-                self._process_url(session, bank, hint, result, dry_run=dry_run)
+                cikti = self._process_url(session, bank, hint, result, dry_run=dry_run)
             except Exception as exc:
                 # Tek adresin hatası çalıştırmayı durdurmaz.
                 result.add_error(f"{hint.url}: {type(exc).__name__}: {exc}")
                 logger.warning("urun_sayfasi_hatali", url=hint.url, banka=kod, hata=str(exc))
+                continue
+            if cikti is not None:
+                sayfalar.append(cikti)
+
+        self._site_geneli_secicileri_ele(sayfalar, bank_code=kod)
+
+        for hint, document, raws in sayfalar:
+            try:
+                self._upsert_products(session, bank, raws, document, result, dry_run=dry_run)
+            except Exception as exc:
+                result.add_error(f"{hint.url}: {type(exc).__name__}: {exc}")
+                logger.warning("urun_yazma_hatali", url=hint.url, banka=kod, hata=str(exc))
 
         result.status = "partial" if result.errors_count else "success"
         self._close(session, run_row, result, dry_run=dry_run)
         return result
+
+    @staticmethod
+    def _site_geneli_secicileri_ele(
+        sayfalar: list[tuple[DiscoveredUrl, SourceDocument, list[RawProduct]]],
+        *,
+        bank_code: str,
+    ) -> None:
+        """Site geneli hesaplayıcı seçicilerinden doğan sahte varyantları siler.
+
+        ⚠️ GERÇEK VERİDE ÖLÇÜLDÜ (Dünya Katılım, 17 Ağustos 2026). Sitenin
+        ortak finansman hesaplayıcısı her ürün sayfasında aynı dropdown'ı
+        gösteriyor: taşıt finansmanı sayfasında `konut-yeni`, `arsa`,
+        `tuketici-ihtiyac-finansmani` seçenekleri var. Bunlar o ürünün
+        varyantı DEĞİL, sitenin ürün seçicisi. Filtresiz çalıştırmada 31
+        üründen 24'ü sahte varyanttı ve `products ≥ 60` eşiği yapay olarak
+        geçilebiliyordu.
+
+        AYIRT EDİCİ İMZA: aynı seçenek kümesi BİRDEN ÇOK farklı ürün
+        sayfasında görülüyorsa o küme ürüne ait olamaz. Gerçek varyant
+        (konut finansmanında `sifir_konut`/`ikinci_el_konut`) yalnızca kendi
+        sayfasında bulunur.
+
+        ⚠️ Ana ürün SİLİNMEZ, yalnızca varyantları düşer: sayfa gerçek bir
+        ürünü anlatıyor, hatalı olan yalnızca varyant çıkarımı.
+
+        Args:
+            sayfalar: (hint, belge, ham ürünler) üçlüleri; yerinde değiştirilir.
+            bank_code: Log için banka kodu.
+        """
+        # Her sayfanın varyant etiket kümesinin parmak izi.
+        imzalar: dict[frozenset[str], int] = {}
+        for _, _, raws in sayfalar:
+            etiketler = frozenset(r.variant_label or "" for r in raws if r.parent_external_key)
+            if etiketler:
+                imzalar[etiketler] = imzalar.get(etiketler, 0) + 1
+
+        site_geneli = {imza for imza, adet in imzalar.items() if adet > 1}
+        if not site_geneli:
+            return
+
+        for _, _, raws in sayfalar:
+            etiketler = frozenset(r.variant_label or "" for r in raws if r.parent_external_key)
+            if etiketler not in site_geneli:
+                continue
+            atilan = [r for r in raws if r.parent_external_key]
+            raws[:] = [r for r in raws if r.parent_external_key is None]
+            logger.info(
+                "site_geneli_secici_elendi",
+                banka=bank_code,
+                atilan_varyant=len(atilan),
+                secenekler=sorted(etiketler)[:6],
+            )
 
     def _process_url(
         self,
@@ -155,8 +224,15 @@ class ProductRunner:
         result: ProductRunResult,
         *,
         dry_run: bool,
-    ) -> None:
-        """Tek ürün sayfasını çeker, ayrıştırır ve yazar."""
+    ) -> tuple[DiscoveredUrl, SourceDocument, list[RawProduct]] | None:
+        """Tek ürün sayfasını çeker ve ayrıştırır.
+
+        ⚠️ YAZMAZ. Yazma `run()` içinde, site geneli seçici elemesinden SONRA
+        yapılır.
+
+        Returns:
+            (hint, belge, ham ürünler) veya sayfa kullanılamazsa None.
+        """
         fetch = self.scraper.fetcher.fetch(hint.url)
         result.urls_fetched += 1
 
@@ -175,20 +251,20 @@ class ProductRunner:
         if not fetch.is_success:
             if fetch.robots_allowed is False:
                 logger.info("robots_atlandi", url=hint.url)
-                return
+                return None
             if fetch.is_soft_404:
                 logger.info("soft_404_atlandi", url=hint.url)
-                return
+                return None
             result.add_error(f"{hint.url}: {fetch.error or 'başarısız çekim'}")
-            return
+            return None
 
         assert fetch.html is not None
         raws = self.scraper.parse_products(fetch.html, fetch.final_url or hint.url, hint)
         if not raws:
             logger.info("urun_cikarilamadi", url=hint.url, banka=self.scraper.bank_code)
-            return
+            return None
 
-        self._upsert_products(session, bank, raws, document, result, dry_run=dry_run)
+        return hint, document, raws
 
     def _upsert_products(
         self,
@@ -228,6 +304,18 @@ class ProductRunner:
                     )
                 )
             if parent_id is None:
+                # ⚠️ KURU ÇALIŞTIRMADA BU HATA DEĞİL. Ana ürün yazılmadığı için
+                # id'si de yok; her varyant zorunlu olarak "ebeveynsiz" görünür.
+                # Hata sayılırsa `--kuru` çıktısı gerçekte başarılı olacak bir
+                # çalıştırmayı `partial` gösterir ve whitelist hatası ile
+                # ayırt edilemez hâle gelir.
+                if dry_run:
+                    logger.debug(
+                        "varyant_kuru_calistirmada_atlandi",
+                        banka=bank.code,
+                        varyant=raw.external_key,
+                    )
+                    continue
                 result.add_error(f"{raw.external_key}: ana ürün bulunamadı ({anahtar})")
                 logger.warning(
                     "varyant_ana_urunsuz",
@@ -347,9 +435,31 @@ class ProductRunner:
 
         bugun = document.fetched_at.date() if document.fetched_at else utc_now().date()
 
+        # ⚠️ PARTİ İÇİ TEKİLLEŞTİRME ZORUNLU. Aşağıdaki `SELECT` yalnızca
+        # VERİTABANINDAKİ satırları görüyor; aynı çağrıda `session.add()` ile
+        # eklenmiş ama henüz flush edilmemiş satırları görmüyor. Bir sayfada
+        # aynı bandı üreten iki tablo satırı olduğunda (Vakıf Katılım'ın konut
+        # oran tablosunda ölçüldü) UNIQUE ihlali flush anında patlıyor,
+        # oturum "rolled back" durumuna düşüyor ve o noktadan sonraki HER
+        # işlem `PendingRollbackError` veriyordu — tek bir yinelenen satır
+        # bütün bankanın çalıştırmasını düşürüyordu.
+        yazilanlar: set[tuple[str, object, str]] = set()
+
         for raw in raws:
             gecerlilik = raw.effective_date or bugun
             anahtar = band_key(raw)
+
+            kimlik = (raw.rate_source, gecerlilik, anahtar)
+            if kimlik in yazilanlar:
+                logger.info(
+                    "yinelenen_oran_bandi_atlandi",
+                    banka=self.scraper.bank_code,
+                    urun=product_id,
+                    band_key=anahtar,
+                    kanit=(raw.evidence_text or "")[:80],
+                )
+                continue
+            yazilanlar.add(kimlik)
 
             var_mi = session.scalar(
                 select(ProductRate.id).where(
