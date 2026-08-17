@@ -25,6 +25,9 @@ DOC_TYPES: Final[tuple[str, ...]] = ("campaign", "product", "rate_table", "listi
 DISCOVERY_METHODS: Final[tuple[str, ...]] = (
     "sitemap",
     "listing",
+    # Bankanın arşiv/geçmiş kampanya listesi. Ziraat ve Vakıf bu değeri
+    # üretiyordu ama sözlükte yoktu; CHECK olmadığı için sessizce yazılıyordu.
+    "archive",
     "playwright",
     "manual",
     "whitelist",

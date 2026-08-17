@@ -27,6 +27,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -70,6 +71,10 @@ class Product(TimestampMixin, Base):
             "OR term_months_min <= term_months_max",
             name="term_range_valid",
         ),
+        # Upsert anahtarı. Olmadan ürün kazıması her çalıştırmada satır
+        # çoğaltır; `variant_key` NULL olabildiği için mevcut kolonlarla
+        # bileşik anahtar kurulamıyor (SQLite'ta NULL != NULL).
+        UniqueConstraint("bank_id", "external_key", name="uq_products_bank_id_external_key"),
         Index("ix_products_bank_id_product_type", "bank_id", "product_type"),
     )
 
@@ -77,6 +82,8 @@ class Product(TimestampMixin, Base):
     bank_id: Mapped[int] = mapped_column(
         ForeignKey("banks.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # "{url-slug}#{variant_key|variant_label|base}" — deterministik, izlenebilir.
+    external_key: Mapped[str] = mapped_column(Text, nullable=False)
 
     name: Mapped[str] = mapped_column(Text, nullable=False)
     # Ör. konut_finansmani, tasit_finansmani, katilma_hesabi, kart
@@ -143,6 +150,41 @@ class Product(TimestampMixin, Base):
         back_populates="product", cascade="all, delete-orphan"
     )
 
+    def __init__(self, **kwargs: Any) -> None:
+        """Verilmediyse `external_key`'i addan ve varyanttan türetir.
+
+        Üretimde anahtar sayfa adresinden kurulur
+        (`scrapers/products.py::product_external_key`); bu varsayılan yalnızca
+        elle kurulan nesneler içindir.
+        """
+        if not kwargs.get("external_key"):
+            from app.utils.slugify import slugify
+
+            varyant = kwargs.get("variant_key") or kwargs.get("variant_label")
+            ad = slugify(str(kwargs.get("name") or "urun"))
+            kwargs["external_key"] = f"{ad}#{slugify(str(varyant)) if varyant else 'base'}"
+        super().__init__(**kwargs)
+
+
+def _band_key_from_kwargs(kwargs: dict[str, Any]) -> str:
+    """Bant boyutlarından deterministik anahtar üretir.
+
+    Sıra sabittir; değişirse aynı oran farklı anahtar üretir ve upsert
+    satır çoğaltır. Üretim yolu `scrapers/products.py::band_key`.
+    """
+    alanlar = (
+        "term_months",
+        "variant",
+        "amount_min",
+        "amount_max",
+        "ltv_band_min_pct",
+        "ltv_band_max_pct",
+        "energy_class",
+        "vehicle_age_min",
+        "vehicle_age_max",
+    )
+    return "|".join("" if kwargs.get(a) is None else str(kwargs[a]) for a in alanlar)
+
 
 class ProductRate(Base):
     """Bir ürünün belirli bir bant ve vadedeki kâr payı oranı satırı.
@@ -167,6 +209,15 @@ class ProductRate(Base):
             "OR vehicle_age_min <= vehicle_age_max",
             name="vehicle_age_range_valid",
         ),
+        # `effective_date` anahtara dahildir: banka oranı güncelleyince yeni
+        # satır açılır, eski satır korunur ve oran zaman serisi oluşur.
+        UniqueConstraint(
+            "product_id",
+            "rate_source",
+            "effective_date",
+            "band_key",
+            name="uq_product_rates_product_id_rate_source_effective_date_band_key",
+        ),
         Index("ix_product_rates_product_id_term_months", "product_id", "term_months"),
     )
 
@@ -174,6 +225,8 @@ class ProductRate(Base):
     product_id: Mapped[int] = mapped_column(
         ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # Bant boyutlarının NULL-güvenli kodlaması; bkz. `scrapers/products.py`.
+    band_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
     term_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
     profit_rate_pct: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
@@ -223,4 +276,6 @@ class ProductRate(Base):
 
         if "confidence" not in kwargs and "rate_source" in kwargs:
             kwargs["confidence"] = rate_confidence(kwargs["rate_source"])
+        if not kwargs.get("band_key"):
+            kwargs["band_key"] = _band_key_from_kwargs(kwargs)
         super().__init__(**kwargs)

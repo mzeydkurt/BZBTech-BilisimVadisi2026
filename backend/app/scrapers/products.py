@@ -1,0 +1,586 @@
+"""Ürün / finansman kazımasının orkestrasyonu.
+
+`BaseScraper.run()` kampanyaları yazar; bu modül aynı `Fetcher`'ı, robots
+denetimini, ham HTML arşivini ve `source_documents` kaydını yeniden kullanarak
+ÜRÜN tarafını yazar. Ayrı bir scraper hiyerarşisi kurulmaz.
+
+VERİ KAYNAĞI HİYERARŞİSİ (güçlüden zayıfa):
+
+    1. html_table    statik HTML oran tablosu        güven 1.000
+    2. html_attr     hesaplayıcı FORM ENVANTERİ      (oran değil, varyant+limit)
+    3. text          serbest metinden limit çıkarımı güven 0.750
+
+⚠️ Hesaplayıcı SORGULANMAZ. Form envanteri, bankanın yayımladığı yapısal
+limittir (dropdown = varyant, slider min/max = tutar, vade seçici = izinli
+vadeler) ve hesaplayıcıya tek istek atmadan elde edilir; bu yüzden
+`is_binding=True` kalır. Sorgulama yapılırsa `is_binding=False` olur.
+"""
+
+from __future__ import annotations
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.exceptions import NotFoundError
+from app.db.base import utc_now
+from app.db.models import Bank, Product, ProductRate, ScrapeRun, SourceDocument
+from app.logging_config import get_logger
+from app.processing.cleaner import clean_html, extract_title
+from app.processing.limits import extract_limits_from_text
+from app.processing.rate_tables import parse_rate_tables
+from app.scrapers.base import BaseScraper
+from app.scrapers.calculator_inventory import allowed_terms, amount_bounds, parse_form_controls
+from app.scrapers.models import (
+    DiscoveredUrl,
+    FetchResult,
+    ProductRunResult,
+    RawProduct,
+    RawProductRate,
+)
+from app.utils.hashing import canonicalize_url, sha256_text, url_hash
+from app.utils.slugify import slugify
+
+logger = get_logger(__name__)
+
+# Bant boyutlarının kodlanma sırası. Sıra SABİT olmalı: değişirse aynı oran
+# farklı `band_key` üretir ve upsert satır çoğaltır.
+_BAND_FIELDS: tuple[str, ...] = (
+    "term_months",
+    "variant",
+    "amount_min",
+    "amount_max",
+    "ltv_band_min_pct",
+    "ltv_band_max_pct",
+    "energy_class",
+    "vehicle_age_min",
+    "vehicle_age_max",
+)
+
+
+def band_key(rate: RawProductRate) -> str:
+    """Bant boyutlarını NULL-güvenli, deterministik tek dizeye kodlar.
+
+    `product_rates` tekilliği bu anahtara dayanır. Bant kolonlarının çoğu NULL
+    olabildiği ve SQLite'ta `NULL != NULL` olduğu için doğrudan bileşik anahtar
+    kullanılamıyor.
+
+    Args:
+        rate: Kodlanacak oran satırı.
+
+    Returns:
+        Ör. `"t36|v-sigortali|a-|a-|l-|l-|e-|y-|y-"`.
+    """
+    parcalar: list[str] = []
+    for alan in _BAND_FIELDS:
+        deger = getattr(rate, alan)
+        parcalar.append("" if deger is None else str(deger))
+    return "|".join(parcalar)
+
+
+class ProductRunner:
+    """Bir bankanın ürün sayfalarını gezip `products`/`product_rates` yazar.
+
+    Hata sözleşmesi `BaseScraper.run()` ile aynıdır: tek bir adresin hatası
+    çalıştırmayı durdurmaz, sayılır ve çalıştırma `partial` kapanır.
+    """
+
+    def __init__(self, scraper: BaseScraper) -> None:
+        """
+        Args:
+            scraper: Ürün kancalarını sağlayan banka scraper'ı.
+        """
+        self.scraper = scraper
+
+    def run(self, session: Session, *, dry_run: bool = False) -> ProductRunResult:
+        """Ürün kazımasını baştan sona yürütür.
+
+        Args:
+            session: Veritabanı oturumu.
+            dry_run: True ise hiçbir şey yazılmaz.
+
+        Returns:
+            Çalıştırma özeti.
+
+        Raises:
+            NotFoundError: Banka kaydı yoksa.
+        """
+        kod = self.scraper.bank_code
+        result = ProductRunResult(bank_code=kod)
+
+        bank = session.scalar(select(Bank).where(Bank.code == kod))
+        if bank is None:
+            raise NotFoundError(f"Banka kaydı bulunamadı: {kod}. Önce seed çalıştırın.")
+
+        run_row: ScrapeRun | None = None
+        if not dry_run:
+            run_row = ScrapeRun(
+                bank_id=bank.id,
+                status="running",
+                scraper_version=f"{self.scraper.version}-products",
+            )
+            session.add(run_row)
+            session.flush()
+
+        logger.info("urun_kazimasi_basladi", banka=kod, dry_run=dry_run)
+
+        try:
+            hedefler = self.scraper.discover_products()
+        except Exception as exc:
+            result.add_error(f"discover_products() hatası: {type(exc).__name__}: {exc}")
+            result.status = "failed"
+            self._close(session, run_row, result, dry_run=dry_run)
+            return result
+
+        result.urls_discovered = len(hedefler)
+        if self.scraper.limit is not None:
+            hedefler = hedefler[: self.scraper.limit]
+
+        for hint in hedefler:
+            try:
+                self._process_url(session, bank, hint, result, dry_run=dry_run)
+            except Exception as exc:
+                # Tek adresin hatası çalıştırmayı durdurmaz.
+                result.add_error(f"{hint.url}: {type(exc).__name__}: {exc}")
+                logger.warning("urun_sayfasi_hatali", url=hint.url, banka=kod, hata=str(exc))
+
+        result.status = "partial" if result.errors_count else "success"
+        self._close(session, run_row, result, dry_run=dry_run)
+        return result
+
+    def _process_url(
+        self,
+        session: Session,
+        bank: Bank,
+        hint: DiscoveredUrl,
+        result: ProductRunResult,
+        *,
+        dry_run: bool,
+    ) -> None:
+        """Tek ürün sayfasını çeker, ayrıştırır ve yazar."""
+        fetch = self.scraper.fetcher.fetch(hint.url)
+        result.urls_fetched += 1
+
+        title = extract_title(fetch.html, ignore_headings=self.scraper.brand_headings)
+        clean_text = (
+            clean_html(fetch.html, bank_code=self.scraper.bank_code, title=title)
+            if fetch.html
+            else ""
+        )
+
+        document = self._build_document(bank, hint, fetch, clean_text)
+        if not dry_run:
+            session.add(document)
+            session.flush()
+
+        if not fetch.is_success:
+            if fetch.robots_allowed is False:
+                logger.info("robots_atlandi", url=hint.url)
+                return
+            if fetch.is_soft_404:
+                logger.info("soft_404_atlandi", url=hint.url)
+                return
+            result.add_error(f"{hint.url}: {fetch.error or 'başarısız çekim'}")
+            return
+
+        assert fetch.html is not None
+        raws = self.scraper.parse_products(fetch.html, fetch.final_url or hint.url, hint)
+        if not raws:
+            logger.info("urun_cikarilamadi", url=hint.url, banka=self.scraper.bank_code)
+            return
+
+        self._upsert_products(session, bank, raws, document, result, dry_run=dry_run)
+
+    def _upsert_products(
+        self,
+        session: Session,
+        bank: Bank,
+        raws: list[RawProduct],
+        document: SourceDocument,
+        result: ProductRunResult,
+        *,
+        dry_run: bool,
+    ) -> None:
+        """Ana ürünleri ve varyantlarını iki geçişte yazar.
+
+        ⚠️ Ebeveyni bulunamayan varyant YAZILMAZ ve hata sayılır: ana ürünü
+        olmayan "sigortalı" satırı tek başına anlamsızdır ve karşılaştırmaya
+        girerse yanlış sonuç üretir.
+        """
+        kokler = [r for r in raws if r.parent_external_key is None]
+        varyantlar = [r for r in raws if r.parent_external_key is not None]
+
+        key_to_id: dict[str, int] = {}
+        for raw in kokler:
+            urun = self._upsert_product(
+                session, bank, raw, document, result, parent_id=None, dry_run=dry_run
+            )
+            if urun is not None:
+                key_to_id[raw.external_key] = urun.id
+                self._write_rates(session, urun.id, raw.rates, document, result, dry_run=dry_run)
+
+        for raw in varyantlar:
+            anahtar = raw.parent_external_key or ""
+            parent_id = key_to_id.get(anahtar)
+            if parent_id is None and not dry_run:
+                parent_id = session.scalar(
+                    select(Product.id).where(
+                        Product.bank_id == bank.id, Product.external_key == anahtar
+                    )
+                )
+            if parent_id is None:
+                result.add_error(f"{raw.external_key}: ana ürün bulunamadı ({anahtar})")
+                logger.warning(
+                    "varyant_ana_urunsuz",
+                    banka=bank.code,
+                    varyant=raw.external_key,
+                    ana_urun=anahtar,
+                )
+                continue
+
+            urun = self._upsert_product(
+                session, bank, raw, document, result, parent_id=parent_id, dry_run=dry_run
+            )
+            if urun is not None:
+                self._write_rates(session, urun.id, raw.rates, document, result, dry_run=dry_run)
+
+    def _upsert_product(
+        self,
+        session: Session,
+        bank: Bank,
+        raw: RawProduct,
+        document: SourceDocument,
+        result: ProductRunResult,
+        *,
+        parent_id: int | None,
+        dry_run: bool,
+    ) -> Product | None:
+        """Ürünü ekler veya günceller (`bank_id` + `external_key` tekildir).
+
+        ⚠️ ASLA `delete` kullanılmaz: `Product.variants` ilişkisi
+        `cascade="all, delete-orphan"` taşıyor, ana ürünün silinmesi tüm
+        varyantları götürür. Artık sunulmayan varyant silinmez, `updated_at`
+        eskir ve raporda görünür.
+        """
+        mevcut = session.scalar(
+            select(Product).where(
+                Product.bank_id == bank.id, Product.external_key == raw.external_key
+            )
+        )
+
+        if mevcut is None:
+            result.products_new += 1
+            if dry_run:
+                return None
+            urun = Product(
+                bank_id=bank.id,
+                external_key=raw.external_key,
+                source_document_id=document.id,
+                parent_product_id=parent_id,
+                name=raw.name,
+                product_type=raw.product_type,
+                segment=raw.segment,
+                description=raw.description,
+                variant_key=raw.variant_key,
+                variant_label=raw.variant_label,
+                variant_dimension=raw.variant_dimension,
+                variant_source=raw.variant_source,
+                amount_min=raw.amount_min,
+                amount_max=raw.amount_max,
+                term_months_min=raw.term_months_min,
+                term_months_max=raw.term_months_max,
+                allowed_terms=raw.allowed_terms,
+                ltv_max_pct=raw.ltv_max_pct,
+                collateral_type=raw.collateral_type,
+                limits_source=raw.limits_source,
+                limits_evidence=raw.limits_evidence,
+                has_calculator=raw.has_calculator,
+                calculator_url=raw.calculator_url,
+                is_binding=raw.is_binding,
+                non_binding_notice=raw.non_binding_notice,
+            )
+            session.add(urun)
+            session.flush()
+            return urun
+
+        result.products_updated += 1
+        if dry_run:
+            return None
+
+        mevcut.source_document_id = document.id
+        mevcut.parent_product_id = parent_id
+        mevcut.name = raw.name
+        mevcut.product_type = raw.product_type
+        mevcut.segment = raw.segment
+        mevcut.description = raw.description
+        mevcut.variant_key = raw.variant_key
+        mevcut.variant_label = raw.variant_label
+        mevcut.variant_dimension = raw.variant_dimension
+        mevcut.variant_source = raw.variant_source
+        mevcut.amount_min = raw.amount_min
+        mevcut.amount_max = raw.amount_max
+        mevcut.term_months_min = raw.term_months_min
+        mevcut.term_months_max = raw.term_months_max
+        mevcut.allowed_terms = raw.allowed_terms
+        mevcut.ltv_max_pct = raw.ltv_max_pct
+        mevcut.collateral_type = raw.collateral_type
+        mevcut.limits_source = raw.limits_source
+        mevcut.limits_evidence = raw.limits_evidence
+        mevcut.has_calculator = raw.has_calculator
+        mevcut.calculator_url = raw.calculator_url
+        mevcut.is_binding = raw.is_binding
+        mevcut.non_binding_notice = raw.non_binding_notice
+        return mevcut
+
+    def _write_rates(
+        self,
+        session: Session,
+        product_id: int,
+        raws: list[RawProductRate],
+        document: SourceDocument,
+        result: ProductRunResult,
+        *,
+        dry_run: bool,
+    ) -> None:
+        """Oran satırlarını yazar; aynı bant aynı gün ikinci kez eklenmez."""
+        if dry_run or not raws:
+            return
+
+        bugun = document.fetched_at.date() if document.fetched_at else utc_now().date()
+
+        for raw in raws:
+            gecerlilik = raw.effective_date or bugun
+            anahtar = band_key(raw)
+
+            var_mi = session.scalar(
+                select(ProductRate.id).where(
+                    ProductRate.product_id == product_id,
+                    ProductRate.rate_source == raw.rate_source,
+                    ProductRate.effective_date == gecerlilik,
+                    ProductRate.band_key == anahtar,
+                )
+            )
+            if var_mi is not None:
+                continue
+
+            # ⚠️ `confidence` elle verilmez: `ProductRate.__init__` onu
+            # `rate_source`'tan türetiyor (bkz. `RATE_SOURCE_CONFIDENCE`).
+            session.add(
+                ProductRate(
+                    product_id=product_id,
+                    band_key=anahtar,
+                    rate_source=raw.rate_source,
+                    effective_date=gecerlilik,
+                    term_months=raw.term_months,
+                    profit_rate_pct=raw.profit_rate_pct,
+                    allocation_fee_pct=raw.allocation_fee_pct,
+                    monthly_cost_pct=raw.monthly_cost_pct,
+                    annual_cost_pct=raw.annual_cost_pct,
+                    variant=raw.variant,
+                    amount_min=raw.amount_min,
+                    amount_max=raw.amount_max,
+                    ltv_band_min_pct=raw.ltv_band_min_pct,
+                    ltv_band_max_pct=raw.ltv_band_max_pct,
+                    energy_class=raw.energy_class,
+                    vehicle_age_min=raw.vehicle_age_min,
+                    vehicle_age_max=raw.vehicle_age_max,
+                    source_document_id=document.id,
+                    evidence_text=raw.evidence_text,
+                )
+            )
+            result.rates_new += 1
+
+        session.flush()
+
+    def _build_document(
+        self,
+        bank: Bank,
+        hint: DiscoveredUrl,
+        fetch: FetchResult,
+        clean_text: str,
+    ) -> SourceDocument:
+        """Ürün sayfası için `source_documents` kaydı üretir."""
+        return SourceDocument(
+            bank_id=bank.id,
+            url=hint.url,
+            canonical_url=canonicalize_url(fetch.final_url) if fetch.final_url else None,
+            url_hash=url_hash(hint.url),
+            doc_type=hint.doc_type,
+            http_status=fetch.status_code,
+            fetched_at=utc_now(),
+            content_type=fetch.content_type,
+            raw_html_path=fetch.raw_html_path,
+            raw_html_sha256=fetch.raw_html_sha256,
+            clean_text=clean_text or None,
+            clean_text_sha256=sha256_text(clean_text) if clean_text else None,
+            scraper_name=self.scraper.bank_code,
+            scraper_version=f"{self.scraper.version}-products",
+            robots_allowed=fetch.robots_allowed,
+            is_soft_404=fetch.is_soft_404,
+            discovery_method=hint.discovery_method,
+        )
+
+    @staticmethod
+    def _close(
+        session: Session,
+        run_row: ScrapeRun | None,
+        result: ProductRunResult,
+        *,
+        dry_run: bool,
+    ) -> None:
+        """Çalıştırma kaydını kapatır ve sayaçları yazar."""
+        logger.info(
+            "urun_kazimasi_bitti",
+            banka=result.bank_code,
+            durum=result.status,
+            kesfedilen=result.urls_discovered,
+            cekilen=result.urls_fetched,
+            yeni_urun=result.products_new,
+            guncellenen_urun=result.products_updated,
+            yeni_oran=result.rates_new,
+            hata=result.errors_count,
+        )
+        if dry_run or run_row is None:
+            return
+
+        run_row.status = result.status
+        run_row.urls_discovered = result.urls_discovered
+        run_row.urls_fetched = result.urls_fetched
+        run_row.campaigns_new = result.products_new
+        run_row.campaigns_updated = result.products_updated
+        run_row.errors_count = result.errors_count
+        run_row.error_log = "\n".join(result.errors) or None
+        run_row.finished_at = utc_now()
+        session.commit()
+
+
+def rates_from_tables(
+    html: str | None,
+    *,
+    variant: str | None = None,
+) -> list[RawProductRate]:
+    """Statik HTML oran tablolarını `RawProductRate` listesine çevirir.
+
+    En güvenilir kaynak budur (`html_table`, güven 1.000): bankanın kendi
+    yayımladığı yapısal tablo.
+
+    Args:
+        html: Ürün sayfasının HTML'i.
+        variant: Tabloda varyant belirtilmemişse kullanılacak varsayılan.
+
+    Returns:
+        Çıkarılan oran satırları; tablo yoksa boş liste.
+    """
+    bulunan: list[RawProductRate] = []
+    for tablo in parse_rate_tables(html):
+        for satir in tablo.rows:
+            bulunan.append(
+                RawProductRate(
+                    rate_source="html_table",
+                    term_months=satir.term_months,
+                    profit_rate_pct=satir.profit_rate_pct,
+                    allocation_fee_pct=satir.allocation_fee_pct,
+                    monthly_cost_pct=satir.monthly_cost_pct,
+                    annual_cost_pct=satir.annual_cost_pct,
+                    variant=tablo.variant_key or tablo.variant_label or variant,
+                    evidence_text=satir.evidence_text,
+                )
+            )
+    return bulunan
+
+
+def limits_from_page(html: str, text: str) -> tuple[dict[str, object], str]:
+    """Sayfadan limit ve varyant bilgisini çıkarır.
+
+    Öncelik: hesaplayıcı FORM ENVANTERİ (`html_attr`) > serbest metin (`text`).
+    Form nitelikleri bankanın yayımladığı yapısal limittir; metinden çıkarım
+    yalnızca formun vermediği alanları doldurur.
+
+    Args:
+        html: Sayfanın HTML'i.
+        text: Sayfanın temizlenmiş metni.
+
+    Returns:
+        (limit alanları, en zayıf kaynak adı). Kaynak, doldurulan alanlar
+        arasındaki EN ZAYIF olanıdır — veriyi olduğundan sağlam göstermemek için.
+    """
+    form = parse_form_controls(html)
+    tutar_min, tutar_max = amount_bounds(form.input_fields)
+    vadeler = allowed_terms(form.input_fields)
+
+    metinden = extract_limits_from_text(text)
+
+    alanlar: dict[str, object] = {}
+    kaynaklar: list[str] = []
+
+    def _ata(ad: str, form_degeri: object, metin_degeri: object) -> None:
+        if form_degeri is not None:
+            alanlar[ad] = form_degeri
+            kaynaklar.append("html_attr")
+        elif metin_degeri is not None:
+            alanlar[ad] = metin_degeri
+            kaynaklar.append("text")
+
+    _ata("amount_min", tutar_min, metinden.amount_min)
+    _ata("amount_max", tutar_max, metinden.amount_max)
+    _ata("allowed_terms", vadeler, metinden.allowed_terms)
+    _ata(
+        "term_months_min",
+        min(vadeler) if vadeler else None,
+        metinden.term_months_min,
+    )
+    _ata(
+        "term_months_max",
+        max(vadeler) if vadeler else None,
+        metinden.term_months_max,
+    )
+    _ata("ltv_max_pct", None, metinden.ltv_max_pct)
+
+    if not kaynaklar:
+        return alanlar, "none"
+    # En zayıf kaynak kazanır (dürüstlük ilkesi).
+    return alanlar, "text" if "text" in kaynaklar else "html_attr"
+
+
+def product_external_key(url_slug: str, variant: str | None) -> str:
+    """Ürün upsert anahtarını üretir.
+
+    Args:
+        url_slug: Sayfa adresinden okunan slug.
+        variant: Varyant anahtarı veya etiketi; yoksa None.
+
+    Returns:
+        `"{url_slug}#{variant|base}"`.
+    """
+    parca = slugify(variant) if variant else None
+    return f"{url_slug}#{parca or 'base'}"
+
+
+def run_products(bank_code: str, *, dry_run: bool = False) -> ProductRunResult:
+    """Tek bankanın ürün kazımasını çalıştırır (CLI girişi).
+
+    Args:
+        bank_code: Banka kodu.
+        dry_run: True ise yazma yapılmaz.
+
+    Returns:
+        Çalıştırma özeti.
+    """
+    from app.db.session import SessionLocal
+    from app.scrapers.registry import get_scraper
+
+    scraper = get_scraper(bank_code)
+    try:
+        with SessionLocal() as session:
+            return ProductRunner(scraper).run(session, dry_run=dry_run)
+    finally:
+        scraper.close()
+
+
+__all__ = [
+    "ProductRunner",
+    "band_key",
+    "limits_from_page",
+    "product_external_key",
+    "rates_from_tables",
+    "run_products",
+]
