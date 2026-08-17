@@ -43,12 +43,17 @@ from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.scrapers.base import BaseScraper
 from app.scrapers.models import DiscoveredUrl, RawCampaign
+from app.scrapers.sitemap import extract_urls
 from app.utils.slugify import slug_from_url_path
-from app.utils.urls import is_same_site
+from app.utils.urls import dedupe_urls, is_same_site
 
 logger = get_logger(__name__)
 
 BASE_URL: Final[str] = "https://www.vakifkatilim.com.tr"
+
+# ⚠️ ASIL KEŞİF KAYNAĞI. Liste sayfası SSR'de 3 kampanya veriyor, sitemap 99.
+# robots.txt bu adresi kendisi yayımlıyor.
+SITEMAP_URL: Final[str] = f"{BASE_URL}/sitemap-tr.xml"
 
 # Adresteki segment parçası → veri modelindeki segment değeri.
 SEGMENTS: Final[dict[str, str]] = {
@@ -95,13 +100,34 @@ class VakifKatilimScraper(BaseScraper):
     version = "1.0.0"
 
     def discover(self) -> list[DiscoveredUrl]:
-        """İki segmentin güncel ve arşiv listelerini tarar.
+        """Sitemap'i ve iki segmentin liste sayfalarını tarar.
+
+        ⚠️ ASIL KAYNAK SITEMAP. Liste sayfası sunucu HTML'inde yalnızca 3
+        kampanya veriyor; sitemap 99 kampanya adresi veriyor. Ölçüldü.
+
+        JSON ucu (`/plugins/CampaignListJson`) sayfa başına 9 kayıt döndürüyor
+        ama `robots.txt` `/plugins/` yolunu KAPATIYOR. Sitemap hem izinli
+        (`Allow: /`, robots.txt sitemap adresini kendisi yayımlıyor) hem daha
+        kapsamlı; uca hiç istek atılmaz.
 
         Returns:
             Keşfedilen kampanya adresleri (tekilleştirilmiş).
         """
         discovered: list[DiscoveredUrl] = []
         seen: set[str] = set()
+
+        for url in self._sitemap_links():
+            if url in seen:
+                continue
+            seen.add(url)
+            discovered.append(
+                DiscoveredUrl(
+                    url=url,
+                    doc_type="campaign",
+                    segment_hint=self.segment_from_url(url),
+                    discovery_method="sitemap",
+                )
+            )
 
         for segment_yolu, segment in self._selected_segments():
             for sayfa, arsiv in LISTING_PAGES:
@@ -121,6 +147,33 @@ class VakifKatilimScraper(BaseScraper):
                     )
 
         return discovered
+
+    def _sitemap_links(self) -> list[str]:
+        """Sitemap'teki kampanya detay adreslerini döndürür.
+
+        Returns:
+            Mutlak kampanya adresleri; sitemap alınamazsa boş liste.
+        """
+        fetch = self.fetcher.fetch(SITEMAP_URL)
+        if not fetch.content:
+            logger.warning(
+                "sitemap_alinamadi",
+                banka=self.bank_code,
+                url=SITEMAP_URL,
+                durum=fetch.status_code,
+                hata=fetch.error,
+            )
+            return []
+
+        # ⚠️ Ham BAYT verilir: gzip denetimi baytlara bakıyor.
+        adresler = extract_urls(fetch.content, same_site_as=BASE_URL)
+        kampanyalar = [url for url in adresler if self._is_campaign_url(url)]
+
+        if not kampanyalar:
+            logger.warning(
+                "sitemapte_kampanya_yok", banka=self.bank_code, adres_sayisi=len(adresler)
+            )
+        return dedupe_urls(kampanyalar)
 
     def _selected_segments(self) -> list[tuple[str, str]]:
         """Taranacak (yol parçası, segment) çiftlerini belirler."""

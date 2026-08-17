@@ -17,7 +17,12 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.db.models import Campaign
-from app.scrapers.banks.albaraka import BASE_URL, LISTING_URL, AlbarakaScraper
+from app.scrapers.banks.albaraka import (
+    BASE_URL,
+    LISTING_URL,
+    SITEMAP_URL,
+    AlbarakaScraper,
+)
 from app.scrapers.fetcher import Fetcher
 from app.scrapers.models import DiscoveredUrl
 
@@ -226,3 +231,70 @@ class TestUctanUca:
         assert sonuc.campaigns_new == 3
         sluglar = {k.external_slug for k in seeded_session.scalars(select(Campaign))}
         assert len(sluglar) == 3
+
+
+class TestSitemapKesfi:
+    """Sitemap ASIL keşif kaynağıdır; liste sayfası 12 slug veriyor.
+
+    Canlı sitede ölçüldü: sitemap 1457 adres / 40 kampanya. JSON ucu
+    (`/plugins/GetCampaigns`) `Disallow: /plugins/` kapsamında olduğu için
+    hiç kullanılmaz.
+    """
+
+    def _scraper_sitemapli(
+        self,
+        tmp_path: Path,
+        read_fixture,  # type: ignore[no-untyped-def]
+        make_transport,  # type: ignore[no-untyped-def]
+    ) -> AlbarakaScraper:
+        sitemap = read_fixture("html/albaraka/sitemap.xml")
+        return _scraper(tmp_path, make_transport({SITEMAP_URL: (200, sitemap)}))
+
+    def test_sitemapten_kampanyalar_kesfedilir(
+        self,
+        tmp_path: Path,
+        read_fixture,  # type: ignore[no-untyped-def]
+        make_transport,  # type: ignore[no-untyped-def]
+    ) -> None:
+        scraper = self._scraper_sitemapli(tmp_path, read_fixture, make_transport)
+        try:
+            sluglar = {u.url.rsplit("/", 1)[-1] for u in scraper.discover()}
+        finally:
+            scraper.close()
+
+        assert "biletcom-ucak-bileti-kampanyasi" in sluglar
+        assert "kahve-keyfiniz-albarakadan" in sluglar
+        # Sonek korunur; farklı dönem demektir.
+        assert "ispark-kampanyasi-1" in sluglar
+
+    def test_yil_indeksi_kampanya_sayilmaz(
+        self,
+        tmp_path: Path,
+        read_fixture,  # type: ignore[no-untyped-def]
+        make_transport,  # type: ignore[no-untyped-def]
+    ) -> None:
+        """⚠️ `/detay/2026` yıl indeksidir; kampanya adresi değil."""
+        scraper = self._scraper_sitemapli(tmp_path, read_fixture, make_transport)
+        try:
+            adresler = {u.url for u in scraper.discover()}
+        finally:
+            scraper.close()
+
+        assert f"{BASE_URL}/tr/kampanyalar/detay/2026" not in adresler
+        assert LISTING_URL not in adresler
+
+    def test_robots_yasakli_adresler_alinmaz(
+        self,
+        tmp_path: Path,
+        read_fixture,  # type: ignore[no-untyped-def]
+        make_transport,  # type: ignore[no-untyped-def]
+    ) -> None:
+        """Sitemap'te olsa bile yasağa uyulur; keşif o adresleri önermez."""
+        scraper = self._scraper_sitemapli(tmp_path, read_fixture, make_transport)
+        try:
+            adresler = {u.url for u in scraper.discover()}
+        finally:
+            scraper.close()
+
+        assert not any("ticari-ve-kurumsal" in u for u in adresler)
+        assert not any("slug=" in u for u in adresler)

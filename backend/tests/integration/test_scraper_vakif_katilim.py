@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.db.models import Campaign
-from app.scrapers.banks.vakif_katilim import BASE_URL, VakifKatilimScraper
+from app.scrapers.banks.vakif_katilim import BASE_URL, SITEMAP_URL, VakifKatilimScraper
 from app.scrapers.fetcher import Fetcher
 from app.scrapers.models import DiscoveredUrl
 
@@ -288,3 +288,90 @@ class TestUctanUca:
         kayitlar = list(seeded_session.scalars(select(Campaign)))
         assert all(k.segment == "bireysel" for k in kayitlar)
         assert all(k.status == "active" for k in kayitlar)
+
+
+class TestSitemapKesfi:
+    """Sitemap ASIL keşif kaynağıdır; liste sayfası SSR'de 3 kampanya veriyor.
+
+    Canlı sitede ölçüldü: sitemap 806 adres / 99 kampanya. JSON ucu
+    (`/plugins/CampaignListJson`) daha az veriyor ve `robots.txt` onu
+    kapatıyor; bu yüzden hiç kullanılmaz.
+    """
+
+    def _scraper_sitemapli(
+        self,
+        tmp_path: Path,
+        read_fixture,  # type: ignore[no-untyped-def]
+        make_transport,  # type: ignore[no-untyped-def]
+    ) -> VakifKatilimScraper:
+        sitemap = read_fixture("html/vakif_katilim/sitemap.xml")
+        return _scraper(tmp_path, make_transport({SITEMAP_URL: (200, sitemap)}))
+
+    def test_sitemapten_kampanyalar_kesfedilir(
+        self,
+        tmp_path: Path,
+        read_fixture,  # type: ignore[no-untyped-def]
+        make_transport,  # type: ignore[no-untyped-def]
+    ) -> None:
+        scraper = self._scraper_sitemapli(tmp_path, read_fixture, make_transport)
+        try:
+            bulunan = scraper.discover()
+        finally:
+            scraper.close()
+
+        sluglar = {url.url.rsplit("/", 1)[-1] for url in bulunan}
+        assert "troy-kart-ile-pazaramada-150-tl-indirim" in sluglar
+        assert "tamamla-kazan" in sluglar
+        # Slug sonekleri korunur; farklı dönem demektir.
+        assert "mtv-odemeleri-vade-farksiz-3-taksit_2" in sluglar
+
+    def test_liste_ve_arama_sayfalari_kampanya_sayilmaz(
+        self,
+        tmp_path: Path,
+        read_fixture,  # type: ignore[no-untyped-def]
+        make_transport,  # type: ignore[no-untyped-def]
+    ) -> None:
+        scraper = self._scraper_sitemapli(tmp_path, read_fixture, make_transport)
+        try:
+            adresler = {url.url for url in scraper.discover()}
+        finally:
+            scraper.close()
+
+        assert not any("mevcut-kampanyalar" in u for u in adresler)
+        assert not any("/tr/arama/" in u for u in adresler)
+        assert not any(u.endswith("/kartlar") for u in adresler)
+
+    def test_segment_adresten_okunur(
+        self,
+        tmp_path: Path,
+        read_fixture,  # type: ignore[no-untyped-def]
+        make_transport,  # type: ignore[no-untyped-def]
+    ) -> None:
+        """Detay sayfası segment taşımıyor; adres tek kaynaktır."""
+        scraper = self._scraper_sitemapli(tmp_path, read_fixture, make_transport)
+        try:
+            bulunan = {url.url: url.segment_hint for url in scraper.discover()}
+        finally:
+            scraper.close()
+
+        kurumsal = [s for u, s in bulunan.items() if "isim-icin" in u]
+        bireysel = [s for u, s in bulunan.items() if "kendim-icin" in u]
+        assert set(kurumsal) == {"kurumsal"}
+        assert set(bireysel) == {"bireysel"}
+
+    def test_sitemap_alinamazsa_liste_yolu_calisir(
+        self,
+        tmp_path: Path,
+        fixtures: dict[str, str],
+        make_transport,  # type: ignore[no-untyped-def]
+    ) -> None:
+        """Sitemap 404 verse bile banka tamamen boş kalmaz."""
+        liste_url = f"{BASE_URL}/tr/kendim-icin/kampanyalar/mevcut-kampanyalar"
+        scraper = _scraper(tmp_path, make_transport({liste_url: (200, fixtures["liste"])}))
+        try:
+            bulunan = scraper.discover()
+        finally:
+            scraper.close()
+
+        assert bulunan
+        assert all(u.discovery_method != "sitemap" for u in bulunan)

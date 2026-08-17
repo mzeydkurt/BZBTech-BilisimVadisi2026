@@ -43,13 +43,19 @@ from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.scrapers.base import BaseScraper
 from app.scrapers.models import DiscoveredUrl, RawCampaign
+from app.scrapers.sitemap import extract_urls
 from app.utils.slugify import slug_from_url_path
-from app.utils.urls import is_same_site
+from app.utils.urls import dedupe_urls, is_same_site
 
 logger = get_logger(__name__)
 
 BASE_URL: Final[str] = "https://www.albaraka.com.tr"
 LISTING_URL: Final[str] = f"{BASE_URL}/tr/kampanyalar"
+
+# ⚠️ ASIL KEŞİF KAYNAĞI. Liste sayfası 12 slug veriyor, sitemap 40.
+# robots.txt bu adresi kendisi yayımlıyor; JSON ucu (`/plugins/GetCampaigns`)
+# ise `Disallow: /plugins/` kapsamında olduğu için HİÇ kullanılmaz.
+SITEMAP_URL: Final[str] = f"{BASE_URL}/sitemap.xml"
 
 # Detay adreslerini ayırt eden yol.
 DETAIL_PREFIX: Final[str] = "/tr/kampanyalar/detay/"
@@ -105,6 +111,19 @@ class AlbarakaScraper(BaseScraper):
         seen: set[str] = set()
         kuru_tur = 0
 
+        for url in self._sitemap_links():
+            if url in seen:
+                continue
+            seen.add(url)
+            discovered.append(
+                DiscoveredUrl(
+                    url=url,
+                    doc_type="campaign",
+                    segment_hint="bireysel",
+                    discovery_method="sitemap",
+                )
+            )
+
         for tur in range(1, MAX_LISTING_ROUNDS + 1):
             yeni = 0
             for url in self._campaign_links(LISTING_URL):
@@ -133,6 +152,31 @@ class AlbarakaScraper(BaseScraper):
                 logger.info("liste_turu", banka=self.bank_code, tur=tur, yeni=yeni)
 
         return discovered
+
+    def _sitemap_links(self) -> list[str]:
+        """Sitemap'teki kampanya detay adreslerini döndürür.
+
+        Returns:
+            Mutlak kampanya adresleri; sitemap alınamazsa boş liste.
+        """
+        fetch = self.fetcher.fetch(SITEMAP_URL)
+        if not fetch.content:
+            logger.warning(
+                "sitemap_alinamadi",
+                banka=self.bank_code,
+                url=SITEMAP_URL,
+                durum=fetch.status_code,
+                hata=fetch.error,
+            )
+            return []
+
+        adresler = extract_urls(fetch.content, same_site_as=BASE_URL)
+        kampanyalar = [url for url in adresler if self._is_campaign_url(url)]
+        if not kampanyalar:
+            logger.warning(
+                "sitemapte_kampanya_yok", banka=self.bank_code, adres_sayisi=len(adresler)
+            )
+        return dedupe_urls(kampanyalar)
 
     def _campaign_links(self, listing_url: str) -> list[str]:
         """Liste sayfasındaki kampanya detay adreslerini çıkarır."""
@@ -180,8 +224,14 @@ class AlbarakaScraper(BaseScraper):
         path = urlsplit(url).path.rstrip("/")
         if not path.startswith(DETAIL_PREFIX):
             return False
-        # `/detay` kökünün kendisi kampanya değildir.
-        return bool(path[len(DETAIL_PREFIX) :])
+
+        kalan = path[len(DETAIL_PREFIX) :]
+        if not kalan:
+            # `/detay` kökünün kendisi kampanya değildir.
+            return False
+        # ⚠️ Sitemap'te yıl indeksi de var (`/detay/2026`); kampanya değildir.
+        # Kampanya adresleri `/detay/{yil}/{slug}` biçiminde.
+        return not kalan.isdigit()
 
     def parse_detail(self, html: str, url: str, hint: DiscoveredUrl) -> RawCampaign | None:
         """Kampanya detay sayfasını ayrıştırır.

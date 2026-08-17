@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Vakıf Katılım sitemap-tr.xml'inin SADELEŞTİRİLMİŞ kopyası (17 Ağustos 2026).
+
+  Canlı sitede ölçüldü: sitemap 806 adres, bunların 99'u kampanya detayı.
+  Liste sayfası sunucu HTML'inde yalnızca 3 kampanya veriyordu.
+
+  Korunan davranışlar:
+    - Kampanya detayı `/tr/{segment}/kampanyalar/detay/{slug}` biçiminde
+    - Segment adresten okunur: kendim-icin -> bireysel, isim-icin -> kurumsal
+    - Slug sonekleri (`_1`, `_2`) KORUNUR; farklı dönem demektir
+    - `/kampanyalar/mevcut-kampanyalar` liste sayfasıdır, kampanya değil
+    - `/tr/arama/` robots.txt ile yasak; sitemap'te olsa da alınmamalı
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://www.vakifkatilim.com.tr/</loc></url>
+  <url><loc>https://www.vakifkatilim.com.tr/tr/kendim-icin/kampanyalar/mevcut-kampanyalar</loc></url>
+  <url><loc>https://www.vakifkatilim.com.tr/tr/kendim-icin/kampanyalar/detay/mtv-odemeleri-vade-farksiz-3-taksit_2</loc></url>
+  <url><loc>https://www.vakifkatilim.com.tr/tr/kendim-icin/kampanyalar/detay/troy-kredi-karti-ile-a101-hediye-ceki-kampanyasi</loc></url>
+  <url><loc>https://www.vakifkatilim.com.tr/tr/kendim-icin/kampanyalar/detay/vkart-mastercard-ile-ikeada-1000-tl-indirim_1</loc></url>
+  <url><loc>https://www.vakifkatilim.com.tr/tr/kendim-icin/kampanyalar/detay/troy-kart-ile-pazaramada-150-tl-indirim</loc></url>
+  <url><loc>https://www.vakifkatilim.com.tr/tr/isim-icin/kampanyalar/detay/tamamla-kazan</loc></url>
+  <url><loc>https://www.vakifkatilim.com.tr/tr/arama/?q=kampanya</loc></url>
+  <url><loc>https://www.vakifkatilim.com.tr/tr/kendim-icin/kartlar</loc></url>
+</urlset>

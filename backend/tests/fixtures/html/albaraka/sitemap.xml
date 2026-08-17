@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Albaraka Türk sitemap.xml'inin SADELEŞTİRİLMİŞ kopyası (17 Ağustos 2026).
+
+  Canlı sitede ölçüldü: sitemap 1457 adres, bunların 40'ı kampanya detayı.
+  Liste sayfası 12 slug veriyordu.
+
+  Korunan davranışlar:
+    - Kampanya detayı `/tr/kampanyalar/detay/{yil}/{slug}` biçiminde
+    - `/tr/kampanyalar/detay/2026` YIL İNDEKSİDİR, kampanya değildir
+    - Slug sonekleri (`-1`, `_1`, `-14`) KORUNUR; farklı dönem demektir
+    - `Disallow: /tr/ticari-ve-kurumsal*` -> alınmamalı
+    - `Disallow: /*slug` -> `?slug=` parametreli adresler alınmamalı
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://www.albaraka.com.tr/</loc></url>
+  <url><loc>https://www.albaraka.com.tr/tr/kampanyalar</loc></url>
+  <url><loc>https://www.albaraka.com.tr/tr/kampanyalar/detay/2026</loc></url>
+  <url><loc>https://www.albaraka.com.tr/tr/kampanyalar/detay/2026/biletcom-ucak-bileti-kampanyasi</loc></url>
+  <url><loc>https://www.albaraka.com.tr/tr/kampanyalar/detay/2026/hizli-cicek-25-indirim-kampanyasi</loc></url>
+  <url><loc>https://www.albaraka.com.tr/tr/kampanyalar/detay/2026/kahve-keyfiniz-albarakadan</loc></url>
+  <url><loc>https://www.albaraka.com.tr/tr/kampanyalar/detay/2025/ispark-kampanyasi-1</loc></url>
+  <url><loc>https://www.albaraka.com.tr/tr/ticari-ve-kurumsal/kampanyalar/detay/2026/kobi-destegi</loc></url>
+  <url><loc>https://www.albaraka.com.tr/tr/kampanyalar/detay/2026/eski-kampanya?slug=arsiv</loc></url>
+  <url><loc>https://www.albaraka.com.tr/tr/bireysel/kartlar</loc></url>
+</urlset>
