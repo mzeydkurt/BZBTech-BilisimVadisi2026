@@ -207,6 +207,164 @@ def test_odul_turu_kontrollu_sozlukten(metin: str, beklenen: str) -> None:
     assert _deger(metin, "reward_type") == beklenen
 
 
+# ── Sadakat puanı ve ödül tutarı ──────────────────────────
+#
+# ⚠️ AŞAĞIDAKİ METİNLERİN HEPSİ GERÇEK BANKA SAYFALARINDAN. Her biri 50
+# kampanyalık gold set'te ölçülmüş bir kaçağı temsil ediyor; kalıplar
+# "sadeleştirilirse" o kaçaklar geri gelir.
+
+
+@pytest.mark.parametrize(
+    ("metin", "beklenen"),
+    [
+        # ⚠️ Marka adı tutar ile ödül adının ARASINDA: "TL" ile "Lira"
+        # bitişik arandığında 6 kampanya kaçıyordu.
+        ("Akaryakıt Harcamalarınıza 400 TL Bankkart Lira!", "400"),
+        ("Seyahat Alışverişlerinize 3.500 TL'ye varan ParafPara!", "3500"),
+        # ⚠️ "Mil" TL cinsinden değil; yalnızca sadakat puanı sayılır.
+        ("Yeni Mobil Müşterilerine 10.000 Mil'e Varan Fırsat!", "10000"),
+    ],
+)
+def test_sadakat_puani_cikarilir(metin: str, beklenen: str) -> None:
+    """Sadakat programı birimi tutardan ayrı bir marka adıyla yazılıyor."""
+    assert _deger(metin, "loyalty_points") == beklenen
+
+
+@pytest.mark.parametrize(
+    ("metin", "beklenen"),
+    [
+        # ⚠️ Tipografik kesme işareti (U+2019), ASCII değil — bu tek karakter
+        # yüzünden gold set'te birden çok ödül tutarı kaçıyordu.
+        ("Yemek Harcamalarına 1.000 TL’ye Varan Nakit İade!", "1000"),
+        ("Alışverişinizde 250 TL'ye varan hediye çeki.", "250"),
+        # ⚠️ "nakit ödül" (Hayat Finans) ödül adları listesinde yoktu.
+        ("Davet eden müşteri 500 TL nakit ödül kazanır.", "500"),
+    ],
+)
+def test_odul_tutari_kesme_isareti_ve_odul_adiyla_cikarilir(metin: str, beklenen: str) -> None:
+    """Kesme işareti çeşidi ve ödül adı sözlüğü ödül tutarını etkiler."""
+    assert _deger(metin, "reward_amount_try") == beklenen
+
+
+def test_mil_tl_olmadigi_icin_odul_tutari_yazilmaz() -> None:
+    """⚠️ "10.000 Mil" bir TL tutarı DEĞİLDİR.
+
+    Gold set'te bu kampanyalarda yalnızca `loyalty_points` dolu;
+    `reward_amount_try` boş. Ayrımı `REWARD_AMOUNT` kalıbının zorunlu
+    `TL` koşulu yapar.
+    """
+    metin = "Yeni Mobil Müşterilerine 10.000 Mil'e Varan Fırsat!"
+
+    assert _deger(metin, "loyalty_points") == "10000"
+    assert _deger(metin, "reward_amount_try") is None
+
+
+def test_toplu_ust_sinir_odul_sayilmaz() -> None:
+    """⚠️ "toplamda 5 kişi için maksimum 10.000 TL" TEK ÖDÜL DEĞİLDİR.
+
+    Kampanyanın bir kişiye vaat ettiği ödül 2.000'dir; 10.000 bütün
+    davetlerin toplam tavanı. "En yüksek" kuralı burada yanlış cevap
+    veriyordu.
+    """
+    metin = (
+        "Davet eden müşteri 2.000 TL nakit ödül kazanır. Koşulların sağlanması "
+        "halinde kişi başı maksimum 2.000 TL, toplamda 5 kişi için maksimum "
+        "10.000 TL nakit ödül kazanabilir."
+    )
+
+    assert _deger(metin, "reward_amount_try") == "2000"
+
+
+def test_komsu_kampanya_karti_odulu_ezmez() -> None:
+    """⚠️ Ziraat sayfalarının sonuna KOMŞU KAMPANYA KARTI sızıyor.
+
+    Sızan kartın tutarı daha büyük olabiliyor; "en yüksek" kuralı o zaman
+    başka bir kampanyanın ödülünü bu kampanyaya yazıyordu.
+    """
+    metin = (
+        "Akaryakıt Harcamalarınıza 400 TL Bankkart Lira! Kampanya sona ermiştir. "
+        "Banka kampanyayı durdurma hakkına sahiptir. "
+        "Elektrikli Araç Şarj İstasyonlarında 750 TL Bankkart Lira!"
+    )
+
+    assert _deger(metin, "reward_amount_try") == "400"
+    assert _deger(metin, "loyalty_points") == "400"
+
+
+# ── Nakit iade oranı ──────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("metin", "beklenen"),
+    [
+        # ⚠️ Oran ile "iade" arasına çekim eki giriyor.
+        ("İşlem tutarlarınızın %18’i kadar nakit iade kartınıza yatırılır.", "18"),
+        ("Yemek harcamalarının %10’una kadar nakit iade kazanın.", "10"),
+        ("%5 nakit iade fırsatı.", "5"),
+    ],
+)
+def test_nakit_iade_orani_cekim_ekiyle_cikarilir(metin: str, beklenen: str) -> None:
+    """Ek araya girdiğinde de oran bulunmalı."""
+    assert _deger(metin, "cashback_pct") == beklenen
+
+
+# ── Tutar sınırları ───────────────────────────────────────
+
+
+def test_aralik_iki_uca_da_yazilir() -> None:
+    """Aralık ifadesi hem alt hem üst sınır verir."""
+    metin = "TROY kartlarınız ile yapacağınız 1.000 TL - 100.000 TL arası sağlık harcamaları."
+
+    assert _deger(metin, "min_spend_try") == "1000"
+    assert _deger(metin, "max_spend_try") == "100000"
+
+
+def test_finansman_baglami_yoksa_finansman_limiti_yazilmaz() -> None:
+    """⚠️ Her harcama eşiği bir finansman limiti DEĞİLDİR."""
+    metin = "Hediye çeki kampanyasında 1.000 TL - 5.000 TL arası alışverişler geçerlidir."
+
+    assert _deger(metin, "max_spend_try") == "5000"
+    assert _deger(metin, "financing_amount_max") is None
+
+
+def test_kademeli_tablo_ust_sinir_uretmez() -> None:
+    """⚠️ ARA KADEMENİN üst ucu kampanyanın tavanı değildir.
+
+    "20.000 TL ve Üzeri" en üst kademe — yani üst sınır YOK. Ara kademeden
+    tavan yazmak 16 kampanyada asgariden küçük bir azami üretiyordu.
+    """
+    metin = (
+        "Bir aylık maaşı 10.000 TL - 14.999 TL arası olanlara 3.000 TL; "
+        "20.000 TL ve Üzeri olanlara 8.000 TL verilir."
+    )
+
+    assert _deger(metin, "min_spend_try") == "20000"
+    assert _deger(metin, "max_spend_try") is None
+
+
+def test_ust_sinir_alt_sinir_uretmez() -> None:
+    """⚠️ "100.000 TL'ye kadar" alt sınır BELİRTMEZ; sıfır yazılmaz."""
+    metin = "Anlaşmalı mağazalarda 100.000 TL’ye kadar alışverişlerinizde 6 taksit."
+
+    assert _deger(metin, "max_spend_try") == "100000"
+    assert _deger(metin, "min_spend_try") is None
+    assert _deger(metin, "financing_amount_min") is None
+
+
+# ── Katılma hesabı paylaşım oranı ─────────────────────────
+
+
+def test_paylasim_orani_bolu_bicimindeki_orandan_cikarilir() -> None:
+    """⚠️ Paylaşım oranı YÜZDE DEĞİL, `98/2` biçiminde yayımlanıyor.
+
+    Müşteri payı İKİNCİ sayıdır; birinci sayı bankada kalan pay. Yanlış
+    sayı alınırsa katılma hesapları tam ters sıralanır.
+    """
+    metin = "Katılma Hesabı açın, 98/2 kâr paylaşım oranı ile birikime başlayın!"
+
+    assert _deger(metin, "profit_share_rate_pct") == "2"
+
+
 # ── Boş ve bulunamayan durumlar ───────────────────────────
 
 

@@ -19,6 +19,7 @@ Türkçe sayı biçimi (`5.000` = beş bin, `5,000` = beş) orada çözülmüş 
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
@@ -180,27 +181,53 @@ def _term(metin: str) -> list[ExtractedField]:
     return bulunan
 
 
+def _ilk_odul(metin: str, kalip: re.Pattern[str]) -> tuple[Decimal, int, int] | None:
+    """Metindeki İLK geçerli ödül tutarını, toplu üst sınırları eleyerek bulur.
+
+    ⚠️ SEÇİM STRATEJİSİ ÖLÇÜLEREK BELİRLENDİ (50 kampanyalık gold set):
+
+        A en yüksek (eski)                 reward 19/25 · loyalty 13/14
+        B ilk                              reward 23/25 · loyalty 14/14
+        C toplu-hariç + en yüksek          reward 20/25 · loyalty 13/14
+        D toplu-hariç + ilk                reward 23/25 · loyalty 14/14  ✓
+        E başlık öncelikli + en yüksek     reward 22/25 · loyalty 14/14
+
+    "En yüksek" kuralı iki yerde bozuluyordu: (1) Ziraat sayfalarının sonuna
+    KOMŞU KAMPANYA KARTI sızıyor ve onun tutarı daha büyük olabiliyor,
+    (2) "toplamda 50 kişi için maksimum 25.000 TL" toplu tavanı tek ödülden
+    büyük. `AGGREGATE_CAP` ikincisini eliyor, "ilk" olma koşulu birincisini.
+
+    ⚠️ "İlk" seçimi kılavuzun "kademelide EN YÜKSEK" kuralını BOZMAZ:
+    `clean_text` kampanya BAŞLIĞIYLA başlıyor ve başlık kademenin üst
+    değerini duyuruyor ("3.500 TL'ye varan ParafPara"). Başlığında tutar
+    olmayan kademeli bir kampanya çıkarsa bu strateji alt kademeyi seçer;
+    o gün geldiğinde ölçüm yeniden yapılmalı.
+    """
+    for eslesme in kalip.finditer(metin):
+        onek = metin[max(0, eslesme.start() - p.PROXIMITY_CHARS) : eslesme.start()]
+        if p.AGGREGATE_CAP.search(onek):
+            continue
+        tutar, _ = parse_money(eslesme.group())
+        if tutar is not None:
+            return tutar, eslesme.start(), eslesme.end()
+    return None
+
+
 def _amounts(metin: str) -> list[ExtractedField]:
     """Harcama eşiği, ödül tutarı ve finansman tutarını çıkarır."""
     bulunan: list[ExtractedField] = []
 
+    acik_asgari: Decimal | None = None
     esik = p.MIN_SPEND.search(metin)
     if esik is not None:
         tutar, _ = parse_money(esik.group())
         if tutar is not None:
+            acik_asgari = tutar
             bulunan.append(_field("min_spend_try", tutar, metin, esik.start(), esik.end()))
 
-    # ⚠️ Kademeli ödülde EN YÜKSEK ödül alınır (kılavuz kuralı): "5.000→250,
-    # 10.000→500" metninde kampanyanın vaat ettiği üst değer 500'dür.
-    en_yuksek: tuple[Decimal, int, int] | None = None
-    for eslesme in p.REWARD_AMOUNT.finditer(metin):
-        tutar, _ = parse_money(eslesme.group())
-        if tutar is None:
-            continue
-        if en_yuksek is None or tutar > en_yuksek[0]:
-            en_yuksek = (tutar, eslesme.start(), eslesme.end())
-    if en_yuksek is not None:
-        bulunan.append(_field("reward_amount_try", en_yuksek[0], metin, en_yuksek[1], en_yuksek[2]))
+    odul = _ilk_odul(metin, p.REWARD_AMOUNT)
+    if odul is not None:
+        bulunan.append(_field("reward_amount_try", odul[0], metin, odul[1], odul[2]))
 
     finansman = p.FINANCING_AMOUNT.search(metin)
     if finansman is not None:
@@ -210,7 +237,118 @@ def _amounts(metin: str) -> list[ExtractedField]:
                 _field("financing_amount_max", tutar, metin, finansman.start(), finansman.end())
             )
 
+    bulunan.extend(_limits(metin, acik_asgari=acik_asgari))
     return bulunan
+
+
+def _limits(metin: str, *, acik_asgari: Decimal | None) -> list[ExtractedField]:
+    """Harcama/finansman alt ve üst sınırlarını çıkarır.
+
+    İki kaynak var: `2.000 TL - 300.000 TL arası` biçimindeki ARALIK ve
+    `100.000 TL'ye kadar` biçimindeki TEK ÜST SINIR.
+
+    ⚠️ Aralık her iki uca da yazılır; üst sınır tek başına ALT SINIR ÜRETMEZ.
+    Kılavuz kuralı ("120 aya kadar" → min ∅, max 120) tutarlar için de
+    geçerli: alt sınır belirtilmemişse sıfır YAZILMAZ, alan boş bırakılır.
+
+    ⚠️ `financing_amount_*` yalnızca finansman bağlamı varsa doldurulur;
+    her harcama eşiği bir finansman limiti değildir.
+
+    ⚠️ AÇIK İŞARETÇİ ARALIĞI YENER. Metinde hem "6.000 TL ve üzeri" hem
+    "100 TL - 1.000 TL arası" geçebiliyor ve bunlar FARKLI şeyleri anlatıyor
+    (biri kampanya eşiği, diğeri ör. taksit tutarı). İkisi birden
+    `min_spend_try` yazılınca 17 kampanyada çelişkili çift kayıt üretiliyordu.
+
+    ⚠️ KADEMELİ TABLO ÜST SINIR DEĞİLDİR. Emekli maaşı kademeleri
+    ("9.999 TL'ye kadarsa 5.000 TL; 10.000 TL - 14.999 TL arası ...;
+    20.000 TL ve Üzeri ...") metninde ARA kademenin üst ucu kampanyanın
+    tavanı değil. Açık asgari eşikten KÜÇÜK bir üst sınır bu durumun
+    imzasıdır ve yazılmaz — 16 kampanyada ölçüldü. Üst sınır uydurmak
+    yerine alan boş bırakılır; en üst kademe zaten açık uçlu.
+
+    Args:
+        metin: Kampanyanın temizlenmiş metni.
+        acik_asgari: `MIN_SPEND` açık işaretçisinin değeri; yoksa None.
+    """
+    bulunan: list[ExtractedField] = []
+    finansman_baglami = p.FINANCING_CONTEXT.search(metin) is not None
+
+    def tutarli(ust: Decimal) -> bool:
+        return acik_asgari is None or ust > acik_asgari
+
+    aralik = p.SPEND_RANGE.search(metin)
+    if aralik is not None:
+        alt, _ = parse_money(aralik.group(1))
+        ust, _ = parse_money(aralik.group(2))
+        bas, son = aralik.start(), aralik.end()
+        if alt is not None and acik_asgari is None:
+            bulunan.append(_field("min_spend_try", alt, metin, bas, son))
+            if finansman_baglami:
+                bulunan.append(_field("financing_amount_min", alt, metin, bas, son))
+        if ust is not None and tutarli(ust):
+            bulunan.append(_field("max_spend_try", ust, metin, bas, son))
+            if finansman_baglami:
+                bulunan.append(_field("financing_amount_max", ust, metin, bas, son))
+        return bulunan
+
+    # ⚠️ Kademeli üst sınırda EN YÜKSEK alınır: "75.000 TL'ye ulaşan ...,
+    # 150.000 TL'ye ulaşan ..." metninde kampanyanın tavanı 150.000'dir.
+    # Burada "ilk" DEĞİL "en yüksek" doğru: üst sınır bir ödül değil, sınır.
+    en_yuksek: tuple[Decimal, int, int] | None = None
+    for eslesme in p.MAX_SPEND.finditer(metin):
+        ham = eslesme.group(1) or eslesme.group(2)
+        tutar, _ = parse_money(ham)
+        if tutar is None:
+            continue
+        if en_yuksek is None or tutar > en_yuksek[0]:
+            en_yuksek = (tutar, eslesme.start(), eslesme.end())
+    if en_yuksek is not None and tutarli(en_yuksek[0]):
+        bulunan.append(_field("max_spend_try", en_yuksek[0], metin, en_yuksek[1], en_yuksek[2]))
+        if finansman_baglami:
+            bulunan.append(
+                _field("financing_amount_max", en_yuksek[0], metin, en_yuksek[1], en_yuksek[2])
+            )
+
+    return bulunan
+
+
+def _loyalty(metin: str) -> list[ExtractedField]:
+    """Sadakat programı puanını çıkarır (ParafPara, Bankkart Lira, Mil…).
+
+    ⚠️ `reward_amount_try` İLE BİRLİKTE DOLAR ve gold set'te ikisi aynı
+    değeri taşır — ödül TL cinsinden bir sadakat birimiyse ("750 TL Bankkart
+    Lira") her iki alan da yazılır. Ödül TL cinsinden değilse ("10.000 Mil")
+    yalnızca bu alan dolar; ayrımı `REWARD_AMOUNT` kalıbının zorunlu `TL`
+    koşulu yapar.
+    """
+    puan = _ilk_odul(metin, p.LOYALTY_POINTS)
+    if puan is None:
+        return []
+    return [_field("loyalty_points", puan[0], metin, puan[1], puan[2])]
+
+
+def _profit_share(metin: str) -> list[ExtractedField]:
+    """Katılma hesabı paylaşım oranını çıkarır.
+
+    ⚠️ `98/2` biçimindeki oranda MÜŞTERİ PAYI ikinci sayıdır; birinci sayı
+    bankada kalan paydır. Yanlış sayı alınırsa katılma hesapları
+    karşılaştırması tam ters sıralanır.
+    """
+    eslesme = p.PROFIT_SHARE_RATIO.search(metin)
+    if eslesme is None:
+        return []
+    ham = eslesme.group(1) or eslesme.group(2)
+    if ham is None:
+        return []
+    return [
+        _field(
+            "profit_share_rate_pct",
+            Decimal(ham),
+            metin,
+            eslesme.start(),
+            eslesme.end(),
+        )
+    ]
 
 
 def _percent_rewards(metin: str) -> list[ExtractedField]:
@@ -327,9 +465,11 @@ def extract_rule_based(clean_text: str | None) -> list[ExtractedField]:
     bulunan: list[ExtractedField] = []
     for cikarici in (
         _rate_fields,
+        _profit_share,
         _installment,
         _term,
         _amounts,
+        _loyalty,
         _percent_rewards,
         _fees,
         _dates,

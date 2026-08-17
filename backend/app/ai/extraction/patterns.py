@@ -26,6 +26,30 @@ PROXIMITY_CHARS: Final[int] = 40
 _KAR = r"[kK][âaÂA]r"
 _PAYI = r"[pP]ay[ıiİI]"
 
+# ⚠️ KESME İŞARETİ TEK BİÇİMDE GELMİYOR. Bankaların içerik yönetim sistemi
+# tipografik U+2019 (’) üretiyor; ASCII (') yalnızca elle yazılmış metinlerde
+# geçiyor. Yalnızca ASCII beklendiğinde "1.000 TL’ye Varan Nakit İade" ve
+# "%10’una kadar nakit iade" gibi ifadeler sessizce kaçıyordu — gold set
+# üzerinde ölçüldü, `reward_amount_try` ve `cashback_pct` kayıplarının bir
+# bölümü doğrudan bu karakterden kaynaklanıyor.
+_KESME = r"['’‘ʼ´`]"
+
+_TL = r"(?:TL|₺)"
+
+# ⚠️ SADAKAT BİRİMİ ÖDÜL ADINDAN AYRI YAZILIYOR. "750 TL Bankkart Lira"
+# ifadesinde tutar ile ödül adı arasında MARKA KELİMESİ var; ödül adını
+# tutara bitişik arayan kalıp 6 kampanyayı kaçırıyordu. Program adları
+# bütün olarak tanınır.
+#
+# ⚠️ `Mil` ve `Puan` sonuna `\b` ZORUNLU: aksi hâlde "Miles&Smiles" ve
+# "Puanlarınız" gibi kelimelerin içinde eşleşir.
+_SADAKAT = r"(?:Bankkart\s*Lira|Paraf\s*?Para|World\s*?Puan|Mil|Puan)"
+
+# "'ye varan" · "’ye kadar" · "'e varan" — tutar ile ödül adı arasına giren
+# tek ek. Sınırsız doldurma YOK: araya kelime girmesine izin verilirse
+# metindeki herhangi bir tutar herhangi bir ödüle bağlanır.
+_VARAN = rf"(?:{_KESME}?\s*[yn]?[ae]\s*(?:varan|kadar)\s*)?"
+
 # ── Kâr payı oranı ────────────────────────────────────────
 # "%2,05 kâr payı" · "kâr payı oranı %2,05" · "%2,05 oranlı"
 PROFIT_RATE: Final[re.Pattern[str]] = re.compile(
@@ -39,6 +63,20 @@ PROFIT_RATE: Final[re.Pattern[str]] = re.compile(
 # kampanyaları hiç görmez.
 ZERO_RATE: Final[re.Pattern[str]] = re.compile(
     r"(vade\s*farks[ıi]z|pe[şs]in\s*fiyat[ıi]na)", re.IGNORECASE
+)
+
+# ── Katılma hesabı paylaşım oranı ─────────────────────────
+# ⚠️ PAYLAŞIM ORANI YÜZDE OLARAK YAZILMIYOR. Katılım bankaları bunu
+# `98/2` biçiminde — banka payı / müşteri payı — yayımlıyor
+# ("98/2 kâr paylaşım oranı ile birikime başlayın"). MÜŞTERİ PAYI ikinci
+# sayıdır; yüzde arayan bir kalıp bu ifadeyi hiç görmez.
+#
+# ⚠️ Bu alan finansmandaki `profit_rate_pct` ile KARIŞTIRILMAZ: yönü ters,
+# biri müşterinin ödediği, diğeri müşteriye dağıtılan paydır.
+PROFIT_SHARE_RATIO: Final[re.Pattern[str]] = re.compile(
+    rf"\d{{1,3}}\s*/\s*(\d{{1,3}})\s*(?:{_KAR}\s*)?payla[şs][ıi]m\s*oran"
+    rf"|payla[şs][ıi]m\s*oran[ıi]\s*[:\-]?\s*\d{{1,3}}\s*/\s*(\d{{1,3}})",
+    re.IGNORECASE,
 )
 
 # ⚠️ TUZAK: "avantajlı kâr payı" bir ORAN BELİRTMEZ. Eşleşirse alan
@@ -71,17 +109,67 @@ MIN_SPEND: Final[re.Pattern[str]] = re.compile(
     re.IGNORECASE,
 )
 
-# "250 TL nakit iade" · "500 TL Bankkart Lira" · "250 TL hediye"
-REWARD_AMOUNT: Final[re.Pattern[str]] = re.compile(
-    r"[\d.,]+\s*(?:TL|₺)\s*(?:'?ye\s*varan\s*)?"
-    r"(?:nakit\s*iade|iade|hediye|puan|para|lira|indirim|de[ğg]erinde)",
+# "1.000 TL - 100.000 TL arası" · "2.000 TL- 300.000 TL arasındaki"
+# İki uç TEK eşleşmede yakalanır; `parse_money` bir dizedeki İLK tutarı
+# döndürdüğü için uçlar ayrı gruplara alınmak zorunda.
+SPEND_RANGE: Final[re.Pattern[str]] = re.compile(
+    rf"([\d.,]+)\s*{_TL}\s*[-–—]\s*([\d.,]+)\s*{_TL}\s*aras",
     re.IGNORECASE,
 )
 
+# "100.000 TL’ye kadar" · "150.000 TL'ye ulaşan" · "75 TL ve altı"
+MAX_SPEND: Final[re.Pattern[str]] = re.compile(
+    rf"([\d.,]+)\s*{_TL}\s*{_KESME}?\s*[yn]?[ae]\s*(?:kadar|ula[şs]an)"
+    rf"|([\d.,]+)\s*{_TL}\s*ve\s*alt[ıi]",
+    re.IGNORECASE,
+)
+
+# ⚠️ FİNANSMAN BAĞLAMI. Aynı aralık ifadesi hem harcama eşiği hem finansman
+# limiti olabiliyor; ayrımı çevredeki kelime yapar. Bağlam yoksa yalnızca
+# harcama alanları doldurulur — finansman limiti UYDURULMAZ.
+FINANCING_CONTEXT: Final[re.Pattern[str]] = re.compile(
+    r"finansman|taksit|kredi|[öo]deme\s*kolayl[ıi][ğg][ıi]", re.IGNORECASE
+)
+
+# Ödül adları. "nakit ödül" (Hayat Finans) eskiden listede yoktu.
+_ODUL_ADI = (
+    r"(?:nakit\s*iade|iade|nakit\s*[öo]d[üu]l|[öo]d[üu]l"
+    r"|hediye|puan|para|lira|indirim|de[ğg]erinde)"
+)
+
+# "250 TL nakit iade" · "500 TL Bankkart Lira" · "2.000 TL nakit ödül"
+REWARD_AMOUNT: Final[re.Pattern[str]] = re.compile(
+    rf"[\d.,]+\s*{_TL}\s*{_VARAN}(?:{_SADAKAT}\b|{_ODUL_ADI})",
+    re.IGNORECASE,
+)
+
+# "200 TL ParafPara" · "10.000 Mil'e Varan" · "500 TL Bankkart Lira"
+#
+# ⚠️ `TL` İSTEĞE BAĞLI: "10.000 Mil" tutarı TL cinsinden DEĞİLDİR ve gold
+# set'te yalnızca `loyalty_points` doluyor, `reward_amount_try` boş kalıyor.
+# `reward_amount_try` kalıbı `TL` zorunlu tutarak bu ayrımı korur.
+LOYALTY_POINTS: Final[re.Pattern[str]] = re.compile(
+    rf"[\d.,]+\s*(?:{_TL}\s*)?{_VARAN}{_SADAKAT}\b",
+    re.IGNORECASE,
+)
+
+# ⚠️ TOPLU ÜST SINIR TEK ÖDÜL DEĞİLDİR. "kişi başı maksimum 2.000 TL,
+# toplamda 5 kişi için maksimum 10.000 TL nakit ödül" metninde kampanyanın
+# bir kişiye vaat ettiği ödül 2.000'dir; 10.000 bütün davetlerin toplam
+# tavanıdır. Bu önek görülen eşleşme ödül adayı sayılmaz.
+AGGREGATE_CAP: Final[re.Pattern[str]] = re.compile(
+    r"toplamda?\s*\d+\s*ki[şs]i|ki[şs]i\s*i[çc]in", re.IGNORECASE
+)
+
 # ── Yüzde ödüller ─────────────────────────────────────────
+# ⚠️ ORAN İLE "iade" ARASINA ÇEKİM EKİ GİRİYOR: "%18’i kadar nakit iade",
+# "%10’una kadar nakit iade". Araya yalnızca SINIRLI bir ek + "kadar" /
+# "oranında" alınır; serbest doldurma metindeki herhangi bir yüzdeyi
+# uzaktaki bir "iade" kelimesine bağlardı.
 CASHBACK_PCT: Final[re.Pattern[str]] = re.compile(
-    r"%\s*\d+(?:[.,]\d+)?\s*(?:'?[yn]?[ae]\s*varan\s*)?(?:nakit\s*)?iade"
-    r"|(?:nakit\s*)?iade\s*[:\-]?\s*%\s*\d+(?:[.,]\d+)?",
+    rf"%\s*\d+(?:[.,]\d+)?\s*{_KESME}?\s*[a-zçğıöşü]{{0,4}}\s*"
+    rf"(?:kadar\s*|oran[ıi]nda\s*)?(?:nakit\s*)?iade"
+    rf"|(?:nakit\s*)?iade\s*[:\-]?\s*%\s*\d+(?:[.,]\d+)?",
     re.IGNORECASE,
 )
 
