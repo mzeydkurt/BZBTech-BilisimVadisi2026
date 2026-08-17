@@ -91,7 +91,15 @@ export function CampaignTable({
             >
               <TableCell className="text-text-500">{campaign.bank_name}</TableCell>
 
-              <TableCell className="font-medium text-text-900">{campaign.title}</TableCell>
+              <TableCell className="font-medium text-text-900">
+                {campaign.title}
+                {/* Aynı sayfada birden çok kampanya varsa bu bilgi gizlenmez. */}
+                {campaign.sub_campaign_count > 0 && (
+                  <span className="ml-2 rounded border border-border px-1.5 py-0.5 text-xs font-normal text-text-500">
+                    {campaign.sub_campaign_count} alt kampanya
+                  </span>
+                )}
+              </TableCell>
 
               {/* Taksonomi backend'de üretilir; arayüz yalnızca gösterir. */}
               <TableCell className="text-text-500">
@@ -114,7 +122,11 @@ export function CampaignTable({
               </TableCell>
 
               <TableCell>
-                <StatusBadge status={campaign.status} datePrecision={campaign.date_precision} />
+                <StatusBadge
+                  status={campaign.status}
+                  datePrecision={campaign.date_precision}
+                  dateEvidence={campaign.date_evidence_text}
+                />
               </TableCell>
 
               <TableCell className="text-right">

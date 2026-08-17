@@ -9,6 +9,8 @@ import type { CampaignStatus, DatePrecision } from "@/types/api";
 interface StatusBadgeProps {
   status: CampaignStatus;
   datePrecision?: DatePrecision;
+  /** Tarihin kaynaktaki dayanağı; "bu tarih nereden geldi?" sorusunu yanıtlar. */
+  dateEvidence?: string | null;
 }
 
 const STATUS_LABELS: Record<CampaignStatus, string> = {
@@ -40,9 +42,12 @@ const PRECISION_NOTES: Partial<Record<DatePrecision, string>> = {
  * Türkiye Finans'ın hiçbir kampanyasında tarih bulunmuyor; bunları
  * "süresi dolmuş" göstermek yanlış bilgi üretirdi (§10.3).
  */
-export function StatusBadge({ status, datePrecision }: StatusBadgeProps) {
+export function StatusBadge({ status, datePrecision, dateEvidence }: StatusBadgeProps) {
   const precisionNote = datePrecision ? PRECISION_NOTES[datePrecision] : undefined;
-  const tooltip = [STATUS_TOOLTIPS[status], precisionNote].filter(Boolean).join(" ");
+  const evidenceNote = dateEvidence ? `Kaynaktaki ifade: “${dateEvidence}”` : undefined;
+  const tooltip = [STATUS_TOOLTIPS[status], precisionNote, evidenceNote]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <Tooltip>

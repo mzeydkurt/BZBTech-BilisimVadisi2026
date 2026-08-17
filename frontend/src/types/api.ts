@@ -77,8 +77,16 @@ export interface CampaignListItem {
   start_date: string | null;
   end_date: string | null;
   date_precision: DatePrecision;
+  /** Tarihin kaynaktaki dayanağı; yoksa null. */
+  date_evidence_text: string | null;
+  /** structured | conditions | body */
+  date_evidence_source: string | null;
   status: CampaignStatus;
   source_url: string;
+  /** Dolu ise bu kayıt bir ALT kampanyadır. */
+  parent_campaign_id: number | null;
+  /** Aynı sayfada yayımlanan alt kampanya sayısı. */
+  sub_campaign_count: number;
 }
 
 export interface SourceDocumentSummary {
@@ -107,6 +115,8 @@ export interface CampaignDetail extends CampaignListItem {
   last_seen_at: string;
   bank: Omit<Bank, "campaign_count">;
   source_document: SourceDocumentSummary | null;
+  /** Aynı sayfada yayımlanan alt kampanyalar. */
+  sub_campaigns: CampaignListItem[];
 }
 
 /** Sayfalı liste yanıtı. Boş `items` bir hata değildir. */
