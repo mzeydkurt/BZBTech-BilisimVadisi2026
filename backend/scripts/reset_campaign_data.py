@@ -35,10 +35,13 @@ from app.db.models import (
     CampaignMetric,
     Embedding,
     EntityCard,
+    GoldAnnotation,
     ScrapeRun,
 )
 from app.db.session import SessionLocal
 from app.logging_config import configure_logging, get_logger
+
+from scripts.verify_export import cozumle_dizin
 
 logger = get_logger(__name__)
 
@@ -96,6 +99,7 @@ def sifirla(
     export_dizini: Path,
     banka: str | None = None,
     kapsam: str = "kampanya",
+    gold_sil: bool = False,
     kuru: bool = False,
 ) -> ResetOzeti:
     """Kampanya tablolarını boşaltır.
@@ -105,6 +109,8 @@ def sifirla(
         export_dizini: Doğrulanmış dışa aktarma dizini.
         banka: Yalnızca bu banka kodu; None ise tümü.
         kapsam: `kampanya` (varsayılan) veya `tam` (+ source_documents).
+        gold_sil: True ise gold etiketleri de silinir. VARSAYILAN FALSE —
+            880 satırlık elle etiketleme işi kazara silinmesin.
         kuru: True ise yalnızca sayar, silmez.
 
     Returns:
@@ -142,7 +148,13 @@ def sifirla(
         "campaign_extractions": _say(session, CampaignExtraction, kampanya_idleri),
         "campaign_categories": _say(session, CampaignCategory, kampanya_idleri),
         "campaign_metrics": _say(session, CampaignMetric, kampanya_idleri),
+        # Polimorfik kayıtlar: yalnızca kampanya türündekiler.
+        "entity_cards (campaign)": _say_polimorfik(session, EntityCard, kampanya_idleri),
+        "embeddings (campaign)": _say_polimorfik(session, Embedding, kampanya_idleri),
+        "scrape_runs": _say_scrape_runs(session, bank_id),
     }
+    if gold_sil:
+        ozeti.silinen["gold_annotations"] = _say_gold(session, kampanya_idleri)
 
     if kuru:
         return ozeti
@@ -150,6 +162,18 @@ def sifirla(
     if not kampanya_idleri:
         logger.info("silinecek_kampanya_yok", banka=banka)
         return ozeti
+
+    if gold_sil:
+        # ⚠️ SIRA ÖNEMLİ: kampanyalardan ÖNCE. `gold_annotations.campaign_id`
+        # FK'si `SET NULL` olduğu için kampanyalar önce silinirse bağ kopar ve
+        # bu sorgu hiçbir satır bulamaz.
+        #
+        # Elle etiketleme işi; yalnızca açık `--gold-sil` ile ve doğrulanmış
+        # dışa aktarma varken silinir. Dosyada kararlı anahtarla duruyor.
+        logger.warning("gold_etiketleri_siliniyor", banka=banka)
+        session.execute(
+            delete(GoldAnnotation).where(GoldAnnotation.campaign_id.in_(kampanya_idleri))
+        )
 
     # Polimorfik kayıtlar FK taşımıyor; elle temizlenir.
     session.execute(
@@ -193,6 +217,48 @@ def _say(session: Session, model: type, kampanya_idleri: list[int]) -> int:
     )
 
 
+def _say_polimorfik(session: Session, model: type, kampanya_idleri: list[int]) -> int:
+    """Polimorfik tabloda kampanya türündeki satır sayısını döndürür."""
+    from sqlalchemy import func
+
+    if not kampanya_idleri:
+        return 0
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(model)
+            .where(model.entity_type == "campaign", model.entity_id.in_(kampanya_idleri))
+        )
+        or 0
+    )
+
+
+def _say_gold(session: Session, kampanya_idleri: list[int]) -> int:
+    """Silinecek gold etiketi sayısını döndürür."""
+    from sqlalchemy import func
+
+    if not kampanya_idleri:
+        return 0
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(GoldAnnotation)
+            .where(GoldAnnotation.campaign_id.in_(kampanya_idleri))
+        )
+        or 0
+    )
+
+
+def _say_scrape_runs(session: Session, bank_id: int | None) -> int:
+    """Silinecek kazıma çalıştırması sayısını döndürür."""
+    from sqlalchemy import func
+
+    sorgu = select(func.count()).select_from(ScrapeRun)
+    if bank_id is not None:
+        sorgu = sorgu.where(ScrapeRun.bank_id == bank_id)
+    return session.scalar(sorgu) or 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Sıfırlamayı çalıştırır."""
     parser = argparse.ArgumentParser(
@@ -207,6 +273,11 @@ def main(argv: list[str] | None = None) -> int:
         default="kampanya",
         help="'tam' source_documents'i de siler (ÖNERİLMEZ)",
     )
+    parser.add_argument(
+        "--gold-sil",
+        action="store_true",
+        help="Gold etiketlerini de sil (VARSAYILAN HAYIR — elle etiketleme işi)",
+    )
     parser.add_argument("--kuru", action="store_true", help="Ne silineceğini yazar, silmez")
     args = parser.parse_args(argv)
     configure_logging()
@@ -215,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Silme için --onay SIL gerekli. Ne silineceğini görmek için --kuru kullanın.")  # noqa: T201
         return 2
 
-    export_dizini = Path(args.export)
+    export_dizini = cozumle_dizin(args.export)
     yedek: Path | None = None
     if not args.kuru:
         yedek = _yedek_al(get_settings().database_url)
@@ -229,6 +300,7 @@ def main(argv: list[str] | None = None) -> int:
                 export_dizini=export_dizini,
                 banka=args.banka,
                 kapsam=args.kapsam,
+                gold_sil=args.gold_sil,
                 kuru=args.kuru,
             )
     except (PermissionError, ValueError) as exc:
@@ -242,6 +314,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {ad:24} {adet:6}")  # noqa: T201
     if args.kapsam == "kampanya":
         print("\n  source_documents      KORUNDU (ham arşiv indeksi)")  # noqa: T201
+    if not args.gold_sil:
+        print("  gold_annotations      KORUNDU (--gold-sil ile silinir)")  # noqa: T201
     return 0
 
 

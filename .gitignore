@@ -30,6 +30,8 @@ backend/data/app.db-shm
 backend/data/raw_html/
 backend/data/exports/*
 !backend/data/exports/.gitkeep
+# Göç ve sıfırlama öncesi alınan SQLite kopyaları (dosya başına ~10 MB).
+backend/data/backups/
 
 # ── Ortam ─────────────────────────────────────────────────
 .env

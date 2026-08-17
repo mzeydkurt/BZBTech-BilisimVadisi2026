@@ -62,8 +62,13 @@ def main(argv: list[str] | None = None) -> int:
                 json.dumps(
                     {
                         "order": sira,
+                        # ⚠️ KARARLI KİMLİK ÖNCE. `campaign_id` yeniden
+                        # kazımada değişir; yalnızca ona güvenilirse etiketleme
+                        # arayüzü YANLIŞ kampanyayı gösterir.
+                        "campaign_key": aday.campaign_key,
                         "campaign_id": aday.campaign_id,
                         "bank_code": aday.bank_code,
+                        "external_slug": aday.external_slug,
                         "title": aday.title,
                         "source_url": aday.source_url,
                         "method": annotation_method(sira),

@@ -258,6 +258,23 @@ def yeniden_isle() -> int:
     )
 
 
+def urun_kazi() -> int:
+    """Ürün/finansman sayfalarından limit, varyant ve oran çıkarır.
+
+    ⚠️ AĞA ÇIKAR. Hesaplayıcılar SORGULANMAZ; yalnızca form nitelikleri
+    (dropdown seçenekleri, tutar sınırları, izinli vadeler) okunur.
+    """
+    return _calistir([_python(), "-m", "scripts.scrape_products", *_ek_argumanlar()], cwd=BACKEND)
+
+
+def urun_kazi_deneme() -> int:
+    """Ürün kazımasını veritabanına yazmadan dener (ağa çıkar)."""
+    ek = _ek_argumanlar() or ["--tumu"]
+    return _calistir(
+        [_python(), "-m", "scripts.scrape_products", *ek, "--kuru"], cwd=BACKEND
+    )
+
+
 def siniflandir() -> int:
     """Kampanyaları dört eksende sınıflandırır ve raporu üretir.
 
@@ -348,6 +365,44 @@ def _ek_argumanlar() -> list[str]:
     return sys.argv[2:]
 
 
+def disa_aktar() -> int:
+    """Veri setini kararlı anahtarlarla dışa aktarır (ağa çıkmaz).
+
+    Kampanya verisi silinmeden önce ZORUNLUDUR: gold etiketleri autoincrement
+    `campaign_id`'ye bağlı ve yeniden kazımada o id'ler değişiyor.
+    """
+    return _calistir([_python(), "-m", "scripts.export_dataset", *_ek_argumanlar()], cwd=BACKEND)
+
+
+def disa_aktar_dogrula() -> int:
+    """Dışa aktarmayı doğrular ve damga basar (ağa çıkmaz).
+
+    Damga olmadan `sifirla` çalışmayı reddeder.
+    """
+    return _calistir([_python(), "-m", "scripts.verify_export", *_ek_argumanlar()], cwd=BACKEND)
+
+
+def sifirla() -> int:
+    """Kampanya verisini sıfırlar. VERİ SİLER.
+
+    Doğrulanmış dışa aktarma ve `--onay SIL` gerektirir; SQLite dosyası önce
+    `data/backups/` altına kopyalanır. `source_documents` korunur.
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.reset_campaign_data", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
+def gold_yeniden_bagla() -> int:
+    """Gold etiketlerini yeniden kazınmış kampanyalara bağlar (ağa çıkmaz)."""
+    return _calistir([_python(), "-m", "scripts.reanchor_gold", *_ek_argumanlar()], cwd=BACKEND)
+
+
+def gold_denetle() -> int:
+    """Kanıtı doğrulanamayan gold etiketlerini raporlar (ağa çıkmaz)."""
+    return _calistir([_python(), "-m", "scripts.gold_recheck", *_ek_argumanlar()], cwd=BACKEND)
+
+
 def test() -> int:
     """Testleri kapsam raporuyla çalıştırır."""
     return _calistir(
@@ -414,6 +469,8 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "scrape-deneme": (scrape_deneme, "Kazımayı veritabanına yazmadan dener"),
     "geri-doldur": (geri_doldur, "Banka kategorisini arşivden geri doldurur (ağa çıkmaz)"),
     "yeniden-isle": (yeniden_isle, "Temiz metni arşivden yeniden üretir (ağa çıkmaz)"),
+    "urun-kazi": (urun_kazi, "Ürün/finansman limit, varyant ve oranlarını çeker"),
+    "urun-kazi-deneme": (urun_kazi_deneme, "Ürün kazımasını yazmadan dener"),
     "siniflandir": (siniflandir, "Kampanyaları dört eksende sınıflandırır (ağa çıkmaz)"),
     "llm-saglik": (llm_saglik, "LLM sağlayıcısının durumunu kontrol eder"),
     "gold-ornek": (gold_ornek, "Gold set örneklemi seçer (ağa çıkmaz)"),
@@ -428,6 +485,11 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
         kesif_hesaplayici,
         "Hesaplayıcı formlarını envanterler (Playwright)",
     ),
+    "disa-aktar": (disa_aktar, "Veri setini kararlı anahtarlarla dışa aktarır"),
+    "disa-aktar-dogrula": (disa_aktar_dogrula, "Dışa aktarmayı doğrular ve damgalar"),
+    "sifirla": (sifirla, "Kampanya verisini sıfırlar (VERİ SİLER, onay ister)"),
+    "gold-yeniden-bagla": (gold_yeniden_bagla, "Gold etiketlerini yeniden bağlar"),
+    "gold-denetle": (gold_denetle, "Kanıtı doğrulanamayan gold etiketlerini raporlar"),
     "test": (test, "Testleri kapsam raporuyla çalıştırır"),
     "lint": (lint, "ruff + mypy + tsc denetimi"),
     "bicimle": (bicimle, "Kodu biçimlendirir"),

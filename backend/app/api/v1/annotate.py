@@ -45,9 +45,52 @@ SAMPLE_PATH: Final[Path] = REPO_ROOT / "data" / "gold" / "gold_sample.jsonl"
 UI_PATH: Final[Path] = Path(__file__).resolve().parents[2] / "static" / "annotate.html"
 
 
-def _sample_index() -> dict[int, dict[str, Any]]:
-    """Örneklemi kampanya kimliğine göre indeksler."""
-    return {int(kayit["campaign_id"]): kayit for kayit in load_sample(SAMPLE_PATH)}
+def _key_to_id(session: DbSession) -> dict[str, int]:
+    """Kararlı anahtar → güncel `campaign_id` haritası."""
+    satirlar = session.execute(
+        select(Campaign.id, Bank.code, Campaign.external_slug).join(
+            Bank, Bank.id == Campaign.bank_id
+        )
+    ).all()
+    return {campaign_key(kod, slug): cid for cid, kod, slug in satirlar}
+
+
+def _resolve_id(session: DbSession, kayit: dict[str, Any]) -> int | None:
+    """Örneklem kaydını GÜNCEL kampanya kimliğine çözer.
+
+    ⚠️ Önce `campaign_key`, sonra `campaign_id`. Kimlik autoincrement olduğu
+    için veri yeniden kazındığında değişir; yalnızca id'ye güvenilirse arayüz
+    YANLIŞ kampanyayı gösterir ve etiketler yanlış kayda yazılır.
+
+    Args:
+        session: Veritabanı oturumu.
+        kayit: `gold_sample.jsonl` satırı.
+
+    Returns:
+        Güncel kampanya kimliği; kampanya artık yoksa None.
+    """
+    anahtar = kayit.get("campaign_key")
+    if anahtar:
+        cid = _key_to_id(session).get(str(anahtar))
+        if cid is not None:
+            return cid
+        # Anahtar var ama kampanya yok: yeniden kazımada düşmüş olabilir.
+        # id'ye DÜŞÜLMEZ — başka bir kampanyayı göstermek yanlış veri üretir.
+        return None
+
+    # Eski biçimli örneklem (anahtarsız): id ile devam edilir.
+    kimlik = kayit.get("campaign_id")
+    return int(kimlik) if kimlik is not None else None
+
+
+def _sample_index(session: DbSession) -> dict[int, dict[str, Any]]:
+    """Örneklemi GÜNCEL kampanya kimliğine göre indeksler."""
+    indeks: dict[int, dict[str, Any]] = {}
+    for kayit in load_sample(SAMPLE_PATH):
+        cid = _resolve_id(session, kayit)
+        if cid is not None:
+            indeks[cid] = kayit
+    return indeks
 
 
 @router.get("/ui", response_class=HTMLResponse, include_in_schema=False)
@@ -106,9 +149,10 @@ def read_next(
     for kayit in load_sample(SAMPLE_PATH):
         if method and kayit.get("method") != method:
             continue
-        if int(kayit["campaign_id"]) in etiketli:
+        cid = _resolve_id(session, kayit)
+        if cid is None or cid in etiketli:
             continue
-        return _build(session, int(kayit["campaign_id"]))
+        return _build(session, cid)
 
     raise HTTPException(status.HTTP_404_NOT_FOUND, "Etiketlenecek kampanya kalmadı")
 
@@ -234,7 +278,7 @@ def _build(session: DbSession, campaign_id: int) -> CampaignForAnnotation:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Kampanya bulunamadı: {campaign_id}")
 
     campaign, bank, clean_text = satir
-    ornek = _sample_index().get(campaign_id, {})
+    ornek = _sample_index(session).get(campaign_id, {})
 
     mevcut = list(
         session.scalars(

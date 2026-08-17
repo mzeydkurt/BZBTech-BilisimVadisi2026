@@ -72,11 +72,17 @@ class GoldCandidate:
 
     campaign_id: int
     bank_code: str
+    external_slug: str
     title: str
     source_url: str
     clean_text: str
     product_types: tuple[str, ...]
     difficulty_reasons: tuple[str, ...]
+
+    @property
+    def campaign_key(self) -> str:
+        """Kararlı kimlik. `campaign_id` yeniden kazımada değişir, bu değişmez."""
+        return campaign_key(self.bank_code, self.external_slug)
 
     @property
     def is_difficult(self) -> bool:
@@ -162,6 +168,7 @@ def collect_candidates(session: Session) -> tuple[list[GoldCandidate], int, int]
         select(
             Campaign.id,
             Bank.code,
+            Campaign.external_slug,
             Campaign.title,
             Campaign.source_url,
             Campaign.start_date,
@@ -186,7 +193,7 @@ def collect_candidates(session: Session) -> tuple[list[GoldCandidate], int, int]
     few_shot = 0
     bos_metin = 0
 
-    for kimlik, banka, baslik, url, baslangic, bitis, metin in satirlar:
+    for kimlik, banka, slug, baslik, url, baslangic, bitis, metin in satirlar:
         if not metin or not metin.strip():
             bos_metin += 1
             continue
@@ -200,6 +207,7 @@ def collect_candidates(session: Session) -> tuple[list[GoldCandidate], int, int]
             GoldCandidate(
                 campaign_id=kimlik,
                 bank_code=banka,
+                external_slug=slug,
                 title=baslik,
                 source_url=url,
                 clean_text=metin,

@@ -114,13 +114,128 @@ başlatır. Adımları ayrı ayrı çalıştırmak için:
 python dev.py migrate        # veritabanı şemasını oluştur
 python dev.py seed           # 10 banka + terminoloji sözlüğü
 python dev.py api            # backend'i başlat
-python dev.py scrape         # kampanya verisini topla (internet gerektirir)
 python dev.py test           # testler + kapsam raporu
 python dev.py lint           # ruff + mypy + tsc
 python dev.py                # tüm komutları listeler
 ```
 
 API dokümanı: `http://localhost:8000/docs`
+
+### Veri toplama
+
+⚠️ Bu komutlar gerçek banka sitelerine istek atar. `robots.txt` kurallarına
+uyulur, host başına 1,5 saniye bekleme uygulanır ve her yanıt ham HTML olarak
+arşivlenir.
+
+```bash
+python dev.py scrape                    # 10 bankadan kampanya verisi
+python dev.py scrape --banka ziraat_katilim
+python dev.py scrape-deneme             # veritabanına yazmadan dene
+python dev.py urun-kazi                 # ürün/finansman limit, varyant ve oranları
+python dev.py urun-kazi-deneme
+```
+
+Hesaplayıcılar **sorgulanmaz**: yalnızca form nitelikleri okunur (dropdown
+seçenekleri = ürün varyantları, tutar sınırları, izinli vadeler). Bankaya ek
+yük binmez ve değerler bankanın yayımladığı yapısal limit olduğu için
+bağlayıcı kalır.
+
+### Ağa çıkmayan işlemler
+
+Toplanmış veriyle çalışır; bankalara yeni istek gitmez.
+
+```bash
+python dev.py yeniden-isle       # temiz metni ham HTML arşivinden yeniden üret
+python dev.py geri-doldur        # banka kategorisini arşivden doldur
+python dev.py siniflandir        # dört eksenli taksonomi
+python dev.py cikarim            # metinden bilgi çıkarımı
+python dev.py degerlendir        # gold set'e karşı F1
+python dev.py ablation           # rule_only / llm_only / hybrid karşılaştırması
+python dev.py kart-uret          # varlık kartları (SPRINT 5 gömme girdisi)
+```
+
+### Gold set (cevap anahtarı)
+
+```bash
+python dev.py gold-ornek         # örneklem seç
+python dev.py etiketle           # etiketleme arayüzü → /api/v1/annotate/ui
+python dev.py gold-durum         # ilerleme + kanıt denetimi
+python dev.py gold-denetle       # kanıtı doğrulanamayan etiketleri raporla
+```
+
+### Veri yenileme zinciri
+
+Kazıma mantığı değiştiğinde veri sıfırdan toplanır. Adımlar sırayla yürür ve
+her biri bir öncekine bağlıdır.
+
+```bash
+# 1. Kararlı anahtarlarla dışa aktar (campaign_id yerine bank_code:slug)
+python dev.py disa-aktar
+#    -> "Dışa aktarıldı: data/exports/20260817T161318"
+#    Komut bu yolu ekrana yazar; sonraki adımlara olduğu gibi kopyalayın.
+
+# 2. Doğrula ve damgala — damga olmadan silme REDDEDİLİR
+python dev.py disa-aktar-dogrula --dizin data/exports/20260817T161318
+
+# 3. Ne silineceğini gör (hiçbir şey silmez)
+python dev.py sifirla --export data/exports/20260817T161318 --kuru
+
+# 4. Kampanya verisini sıfırla — BANKA BANKA önerilir
+python dev.py sifirla --export data/exports/20260817T161318 --banka vakif_katilim --onay SIL
+
+# 5. Yeniden kaz ve sonucu gör
+python dev.py scrape --banka vakif_katilim
+
+# 6. Gold etiketlerini yeni kimliklere bağla
+python dev.py gold-yeniden-bagla
+```
+
+Gold etiketlerini de silmek için `--gold-sil` eklenir; varsayılan olarak
+korunurlar. Dizin yolu `backend/` önekiyle de kabul edilir.
+
+⚠️ Örneklem dosyası (`data/gold/gold_sample.jsonl`) `campaign_id` de taşır.
+Sıfırlamadan sonra `python dev.py gold-ornek` yeniden çalıştırılmalıdır;
+aksi hâlde eski örneklem güncel olmayan kimliklere işaret eder.
+
+Ne silinir, ne kalır:
+
+| Silinir | Kalır |
+|---|---|
+| `campaigns`, `campaign_metrics`, `campaign_categories`, `campaign_extractions` | **`gold_annotations`** — kimlik `campaign_key`'de, bağ NULL'a düşer |
+| `entity_cards` (kampanya türü), `scrape_runs` | `source_documents` — ham arşiv indeksi |
+| | **`data/raw_html/`** — ham HTML asla silinmez |
+
+⚠️ `app.db` dosyasını **elle silmek** başka bir şeydir: gold set de o dosyanın
+içinde olduğu için tamamen kaybedilir. `sifirla` komutu dosyaya dokunmaz,
+yalnızca kampanya satırlarını boşaltır ve öncesinde `data/backups/` altına
+kopya alır.
+
+Sıfırlamadan önce ne gideceğini görmek için:
+
+```bash
+python dev.py sifirla --export <dizin> --kuru
+```
+
+### Keşif (Playwright gerektirir)
+
+Bankaların JavaScript ile doldurduğu kampanya listelerinin JSON uçlarını ve
+hesaplayıcı formlarını bir kez envanterler. Sonuç veritabanına yazılır;
+üretim hattı Playwright'sız çalışır.
+
+```bash
+python dev.py kur --playwright   # tek seferlik, ~400 MB
+python dev.py kesif-endpoint     # → docs/endpoint_discovery.md
+python dev.py kesif-hesaplayici  # → docs/calculator_inventory.md
+```
+
+### Diğer
+
+```bash
+python dev.py llm-saglik     # LLM sağlayıcısının durumu (SPRINT 3A: mock)
+python dev.py bicimle        # kodu biçimlendir (ruff format + fix)
+python dev.py derle-web      # arayüzü üretim için derle
+python dev.py migrate-geri   # son göçü geri al (VERİ SİLEBİLİR, onay ister)
+```
 
 ### dev.py kullanmadan
 
