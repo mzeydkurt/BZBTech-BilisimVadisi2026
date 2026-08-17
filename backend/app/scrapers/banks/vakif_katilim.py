@@ -33,13 +33,11 @@ gizli içerik de ayrıştırılır.
 
 from __future__ import annotations
 
-from datetime import date
 from typing import Final
 from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
-from app.core.normalization.date_tr import parse_date_range_tr
 from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
@@ -225,7 +223,6 @@ class VakifKatilimScraper(BaseScraper):
 
         body_text = clean_html(html, bank_code=self.bank_code, title=title)
         conditions = extract_section_text(html, CONDITION_KEYWORDS)
-        start_date, end_date, precision = self._parse_dates(html, conditions, body_text)
 
         return RawCampaign(
             external_slug=slug_from_url_path(url),
@@ -238,36 +235,16 @@ class VakifKatilimScraper(BaseScraper):
             bank_category=hint.category_hint,
             # Keşiften gelmediyse adresten yeniden çıkarılır.
             segment=hint.segment_hint or self.segment_from_url(url),
-            start_date=start_date,
-            end_date=end_date,
-            date_precision=precision,
             is_archived=hint.discovery_method == "archive",
         )
 
-    @staticmethod
-    def _parse_dates(
-        html: str, conditions: str | None, body_text: str
-    ) -> tuple[date | None, date | None, str]:
-        """Tarihi çıkarır; ayrıştırma normalizasyon kütüphanesine devredilir.
+    def structured_period_text(self, html: str) -> str | None:
+        """ "Kampanya Geçerlilik Tarihi" bölümünün metni.
 
         Biçim Türkçe ay adlı:
             "Kampanya Geçerlilik Tarihi: 02 Ocak 2026 - 31 Aralık 2026"
-
-        Önce tarih bölümü, sonra koşullar, en son tüm gövde taranır: gövdede
-        başka tarihler (duyuru, güncelleme) bulunabiliyor.
-
-        Returns:
-            (başlangıç, bitiş, kesinlik).
         """
-        for kaynak in (extract_section_text(html, DATE_SECTION_KEYWORDS), conditions, body_text):
-            if not kaynak:
-                continue
-            start, end, precision = parse_date_range_tr(kaynak)
-            if precision != "unknown":
-                return start, end, precision
-
-        # ⚠️ Bulunamadıysa UYDURULMAZ.
-        return None, None, "unknown"
+        return extract_section_text(html, DATE_SECTION_KEYWORDS)
 
     @staticmethod
     def _first_paragraph(text: str, *, max_length: int = 500) -> str | None:

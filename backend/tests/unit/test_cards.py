@@ -81,6 +81,8 @@ def kampanya(db_session: Session) -> Campaign:
         description="Market alışverişlerinde taksit fırsatı.",
         status="active",
         date_precision="exact",
+        date_evidence_text="01.01.2026 - 31.12.2026",
+        date_evidence_source="body",
         start_date=date(2026, 8, 1),
         end_date=date(2026, 12, 31),
     )

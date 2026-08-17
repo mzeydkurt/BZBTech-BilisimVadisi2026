@@ -258,11 +258,13 @@ class TestDetayAyristirma:
         tmp_path: Path,
         fixtures: dict[str, str],
         make_transport: Callable[..., httpx.MockTransport],
+        donem_uygula,  # type: ignore[no-untyped-def]
     ) -> None:
         """ "Kampanya Dönemi 11-08-2026 - 31-08-2026" — canlı sayfadaki biçim."""
         scraper = _scraper(tmp_path, make_transport({}))
         try:
             ham = scraper.parse_detail(fixtures["donem"], ZEN_URL, self._hint())
+            donem_uygula(scraper, fixtures["donem"], ham)
         finally:
             scraper.close()
 
@@ -276,11 +278,13 @@ class TestDetayAyristirma:
         tmp_path: Path,
         fixtures: dict[str, str],
         make_transport: Callable[..., httpx.MockTransport],
+        donem_uygula,  # type: ignore[no-untyped-def]
     ) -> None:
         """⚠️ Başlangıç UYDURULMAZ; `partial` kalır."""
         scraper = _scraper(tmp_path, make_transport({}))
         try:
             ham = scraper.parse_detail(fixtures["son_gun"], TEKNOSA_URL, self._hint(TEKNOSA_URL))
+            donem_uygula(scraper, fixtures["son_gun"], ham)
         finally:
             scraper.close()
 
@@ -294,11 +298,13 @@ class TestDetayAyristirma:
         tmp_path: Path,
         fixtures: dict[str, str],
         make_transport: Callable[..., httpx.MockTransport],
+        donem_uygula,  # type: ignore[no-untyped-def]
     ) -> None:
         """⚠️ "10 Temmuz – 7 Ağustos 2026" — başlangıçta yıl yazılı değil."""
         scraper = _scraper(tmp_path, make_transport({}))
         try:
             ham = scraper.parse_detail(fixtures["aralik"], AILE_URL, self._hint(AILE_URL))
+            donem_uygula(scraper, fixtures["aralik"], ham)
         finally:
             scraper.close()
 
@@ -307,12 +313,16 @@ class TestDetayAyristirma:
         assert ham.end_date == date(2026, 8, 7)
 
     def test_tarih_yoksa_uydurulmaz(
-        self, tmp_path: Path, make_transport: Callable[..., httpx.MockTransport]
+        self,
+        tmp_path: Path,
+        make_transport: Callable[..., httpx.MockTransport],
+        donem_uygula,  # type: ignore[no-untyped-def]
     ) -> None:
         html = "<html><body><h1>Tarihsiz Kampanya</h1><p>Koşullar burada.</p></body></html>"
         scraper = _scraper(tmp_path, make_transport({}))
         try:
             ham = scraper.parse_detail(html, ZEN_URL, self._hint())
+            donem_uygula(scraper, html, ham)
         finally:
             scraper.close()
 

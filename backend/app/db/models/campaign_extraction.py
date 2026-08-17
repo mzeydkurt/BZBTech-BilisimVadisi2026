@@ -54,6 +54,12 @@ class CampaignExtraction(Base):
     evidence_char_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
     evidence_source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Ofsetlerin ait olduğu belge. Bu bağ olmadan `clean_text` yenilendiğinde
+    # eski ofsetlerin geçersizleştiği anlaşılamaz ve doğrulama sessizce yanılır.
+    source_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("source_documents.id", ondelete="SET NULL"), nullable=True
+    )
+
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
     extraction_method: Mapped[str] = mapped_column(Text, nullable=False, default="rule")
 

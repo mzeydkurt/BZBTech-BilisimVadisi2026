@@ -31,6 +31,8 @@ def ornek_kampanyalar(seeded_session: Session) -> None:
                 start_date=date(2026, 8, 1),
                 end_date=date(2026, 8, 31),
                 date_precision="exact",
+                date_evidence_text="01.01.2026 - 31.12.2026",
+                date_evidence_source="body",
                 status="active",
             ),
             Campaign(
@@ -52,6 +54,8 @@ def ornek_kampanyalar(seeded_session: Session) -> None:
                 start_date=date(2026, 1, 1),
                 end_date=date(2026, 3, 31),
                 date_precision="exact",
+                date_evidence_text="01.01.2026 - 31.12.2026",
+                date_evidence_source="body",
                 status="expired",
             ),
             Campaign(
@@ -70,6 +74,8 @@ def ornek_kampanyalar(seeded_session: Session) -> None:
                 start_date=date(2026, 12, 1),
                 end_date=date(2026, 12, 31),
                 date_precision="exact",
+                date_evidence_text="01.01.2026 - 31.12.2026",
+                date_evidence_source="body",
                 status="upcoming",
             ),
         ]

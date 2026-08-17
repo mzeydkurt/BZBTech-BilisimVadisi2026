@@ -30,13 +30,11 @@ Başlıktan türetme denemesi anlamsız; `href` birebir okunur.
 
 from __future__ import annotations
 
-from datetime import date
 from typing import Final
 from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
-from app.core.normalization.date_tr import parse_date_range_tr
 from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
@@ -245,7 +243,6 @@ class KuveytTurkScraper(BaseScraper):
         body_text = clean_html(html, bank_code=self.bank_code, title=title)
         # ⚠️ Oran/taksit bilgisi yapısal alanda değil, koşul metninde geçiyor.
         conditions = extract_section_text(html, CONDITION_KEYWORDS)
-        start_date, end_date, precision = self._parse_dates(conditions, body_text)
 
         return RawCampaign(
             # ⚠️ Slug 100+ karakter olabiliyor; href'ten birebir okunur.
@@ -258,24 +255,8 @@ class KuveytTurkScraper(BaseScraper):
             category=None,
             bank_category=hint.category_hint,
             segment=hint.segment_hint or self.segment_from_url(url),
-            start_date=start_date,
-            end_date=end_date,
-            date_precision=precision,
             is_archived=hint.discovery_method == "archive",
         )
-
-    @staticmethod
-    def _parse_dates(
-        conditions: str | None, body_text: str
-    ) -> tuple[date | None, date | None, str]:
-        """Tarihi koşul metninden, bulunamazsa gövdeden çıkarır."""
-        for kaynak in (conditions, body_text):
-            if not kaynak:
-                continue
-            start, end, precision = parse_date_range_tr(kaynak)
-            if precision != "unknown":
-                return start, end, precision
-        return None, None, "unknown"
 
     @staticmethod
     def _first_paragraph(text: str, *, max_length: int = 500) -> str | None:

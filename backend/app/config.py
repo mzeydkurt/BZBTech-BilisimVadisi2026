@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     scraper_respect_robots: bool = True
     raw_html_dir: str = "./data/raw_html"
 
+    # Bu yıldan önce BİTMİŞ kampanya veritabanına yazılmaz (ham HTML arşivlenir).
+    # Bankaların bir kısmı biten kampanyayı sayfadan kaldırmayı unutuyor.
+    min_campaign_year: int = 2025
+
     # ── On-premise ────────────────────────────────────────
     # true iken sistem hiçbir dış HTTP çağrısı yapmaz (scraping dahil devre dışı).
     airgap_mode: bool = False

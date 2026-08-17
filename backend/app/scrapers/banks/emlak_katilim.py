@@ -16,7 +16,6 @@ from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
-from app.core.normalization.date_tr import parse_date_range_tr
 from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
@@ -172,12 +171,9 @@ class EmlakKatilimScraper(BaseScraper):
         conditions = extract_section_text(html, CONDITION_KEYWORDS)
         exclusions = extract_section_text(html, EXCLUSION_KEYWORDS)
 
-        # Tarih yapısal alanda DEĞİL, koşul metninin içinde serbest metin olarak
-        # geçiyor. Önce koşullar taranır, bulunamazsa tüm gövdeye bakılır.
-        start_date, end_date, precision = parse_date_range_tr(conditions or "")
-        if precision == "unknown":
-            start_date, end_date, precision = parse_date_range_tr(body_text)
-
+        # ⚠️ Tarih burada ÇIKARILMAZ. Yapısal alan yok; dönem koşul metninin
+        # içinde serbest metin olarak geçiyor ve bu `BaseScraper._apply_period()`
+        # tarafından ortak yakınlık kuralıyla çözülür.
         sms_keyword, sms_number = self._parse_sms(body_text)
         coupon = self._parse_coupon(body_text)
 
@@ -198,9 +194,6 @@ class EmlakKatilimScraper(BaseScraper):
             category=None,
             bank_category=hint.category_hint,
             segment=hint.segment_hint,
-            start_date=start_date,
-            end_date=end_date,
-            date_precision=precision,
             participation_method=participation_method,
             sms_keyword=sms_keyword,
             sms_number=sms_number,

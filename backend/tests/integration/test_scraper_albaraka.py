@@ -154,10 +154,12 @@ class TestDetayAyristirma:
         tmp_path: Path,
         fixtures: dict[str, str],
         make_transport: Callable[..., httpx.MockTransport],
+        donem_uygula,  # type: ignore[no-untyped-def]
     ) -> None:
         scraper = _scraper(tmp_path, make_transport({}))
         try:
             ham = scraper.parse_detail(fixtures["detay"], FATURA_URL, self._hint())
+            donem_uygula(scraper, fixtures["detay"], ham)
         finally:
             scraper.close()
 

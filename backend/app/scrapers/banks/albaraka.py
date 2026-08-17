@@ -33,13 +33,11 @@ Tarih tek ve temiz: `DD.MM.YYYY - DD.MM.YYYY` → `date_precision="exact"`.
 
 from __future__ import annotations
 
-from datetime import date
 from typing import Final
 from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
-from app.core.normalization.date_tr import parse_date_range_tr
 from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
@@ -202,7 +200,6 @@ class AlbarakaScraper(BaseScraper):
 
         body_text = clean_html(html, bank_code=self.bank_code, title=title)
         conditions = extract_section_text(html, CONDITION_KEYWORDS)
-        start_date, end_date, precision = self._parse_dates(html, conditions, body_text)
 
         return RawCampaign(
             # ⚠️ Sonekler (-1, _1, -14) korunur; farklı dönem demektir.
@@ -215,24 +212,18 @@ class AlbarakaScraper(BaseScraper):
             category=None,
             bank_category=hint.category_hint,
             segment=hint.segment_hint,
-            start_date=start_date,
-            end_date=end_date,
-            date_precision=precision,
             is_archived=False,
         )
 
-    @staticmethod
-    def _parse_dates(
-        html: str, conditions: str | None, body_text: str
-    ) -> tuple[date | None, date | None, str]:
-        """Tarihi "Kampanya Başlangıç ve Bitiş Tarihi" bölümünden çıkarır."""
-        for kaynak in (extract_section_text(html, DATE_SECTION_KEYWORDS), conditions, body_text):
-            if not kaynak:
-                continue
-            start, end, precision = parse_date_range_tr(kaynak)
-            if precision != "unknown":
-                return start, end, precision
-        return None, None, "unknown"
+    def structured_period_text(self, html: str) -> str | None:
+        """ "Kampanya Başlangıç ve Bitiş Tarihi" bölümünün metni.
+
+        ⚠️ Bu bölüm menü metnini de yakalayabiliyor. Ölçüldü — #290'da alan
+        "Albaraka Mobil Mobil Bankacılık Aç ... Kampanya Başlangıç ve Bitiş
+        01.01.2020 - 31.12..." olarak çıkıyor ve kayıt `2020-01-01` başlangıcıyla
+        `exact` işaretleniyordu. `dates.STRUCTURED_MAX_CHARS` eşiği bunu yakalar.
+        """
+        return extract_section_text(html, DATE_SECTION_KEYWORDS)
 
     @staticmethod
     def _first_paragraph(text: str, *, max_length: int = 500) -> str | None:

@@ -181,11 +181,18 @@ class TestDetayAyristirma:
             discovery_method="sitemap",
         )
 
-    def test_saatli_tarih_cozulur(self, tmp_path: Path, sitemap_xml: str, detay_html: str) -> None:
+    def test_saatli_tarih_cozulur(
+        self,
+        tmp_path: Path,
+        sitemap_xml: str,
+        detay_html: str,
+        donem_uygula,  # type: ignore[no-untyped-def]
+    ) -> None:
         """⚠️ "15 Haziran 2026 saat 00.01 – 15 Temmuz 2026 saat 23.59"."""
         scraper = _scraper(tmp_path, _transport(sitemap_xml.encode("utf-8")))
         try:
             ham = scraper.parse_detail(detay_html, ALTIN_URL, self._hint())
+            donem_uygula(scraper, detay_html, ham)
         finally:
             scraper.close()
 

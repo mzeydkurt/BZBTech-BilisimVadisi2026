@@ -25,7 +25,6 @@ from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
-from app.core.normalization.date_tr import parse_date_range_tr
 from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import (
@@ -220,13 +219,10 @@ class HayatFinansScraper(BaseScraper):
         if table_text:
             conditions = f"{conditions}\n\n{table_text}" if conditions else table_text
 
-        # Tarih gövde metninde serbest biçimde geçiyor ve başlangıçta çoğunlukla
-        # yıl yazılmıyor ("16 Haziran - 31 Ağustos 2026"); bu durumda yıl bitişten
-        # devralınır ve kesinlik "inferred" olur.
-        start_date, end_date, precision = parse_date_range_tr(body_text)
-        if precision == "unknown" and conditions:
-            start_date, end_date, precision = parse_date_range_tr(conditions)
-
+        # ⚠️ Tarih burada ÇIKARILMAZ; `BaseScraper._apply_period()` çözer.
+        # Gövdede dönem serbest biçimde geçiyor ve başlangıçta çoğunlukla yıl
+        # yazılmıyor ("16 Haziran - 31 Ağustos 2026"); yıl bitişten devralınır
+        # ve kesinlik "inferred" olur.
         return RawCampaign(
             external_slug=slug_from_url_path(url),
             title=title,
@@ -237,9 +233,6 @@ class HayatFinansScraper(BaseScraper):
             category=None,
             bank_category=hint.category_hint,
             segment=hint.segment_hint,
-            start_date=start_date,
-            end_date=end_date,
-            date_precision=precision,
         )
 
     @staticmethod

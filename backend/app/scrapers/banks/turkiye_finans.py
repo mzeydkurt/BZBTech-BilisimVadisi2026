@@ -284,10 +284,9 @@ class TurkiyeFinansScraper(BaseScraper):
             category=None,
             bank_category=hint.category_hint,
             segment=hint.segment_hint,
-            # ⚠️ Tarih verisi YOK — uydurulmaz, NULL bırakılır.
-            start_date=None,
-            end_date=None,
-            date_precision="unknown",
+            # ⚠️ Yapısal tarih alanı YOK. Dönem, varsa, koşul metninde serbest
+            # biçimde geçer ve `BaseScraper._apply_period()` tarafından ortak
+            # yakınlık kuralıyla çözülür. Bulunamazsa NULL kalır — uydurulmaz.
             is_archived=hint.discovery_method == "archive",
         )
 

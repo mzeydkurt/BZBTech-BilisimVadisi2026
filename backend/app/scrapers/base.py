@@ -23,9 +23,20 @@ from app.db.base import utc_now
 from app.db.models import Bank, Campaign, ScrapeRun, SourceDocument
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_title
-from app.processing.dates import find_campaign_period
+from app.processing.dates import (
+    PeriodResult,
+    PeriodSource,
+    donem_gecerli_mi,
+    find_period_in_sources,
+)
 from app.scrapers.fetcher import Fetcher
-from app.scrapers.models import DiscoveredUrl, FetchResult, RawCampaign, ScrapeRunResult
+from app.scrapers.models import (
+    DiscoveredUrl,
+    FetchResult,
+    RawCampaign,
+    RawProduct,
+    ScrapeRunResult,
+)
 from app.services.campaign_service import compute_status
 from app.utils.hashing import canonicalize_url, sha256_text, url_hash
 
@@ -102,6 +113,103 @@ class BaseScraper(ABC):
         Returns:
             Çıkarılan kampanya veya sayfa kampanya değilse None.
         """
+
+    # ── ÇOK KAMPANYALI SAYFA ──────────────────────────────
+
+    def parse_page(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawCampaign]:
+        """Sayfadaki TÜM kampanyaları döndürür.
+
+        Varsayılan gerçekleme `parse_detail()` çıktısını listeye sarar. Tek
+        sayfada birden çok kampanya yayımlayan bankalar yalnızca bunu override
+        eder; `parse_detail` dokunulmadan kalır.
+
+        Args:
+            html: Sayfanın ham HTML'i.
+            url: Sayfanın (yönlendirme sonrası) adresi.
+            hint: Keşif aşamasından gelen bağlam bilgisi.
+
+        Returns:
+            Sayfadaki kampanyalar, SAYFADAKİ SIRAYLA. Kampanya yoksa boş liste.
+        """
+        raw = self.parse_detail(html, url, hint)
+        return [] if raw is None else [raw]
+
+    # ── ÜRÜN / FİNANSMAN TARAFI (opsiyonel) ───────────────
+
+    def discover_products(self) -> list[DiscoveredUrl]:
+        """Ürün/finansman sayfası adreslerini keşfeder.
+
+        Varsayılan boş liste: ürün sayfası olmayan banka hiçbir şey yazmaz ve
+        "veri yok" kendiliğinden belgelenir. Kampanya akışı bu metottan
+        etkilenmez.
+
+        Returns:
+            Çekilecek ürün adresleri.
+        """
+        return []
+
+    def parse_products(
+        self,
+        html: str,  # noqa: ARG002
+        url: str,  # noqa: ARG002
+        hint: DiscoveredUrl,  # noqa: ARG002
+    ) -> list[RawProduct]:
+        """Ürün sayfasından ürün, varyant ve oranları çıkarır.
+
+        Args:
+            html: Sayfanın ham HTML'i.
+            url: Sayfanın adresi.
+            hint: Keşiften gelen ürün türü/segment bilgisi.
+
+        Returns:
+            Sayfadaki ürünler; ürün yoksa boş liste.
+        """
+        return []
+
+    # ── ALT SINIFIN TARİH KONUSUNDA YAZACAĞI TEK METOD ────
+
+    def structured_period_text(self, html: str) -> str | None:  # noqa: ARG002
+        """Bankaya özgü, tarih taşıyan DOM düğümünün metni.
+
+        Varsayılan `None`; yapısal alanı olan bankalar (Ziraat, Vakıf, Albaraka)
+        override eder. ⚠️ Alt sınıflar tarih alanlarına doğrudan yazmaz —
+        `_apply_period()` belirler, bu metod yalnızca ona kaynak sunar.
+
+        Args:
+            html: Detay sayfasının ham HTML'i.
+
+        Returns:
+            Yapısal tarih alanının metni veya böyle bir alan yoksa None.
+        """
+        return None
+
+    def resolve_period(
+        self,
+        *,
+        html: str,
+        conditions_text: str | None,
+        body_text: str,
+    ) -> PeriodResult:
+        """Kampanya dönemini ortak kuralla çözer.
+
+        Alt sınıflar çağırmaz ve override etmez; `_apply_period()` çağırır.
+        Genel olması testlerin yazma yapmadan doğrulayabilmesi içindir.
+
+        Args:
+            html: Detay sayfasının ham HTML'i.
+            conditions_text: Koşul bölümünün metni (varsa).
+            body_text: Temizlenmiş gövde metni.
+
+        Returns:
+            İlk güvenilir bulgu; hiçbiri tutmazsa `precision="unknown"`.
+        """
+        return find_period_in_sources(
+            (
+                (PeriodSource.STRUCTURED, self.structured_period_text(html)),
+                (PeriodSource.CONDITIONS, conditions_text),
+                (PeriodSource.BODY, body_text),
+            )
+        )
 
     # ── ORTAK ŞABLON METOD (alt sınıf DEĞİŞTİRMEZ) ────────
 
@@ -234,52 +342,106 @@ class BaseScraper(ABC):
             return
 
         assert fetch.html is not None  # is_success bunu garanti eder
-        raw = self.parse_detail(fetch.html, fetch.final_url or hint.url, hint)
-        if raw is None:
+        raws = self.parse_page(fetch.html, fetch.final_url or hint.url, hint)
+        if not raws:
             logger.info("kampanya_cikarilamadi", url=hint.url, banka=self.bank_code)
             return
 
-        self._fill_missing_dates(raw, clean_text)
+        bugun = utc_now().date()
+        kabul_edilen: list[RawCampaign] = []
+        for raw in raws:
+            period = self._apply_period(raw, fetch.html, clean_text)
 
-        seen_slugs.add(raw.external_slug)
-        self._upsert_campaign(session, bank, raw, document, result, dry_run=dry_run)
+            kabul, red_nedeni = donem_gecerli_mi(
+                period,
+                min_yil=self.settings.min_campaign_year,
+                bugun=bugun,
+            )
+            if not kabul:
+                # Kampanya yazılmaz; ham HTML ve `source_documents` kaydı durur.
+                result.campaigns_skipped += 1
+                logger.info(
+                    "kampanya_atlandi",
+                    url=hint.url,
+                    banka=self.bank_code,
+                    slug=raw.external_slug,
+                    neden=red_nedeni,
+                    baslangic=str(period.start),
+                    bitis=str(period.end),
+                )
+                self._expire_if_exists(session, bank, raw.external_slug, dry_run=dry_run)
+                continue
 
-    @staticmethod
-    def _fill_missing_dates(raw: RawCampaign, clean_text: str) -> None:
-        """Scraper tarih bulamadıysa dönemi METİNDEN çıkarmayı dener.
+            seen_slugs.add(raw.external_slug)
+            kabul_edilen.append(raw)
 
-        ⚠️ Yalnızca scraper HİÇBİR tarih bulamadığında çalışır; bulunmuş bir
-        tarihin üzerine ASLA yazmaz. Yapısal alan her zaman daha güvenilirdir.
+        self._upsert_campaigns(session, bank, kabul_edilen, document, result, dry_run=dry_run)
 
-        Gerekçe (canlı veride ölçüldü): Türkiye Finans'ın 22 kampanyasının
-        tamamı `unknown` kayıtlıydı; oysa 18'inin metninde tarih açıkça
-        yazıyor ("Kampanya 25 Mayıs - 31 Aralık 2026 tarihleri arasında
-        geçerlidir"). Scraper yapısal alan aradığı için bunları göremiyordu.
-        "Veri yok" ile "veri okunmadı" ayrı şeylerdir.
+    def _apply_period(self, raw: RawCampaign, html: str, clean_text: str) -> PeriodResult:
+        """Kampanyanın dönemini ortak yolla belirler ve kanıtıyla `raw`'a yazar.
 
-        Bulgu güvenilir değilse alanlar `NULL` kalır — tarih uydurulmaz.
+        ⚠️ "Scraper bulduysa dokunma" istisnası yoktur: tarihi üreten fonksiyon
+        artık bu olduğu için çakışma olamaz.
 
         Args:
             raw: Scraper'ın ürettiği kampanya; yerinde güncellenir.
+            html: Detay sayfasının ham HTML'i.
             clean_text: Kampanyanın temiz metni.
+
+        Returns:
+            Çözülmüş dönem (denetim için çağırana da döndürülür).
         """
-        if raw.start_date is not None or raw.end_date is not None:
-            return
-
-        start, end, precision = find_campaign_period(clean_text)
-        if precision == "unknown":
-            return
-
-        raw.start_date = start
-        raw.end_date = end
-        raw.date_precision = precision
-        logger.info(
-            "tarih_metinden_cikarildi",
-            slug=raw.external_slug,
-            baslangic=str(start),
-            bitis=str(end),
-            kesinlik=precision,
+        period = self.resolve_period(
+            html=html,
+            conditions_text=raw.conditions_text,
+            body_text=clean_text,
         )
+
+        raw.start_date = period.start
+        raw.end_date = period.end
+        raw.date_precision = period.precision
+        raw.date_evidence_text = period.evidence_text
+        raw.date_evidence_source = str(period.source) if period.source else None
+
+        if period.bulundu:
+            logger.debug(
+                "tarih_cozuldu",
+                slug=raw.external_slug,
+                kaynak=raw.date_evidence_source,
+                kesinlik=period.precision,
+            )
+        return period
+
+    def _expire_if_exists(
+        self,
+        session: Session,
+        bank: Bank,
+        external_slug: str,
+        *,
+        dry_run: bool,
+    ) -> None:
+        """Dönem denetimini geçemeyen mevcut kaydı `expired` yapar.
+
+        Kayıt silinmez; "bir zamanlar vardı" bilgisi de veridir.
+
+        Args:
+            session: Veritabanı oturumu.
+            bank: Kampanyanın bankası.
+            external_slug: Kampanyanın kararlı anahtarı.
+            dry_run: True ise yazılmaz.
+        """
+        if dry_run:
+            return
+        mevcut = session.scalar(
+            select(Campaign).where(
+                Campaign.bank_id == bank.id,
+                Campaign.external_slug == external_slug,
+            )
+        )
+        if mevcut is None or mevcut.status == "expired":
+            return
+        mevcut.status = "expired"
+        logger.info("bayat_kampanya_suresi_doldu", slug=external_slug, banka=self.bank_code)
 
     def _build_source_document(
         self,
@@ -313,6 +475,70 @@ class BaseScraper(ABC):
             discovery_method=hint.discovery_method,
         )
 
+    def _upsert_campaigns(
+        self,
+        session: Session,
+        bank: Bank,
+        raws: list[RawCampaign],
+        document: SourceDocument,
+        result: ScrapeRunResult,
+        *,
+        dry_run: bool,
+    ) -> None:
+        """Kökleri ve alt kampanyaları iki geçişte yazar.
+
+        Önce kökler yazılıp `flush()` ile id alır, sonra çocuklar bu id'ye
+        bağlanır. Ebeveyni bulunamayan çocuk ATILMAZ, kök olarak yazılır.
+
+        Args:
+            session: Veritabanı oturumu.
+            bank: Kampanyaların bankası.
+            raws: Dönem denetimini geçmiş kampanyalar.
+            document: Kaynak belge.
+            result: Çalıştırma özeti; sayaçlar güncellenir.
+            dry_run: True ise yazılmaz.
+        """
+        if not raws:
+            return
+
+        kokler = [r for r in raws if r.parent_slug is None]
+        cocuklar = [r for r in raws if r.parent_slug is not None]
+
+        slug_to_id: dict[str, int] = {}
+        for raw in kokler:
+            kampanya = self._upsert_campaign(
+                session, bank, raw, document, result, parent_id=None, dry_run=dry_run
+            )
+            if kampanya is not None:
+                slug_to_id[raw.external_slug] = kampanya.id
+
+        for raw in cocuklar:
+            parent_id = slug_to_id.get(raw.parent_slug or "")
+            if parent_id is None and not dry_run:
+                parent_id = self._parent_id_from_db(session, bank, raw.parent_slug or "")
+            if parent_id is None:
+                logger.warning(
+                    "alt_kampanya_ebeveynsiz",
+                    banka=self.bank_code,
+                    slug=raw.external_slug,
+                    ebeveyn=raw.parent_slug,
+                )
+            self._upsert_campaign(
+                session, bank, raw, document, result, parent_id=parent_id, dry_run=dry_run
+            )
+
+    @staticmethod
+    def _parent_id_from_db(session: Session, bank: Bank, parent_slug: str) -> int | None:
+        """Ebeveyn kampanyayı veritabanından arar (önceki çalıştırmadan kalma)."""
+        if not parent_slug:
+            return None
+        return session.scalar(
+            select(Campaign.id).where(
+                Campaign.bank_id == bank.id,
+                Campaign.external_slug == parent_slug,
+            )
+        )
+
     def _upsert_campaign(
         self,
         session: Session,
@@ -321,8 +547,9 @@ class BaseScraper(ABC):
         document: SourceDocument,
         result: ScrapeRunResult,
         *,
+        parent_id: int | None,
         dry_run: bool,
-    ) -> None:
+    ) -> Campaign | None:
         """Kampanyayı ekler veya günceller (bank_id + external_slug tekildir)."""
         status = compute_status(raw.start_date, raw.end_date)
         now = utc_now()
@@ -337,41 +564,50 @@ class BaseScraper(ABC):
         if existing is None:
             result.campaigns_new += 1
             if dry_run:
-                return
-            session.add(
-                Campaign(
-                    bank_id=bank.id,
-                    source_document_id=document.id,
-                    external_slug=raw.external_slug,
-                    title=raw.title,
-                    description=raw.description,
-                    segment=raw.segment,
-                    target_customer=raw.target_customer,
-                    category=raw.category,
-                    bank_category=raw.bank_category,
-                    start_date=raw.start_date,
-                    end_date=raw.end_date,
-                    date_precision=raw.date_precision,
-                    status=status,
-                    participation_method=raw.participation_method,
-                    participation_channel=raw.participation_channel,
-                    sms_keyword=raw.sms_keyword,
-                    sms_number=raw.sms_number,
-                    coupon_code=raw.coupon_code,
-                    conditions_text=raw.conditions_text,
-                    exclusions_text=raw.exclusions_text,
-                    source_url=raw.source_url,
-                    first_seen_at=now,
-                    last_seen_at=now,
-                    is_archived=raw.is_archived,
-                )
+                return None
+            kampanya = Campaign(
+                bank_id=bank.id,
+                source_document_id=document.id,
+                parent_campaign_id=parent_id,
+                block_index=raw.block_index,
+                slug_source=raw.slug_source,
+                external_slug=raw.external_slug,
+                title=raw.title,
+                description=raw.description,
+                segment=raw.segment,
+                target_customer=raw.target_customer,
+                category=raw.category,
+                bank_category=raw.bank_category,
+                start_date=raw.start_date,
+                end_date=raw.end_date,
+                date_precision=raw.date_precision,
+                date_evidence_text=raw.date_evidence_text,
+                date_evidence_source=raw.date_evidence_source,
+                status=status,
+                participation_method=raw.participation_method,
+                participation_channel=raw.participation_channel,
+                sms_keyword=raw.sms_keyword,
+                sms_number=raw.sms_number,
+                coupon_code=raw.coupon_code,
+                conditions_text=raw.conditions_text,
+                exclusions_text=raw.exclusions_text,
+                source_url=raw.source_url,
+                first_seen_at=now,
+                last_seen_at=now,
+                is_archived=raw.is_archived,
             )
-            return
+            session.add(kampanya)
+            # Alt kampanyaların bağlanabilmesi için id hemen gerekir.
+            session.flush()
+            return kampanya
 
         result.campaigns_updated += 1
         if dry_run:
-            return
+            return None
 
+        existing.parent_campaign_id = parent_id
+        existing.block_index = raw.block_index
+        existing.slug_source = raw.slug_source
         existing.source_document_id = document.id
         existing.title = raw.title
         existing.description = raw.description
@@ -381,6 +617,8 @@ class BaseScraper(ABC):
         existing.start_date = raw.start_date
         existing.end_date = raw.end_date
         existing.date_precision = raw.date_precision
+        existing.date_evidence_text = raw.date_evidence_text
+        existing.date_evidence_source = raw.date_evidence_source
         existing.status = status
         existing.participation_method = raw.participation_method
         existing.participation_channel = raw.participation_channel
@@ -392,6 +630,7 @@ class BaseScraper(ABC):
         existing.source_url = raw.source_url
         existing.is_archived = raw.is_archived
         existing.last_seen_at = now
+        return existing
 
     def _mark_expired_if_exists(
         self, session: Session, bank: Bank, hint: DiscoveredUrl, *, dry_run: bool

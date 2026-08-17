@@ -16,6 +16,10 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from app.processing.cleaner import clean_html, extract_title
+from app.scrapers.base import BaseScraper
+from app.scrapers.models import RawCampaign
+
 # Ayarlar içe aktarılmadan ÖNCE ortam değişkenleri sabitlenir; testler geliştirici
 # makinesindeki .env dosyasından etkilenmemelidir.
 os.environ.setdefault("APP_ENV", "test")
@@ -44,6 +48,30 @@ def read_fixture(fixtures_dir: Path):  # type: ignore[no-untyped-def]
         return (fixtures_dir / relative_path).read_text(encoding="utf-8")
 
     return _read
+
+
+@pytest.fixture
+def donem_uygula():  # type: ignore[no-untyped-def]
+    """`parse_detail()` çıktısına ORTAK tarih yolunu uygular.
+
+    Tarih artık `parse_detail()` içinde çıkarılmıyor; `BaseScraper._apply_period()`
+    belirliyor (gerekçe `app/processing/dates.py` "ORTAK DÖNEM ÇÖZÜMÜ"). Bu
+    fixture aynı kod yolunu çalıştırır, böylece bir bankanın tarih biçimini
+    sınayan testler veritabanına yazmadan çalışmaya devam eder.
+
+    Kullanım:
+        ham = scraper.parse_detail(html, url, hint)
+        donem_uygula(scraper, html, ham)
+        assert ham.start_date == date(2026, 8, 11)
+    """
+
+    def _uygula(scraper: BaseScraper, html: str, ham: RawCampaign) -> RawCampaign:
+        title = extract_title(html, ignore_headings=scraper.brand_headings)
+        body_text = clean_html(html, bank_code=scraper.bank_code, title=title) if html else ""
+        scraper._apply_period(ham, html, body_text)
+        return ham
+
+    return _uygula
 
 
 @pytest.fixture(autouse=True)

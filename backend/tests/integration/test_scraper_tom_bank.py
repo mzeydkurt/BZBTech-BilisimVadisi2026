@@ -161,11 +161,16 @@ class TestDetayAyristirma:
         )
 
     def test_tarih_ve_kosullar_cikarilir(
-        self, tmp_path: Path, sitemap_xml: str, detay_html: str
+        self,
+        tmp_path: Path,
+        sitemap_xml: str,
+        detay_html: str,
+        donem_uygula,  # type: ignore[no-untyped-def]
     ) -> None:
         scraper = _scraper(tmp_path, _transport(sitemap_xml.encode("utf-8")))
         try:
             ham = scraper.parse_detail(detay_html, VERGI_URL, self._hint())
+            donem_uygula(scraper, detay_html, ham)
         finally:
             scraper.close()
 

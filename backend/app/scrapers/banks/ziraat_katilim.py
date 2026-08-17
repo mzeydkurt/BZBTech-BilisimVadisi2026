@@ -25,13 +25,11 @@ yeniden dener. Kalıcı sayılırsa banka tamamen boş döner.
 
 from __future__ import annotations
 
-from datetime import date
 from typing import Final
 from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup, Tag
 
-from app.core.normalization.date_tr import parse_date_range_tr
 from app.core.normalization.text import collapse_whitespace, normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
@@ -251,8 +249,6 @@ class ZiraatKatilimScraper(BaseScraper):
         conditions = extract_section_text(html, CONDITION_KEYWORDS)
         exclusions = extract_section_text(html, EXCLUSION_KEYWORDS)
 
-        start_date, end_date, precision = self._parse_dates(html, conditions, body_text)
-
         return RawCampaign(
             # ⚠️ Slug href'ten birebir okunur. Sondaki `-0`, `-1`, `-2` ekleri
             # yeni dönem yayınlarını ayırt eder ve KORUNUR.
@@ -267,43 +263,28 @@ class ZiraatKatilimScraper(BaseScraper):
             category=None,
             bank_category=hint.category_hint,
             segment=hint.segment_hint,
-            start_date=start_date,
-            end_date=end_date,
-            date_precision=precision,
             is_archived=hint.discovery_method == "archive" or ARCHIVE_PARAM in urlsplit(url).query,
         )
 
-    @staticmethod
-    def _parse_dates(
-        html: str, conditions: str | None, body_text: str
-    ) -> tuple[date | None, date | None, str]:
-        """Tarihi çıkarır; ayrıştırmayı normalizasyon kütüphanesine devreder.
+    def structured_period_text(self, html: str) -> str | None:
+        """ "Kampanya Dönemi" / "Son Gün" bölümünün metni.
 
-        Canlı sayfalarda dört biçim görüldü, dördü de `parse_date_range_tr()`
-        ile çözülüyor — scraper içinde tarih regex'i YAZILMAZ:
+        Canlı sayfalarda dört biçim görüldü; dördü de ortak tarih yolunda
+        çözülüyor, scraper içinde tarih regex'i yazılmaz:
 
             "Kampanya Dönemi 11-08-2026 - 31-08-2026" -> tam aralık
             "Son Gün 31.08.2026"                      -> yalnızca bitiş
             "10 Temmuz – 7 Ağustos 2026"              -> yıl devralma
             "07-08-2026 Tarihinde Sona Ermiştir"      -> tire ayraçlı bitiş
 
-        Önce "Kampanya Dönemi" bölümü, sonra koşul metni, en son tüm gövde
-        taranır: gövdede yayın/duyuru tarihleri de bulunuyor ve önce
-        denenirse yanlış eşleşme üretiyor.
-
-        Returns:
-            (başlangıç, bitiş, kesinlik).
+        ⚠️ Bu bölüm komşu kampanya KARTLARINI da yakalayabiliyor: liste
+        sayfasından gelen kartların her birinde "Son Gün" satırı var ve
+        ayrıştırıcı bunları kampanyanın kendi bölümü sanabiliyordu. Ölçüldü —
+        20 kampanyanın `end_date` değeri komşu karttan gelmişti (#195 sayfada
+        09-02-2026, veritabanında 31-08-2026). `dates.STRUCTURED_MAX_CHARS`
+        eşiği bu durumu yakalar ve bölümü yakınlık kuralına düşürür.
         """
-        donem = extract_section_text(html, DATE_SECTION_KEYWORDS)
-        for kaynak in (donem, conditions, body_text):
-            if not kaynak:
-                continue
-            start, end, precision = parse_date_range_tr(kaynak)
-            if precision != "unknown":
-                return start, end, precision
-
-        # ⚠️ Bulunamadıysa UYDURULMAZ: NULL kalır, durum `unknown` olur.
-        return None, None, "unknown"
+        return extract_section_text(html, DATE_SECTION_KEYWORDS)
 
     @staticmethod
     def _first_paragraph(text: str, *, max_length: int = 500) -> str | None:

@@ -12,6 +12,7 @@ from sqlalchemy import (
     Date,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     Text,
     UniqueConstraint,
@@ -65,8 +66,28 @@ class Campaign(TimestampMixin, Base):
             "date_precision IN ('exact', 'partial', 'inferred', 'unknown')",
             name="date_precision_valid",
         ),
+        CheckConstraint(
+            "date_evidence_source IS NULL "
+            "OR date_evidence_source IN ('structured', 'conditions', 'body')",
+            name="date_evidence_source_valid",
+        ),
+        # Kanıtsız `exact` yasağı: "kaynakta birebir gördüm" iddiası kanıt
+        # metni olmadan geçersizdir (Albaraka #290: 2020-01-01, exact, kanıt yok).
+        CheckConstraint(
+            "date_precision <> 'exact' OR date_evidence_text IS NOT NULL",
+            name="exact_requires_evidence",
+        ),
+        CheckConstraint(
+            "slug_source IS NULL OR slug_source IN ('href', 'anchor', 'index')",
+            name="slug_source_valid",
+        ),
+        CheckConstraint(
+            "parent_campaign_id IS NULL OR parent_campaign_id <> id",
+            name="parent_not_self",
+        ),
         Index("ix_campaigns_bank_id_status", "bank_id", "status"),
         Index("ix_campaigns_end_date", "end_date"),
+        Index("ix_campaigns_parent_campaign_id", "parent_campaign_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -78,7 +99,18 @@ class Campaign(TimestampMixin, Base):
         ForeignKey("source_documents.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Bir sayfada birden çok kampanya olabiliyor. Alt kampanya ayrı satırdır;
+    # kanıt/arama katmanının tamamı tamsayı bir campaign_id bekliyor.
+    parent_campaign_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=True
+    )
+    # Sayfadaki sıra (yalnızca alt kampanyalarda dolu).
+    block_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Alt slug'ın kaynağı: href > anchor > index. `index` kırılgandır, ölçülür.
+    slug_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Bankanın URL'inde geçen slug. Başlıktan TÜRETİLMEZ, href'ten birebir alınır.
+    # Alt kampanyada biçim: `{kök slug}#{alt}`.
     external_slug: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -102,6 +134,12 @@ class Campaign(TimestampMixin, Base):
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     date_precision: Mapped[str] = mapped_column(Text, nullable=False, default="unknown")
 
+    # Tarihin kaynaktaki dayanağı; arayüzde JOIN yapılmadan gösterilir.
+    # ⚠️ Karakter ofseti buraya yazılmaz: `clean_text` yeniden üretilebildiği
+    # için ofset bayatlar, kanıt metni bayatlamaz. Ofset `campaign_extractions`'ta.
+    date_evidence_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    date_evidence_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Backend'de hesaplanır — tek doğruluk kaynağı burasıdır, frontend hesaplamaz.
     status: Mapped[str] = mapped_column(Text, nullable=False, default="unknown", index=True)
 
@@ -120,6 +158,15 @@ class Campaign(TimestampMixin, Base):
     last_seen_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utc_now)
     # Bankanın arşiv/geçmiş kampanya bölümünden gelen kayıtlar.
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    parent: Mapped[Campaign | None] = relationship(
+        back_populates="sub_campaigns",
+        remote_side="Campaign.id",
+    )
+    sub_campaigns: Mapped[list[Campaign]] = relationship(
+        back_populates="parent",
+        cascade="all, delete-orphan",
+    )
 
     bank: Mapped[Bank] = relationship(back_populates="campaigns", lazy="joined")
     source_document: Mapped[SourceDocument | None] = relationship(back_populates="campaigns")

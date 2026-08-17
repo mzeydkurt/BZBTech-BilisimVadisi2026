@@ -55,6 +55,8 @@ def _kampanya(
         start_date=baslangic,
         end_date=bitis,
         date_precision="exact" if baslangic else "unknown",
+        date_evidence_text="01.01.2026 - 31.12.2026" if baslangic else None,
+        date_evidence_source="body" if baslangic else None,
         status="active" if baslangic else "unknown",
     )
     session.add(kampanya)
