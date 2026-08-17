@@ -15,7 +15,11 @@ from app.services.campaign_service import ISTANBUL_TZ
 def _count_by_status(session: Session, status: str) -> int:
     """Belirli durumdaki kampanya sayısını döndürür."""
     return (
-        session.scalar(select(func.count()).select_from(Campaign).where(Campaign.status == status))
+        session.scalar(
+            select(func.count())
+            .select_from(Campaign)
+            .where(Campaign.status == status, Campaign.parent_campaign_id.is_(None))
+        )
         or 0
     )
 
@@ -30,14 +34,23 @@ def get_stats(session: Session) -> StatsResponse:
         İstatistik yanıtı.
     """
     total_banks = session.scalar(select(func.count()).select_from(Bank)) or 0
-    total_campaigns = session.scalar(select(func.count()).select_from(Campaign)) or 0
+    # ⚠️ Yalnızca kök kampanyalar sayılır; alt kampanyalar ayrı raporlanır.
+    total_campaigns = (
+        session.scalar(
+            select(func.count()).select_from(Campaign).where(Campaign.parent_campaign_id.is_(None))
+        )
+        or 0
+    )
 
     # Bankaya göre dağılım: kampanyası olmayan bankalar da 0 ile listelenir
     # (şartname 5.1). LEFT OUTER JOIN bu yüzden zorunludur.
     bank_rows = session.execute(
         select(Bank.code, Bank.name, func.count(Campaign.id))
         .select_from(Bank)
-        .outerjoin(Campaign, Campaign.bank_id == Bank.id)
+        .outerjoin(
+            Campaign,
+            (Campaign.bank_id == Bank.id) & (Campaign.parent_campaign_id.is_(None)),
+        )
         .group_by(Bank.code, Bank.name)
         .order_by(func.count(Campaign.id).desc(), Bank.name.asc())
     ).all()

@@ -101,12 +101,18 @@ class CampaignFilters:
     order: str = "asc"
     page: int = 1
     page_size: int = DEFAULT_PAGE_SIZE
+    # Alt kampanyalar varsayılan olarak listelenmez: bir banka üç finansmanı
+    # tek sayfada, öteki üç ayrı sayfada yayımlıyor. Kök sayımı olmadan
+    # bankalar arası karşılaştırma yanlış olur.
+    include_children: bool = False
 
 
 def _apply_filters(
     statement: Select[tuple[Campaign]], filters: CampaignFilters
 ) -> Select[tuple[Campaign]]:
     """Sorguya filtreleri uygular."""
+    if not filters.include_children:
+        statement = statement.where(Campaign.parent_campaign_id.is_(None))
     if filters.banks:
         statement = statement.where(Bank.code.in_(filters.banks))
     if filters.category:
@@ -205,6 +211,7 @@ def list_campaigns(session: Session, filters: CampaignFilters) -> tuple[list[Cam
         joinedload(Campaign.bank),
         # Taksonomi etiketleri listede de gösteriliyor; N+1 sorgu olmasın.
         selectinload(Campaign.categories),
+        selectinload(Campaign.sub_campaigns).joinedload(Campaign.bank),
     )
     statement = statement.offset((page - 1) * page_size).limit(page_size)
 
@@ -232,6 +239,7 @@ def get_campaign(session: Session, campaign_id: int) -> Campaign:
             joinedload(Campaign.bank),
             joinedload(Campaign.source_document),
             selectinload(Campaign.categories),
+            selectinload(Campaign.sub_campaigns).joinedload(Campaign.bank),
         )
     )
     if campaign is None:

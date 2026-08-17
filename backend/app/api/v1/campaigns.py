@@ -38,8 +38,12 @@ def _to_list_item(campaign: Campaign) -> CampaignListItem:
         start_date=campaign.start_date,
         end_date=campaign.end_date,
         date_precision=campaign.date_precision,
+        date_evidence_text=campaign.date_evidence_text,
+        date_evidence_source=campaign.date_evidence_source,
         status=campaign.status,
         source_url=campaign.source_url,
+        parent_campaign_id=campaign.parent_campaign_id,
+        sub_campaign_count=len(campaign.sub_campaigns),
     )
 
 
@@ -64,6 +68,9 @@ def read_campaigns(
     order: Annotated[Literal["asc", "desc"], Query()] = "asc",
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
+    include_children: Annotated[
+        bool, Query(description="Alt kampanyaları da listele (varsayılan: yalnızca kökler)")
+    ] = False,
 ) -> Page[CampaignListItem]:
     """Filtrelenmiş ve sayfalanmış kampanya listesi döndürür.
 
@@ -88,6 +95,7 @@ def read_campaigns(
         order=order,
         page=page,
         page_size=page_size,
+        include_children=include_children,
     )
 
     campaigns, total = list_campaigns(session, filters)
@@ -122,4 +130,5 @@ def read_campaign(
         last_seen_at=campaign.last_seen_at,
         bank=campaign.bank,  # type: ignore[arg-type]
         source_document=campaign.source_document,  # type: ignore[arg-type]
+        sub_campaigns=[_to_list_item(alt) for alt in campaign.sub_campaigns],
     )
