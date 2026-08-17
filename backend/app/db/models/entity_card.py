@@ -52,6 +52,9 @@ class EntityCard(Base):
     # tabloya bakabildiği için tek bir FK tanımlanamaz; tutarlılık kart üretimi
     # sırasında sağlanır ve kaynak kaybolursa kart yeniden üretilir.
     entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Kararlı kimlik (ör. "campaign:emlak_katilim:slug"). `entity_id` yeniden
+    # kazımada değişir; kart bu anahtarla yeniden eşleştirilebilir.
+    entity_key: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     card_text: Mapped[str] = mapped_column(Text, nullable=False)
     # Kartın içerik özeti: değişmediyse gömme yeniden hesaplanmaz.

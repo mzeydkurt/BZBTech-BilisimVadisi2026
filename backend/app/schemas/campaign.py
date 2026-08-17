@@ -54,8 +54,18 @@ class CampaignListItem(BaseModel):
     )
     end_date: date | None = None
     date_precision: str = Field(description="exact | partial | inferred | unknown")
+    date_evidence_text: str | None = Field(
+        default=None, description="Tarihin kaynaktaki dayanağı; yoksa null"
+    )
+    date_evidence_source: str | None = Field(
+        default=None, description="structured | conditions | body"
+    )
     status: str = Field(description="active | upcoming | expired | unknown — BACKEND'de hesaplanır")
     source_url: str
+    parent_campaign_id: int | None = Field(
+        default=None, description="Dolu ise bu kayıt bir ALT kampanyadır"
+    )
+    sub_campaign_count: int = Field(default=0, description="Bu kampanyanın alt kampanya sayısı")
 
 
 class SourceDocumentSummary(BaseModel):
@@ -90,3 +100,6 @@ class CampaignDetail(CampaignListItem):
     last_seen_at: datetime
     bank: BankBase
     source_document: SourceDocumentSummary | None = None
+    sub_campaigns: list[CampaignListItem] = Field(
+        default_factory=list, description="Aynı sayfada yayımlanan alt kampanyalar"
+    )

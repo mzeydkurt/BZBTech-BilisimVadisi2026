@@ -30,7 +30,12 @@ from app.schemas.annotate import (
     CampaignForAnnotation,
     ProgressOut,
 )
-from app.services.gold_service import BLIND_COUNT, gold_progress, load_sample
+from app.services.gold_service import (
+    BLIND_COUNT,
+    campaign_key,
+    gold_progress,
+    load_sample,
+)
 
 router = APIRouter(prefix="/annotate", tags=["gold set"])
 
@@ -165,7 +170,8 @@ def save_annotations(
         HTTPException: Kampanya yoksa (404), yöntem ya da alan adı
             geçersizse (422).
     """
-    if session.get(Campaign, campaign_id) is None:
+    kampanya = session.get(Campaign, campaign_id)
+    if kampanya is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Kampanya bulunamadı: {campaign_id}")
 
     if payload.method not in ANNOTATION_METHODS:
@@ -195,7 +201,10 @@ def save_annotations(
         kayit = mevcut.get(alan_adi)
         if kayit is None:
             kayit = GoldAnnotation(
-                campaign_id=campaign_id, field_name=alan_adi, annotator=payload.annotator
+                campaign_key=campaign_key(kampanya.bank.code, kampanya.external_slug),
+                campaign_id=campaign_id,
+                field_name=alan_adi,
+                annotator=payload.annotator,
             )
             session.add(kayit)
 

@@ -158,6 +158,7 @@ class TestAblasyonKipFiltresi:
 
         db_session.add(
             GoldAnnotation(
+                campaign_key=f"emlak_katilim:test-{kampanya.id}",
                 campaign_id=kampanya.id,
                 field_name="profit_rate_pct",
                 gold_value="2.05",

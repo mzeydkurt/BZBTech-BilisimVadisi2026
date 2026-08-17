@@ -88,6 +88,7 @@ def test_etiketleme_yontemi_kontrollu_sozlukten(db_session: Session, kampanya: C
     """
     db_session.add(
         GoldAnnotation(
+            campaign_key=f"emlak_katilim:test-{kampanya.id}",
             campaign_id=kampanya.id,
             field_name="profit_rate_pct",
             annotator="zeyd",
@@ -106,6 +107,7 @@ def test_gold_deger_null_olabilir(db_session: Session, kampanya: Campaign) -> No
     pozitif olarak sayılamaz.
     """
     etiket = GoldAnnotation(
+        campaign_key=f"emlak_katilim:test-{kampanya.id}",
         campaign_id=kampanya.id,
         field_name="profit_rate_pct",
         gold_value=None,
@@ -126,6 +128,7 @@ def test_ayni_alan_ayni_etiketleyiciyle_tekrarlanamaz(
     for _ in range(2):
         db_session.add(
             GoldAnnotation(
+                campaign_key=f"emlak_katilim:test-{kampanya.id}",
                 campaign_id=kampanya.id,
                 field_name="end_date",
                 annotator="zeyd",
@@ -136,10 +139,17 @@ def test_ayni_alan_ayni_etiketleyiciyle_tekrarlanamaz(
         db_session.flush()
 
 
-def test_kampanya_silinince_etiketi_de_silinir(db_session: Session, kampanya: Campaign) -> None:
-    """Foreign key ve CASCADE çalışıyor."""
+def test_kampanya_silinince_etiket_kalir(db_session: Session, kampanya: Campaign) -> None:
+    """⚠️ Etiket kampanyayla birlikte SİLİNMEZ; bağ NULL'a düşer.
+
+    Gold set 880 satırlık elle etiketleme işidir. Veri sıfırlanıp yeniden
+    kazındığında (planın 5. fazı) kampanya satırları gider; etiketler de
+    gitseydi o emek geri getirilemezdi. Kimlik `campaign_key`'de durur ve
+    `reanchor_gold.py` bağı yeniden kurar.
+    """
     db_session.add(
         GoldAnnotation(
+            campaign_key=f"emlak_katilim:test-{kampanya.id}",
             campaign_id=kampanya.id,
             field_name="end_date",
             annotator="zeyd",
@@ -151,7 +161,10 @@ def test_kampanya_silinince_etiketi_de_silinir(db_session: Session, kampanya: Ca
     db_session.delete(kampanya)
     db_session.flush()
 
-    assert db_session.query(GoldAnnotation).count() == 0
+    etiketler = db_session.query(GoldAnnotation).all()
+    assert len(etiketler) == 1
+    assert etiketler[0].campaign_id is None
+    assert etiketler[0].campaign_key.startswith("emlak_katilim:")
 
 
 # ── entity_cards / embeddings ─────────────────────────────

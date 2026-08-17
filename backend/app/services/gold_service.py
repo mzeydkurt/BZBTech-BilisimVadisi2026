@@ -396,3 +396,19 @@ def gold_progress(session: Session) -> GoldProgress:
         difficult_campaigns=zor,
         explicit_null_fields=bos,
     )
+
+
+def campaign_key(bank_code: str, external_slug: str) -> str:
+    """Gold ve kart kayıtlarının KARARLI kimliğini üretir.
+
+    `campaign_id` autoincrement olduğu için veri yeniden kazındığında değişir;
+    bu anahtar değişmez ve yeniden bağlamanın temelidir.
+
+    Args:
+        bank_code: Banka kodu.
+        external_slug: Kampanyanın slug'ı.
+
+    Returns:
+        `"{bank_code}:{external_slug}"`.
+    """
+    return f"{bank_code}:{external_slug}"

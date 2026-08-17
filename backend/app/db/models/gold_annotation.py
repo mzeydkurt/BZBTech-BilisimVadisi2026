@@ -37,19 +37,26 @@ class GoldAnnotation(Base):
         # Aynı etiketleyici aynı alanı iki kez etiketlemez; düzeltme mevcut
         # satırı günceller. Öz-tutarlılık ölçümü ayrı `annotator` adıyla yapılır.
         UniqueConstraint(
-            "campaign_id",
+            "campaign_key",
             "field_name",
             "annotator",
-            name="uq_gold_annotations_campaign_id_field_name",
+            name="uq_gold_annotations_campaign_key_field_name",
         ),
         CheckConstraint(in_check("method", ANNOTATION_METHODS), name="method_valid"),
         Index("ix_gold_annotations_method_is_difficult", "method", "is_difficult"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    campaign_id: Mapped[int] = mapped_column(
-        ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False, index=True
+    # ⚠️ KARARLI KİMLİK: "{bank_code}:{external_slug}". Kampanya verisi silinip
+    # yeniden kazındığında `campaign_id` değişir, bu değişmez.
+    campaign_key: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    # Hızlı JOIN için tutulan TÜRETİLMİŞ bağ; yeniden bağlanamayan satır
+    # silinmesin diye nullable.
+    campaign_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campaigns.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # slug | url | baslik | manual — hangi merdiven basamağıyla bağlandı.
+    reanchor_method: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     field_name: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     # ⚠️ NULL = "bu alan metinde YOK". Boş dize ya da 0 ile karıştırılmaz:
