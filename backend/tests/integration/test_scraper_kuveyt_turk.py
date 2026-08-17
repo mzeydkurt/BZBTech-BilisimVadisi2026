@@ -17,7 +17,12 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.db.models import Campaign
-from app.scrapers.banks.kuveyt_turk import ARCHIVE_PATH, BASE_URL, KuveytTurkScraper
+from app.scrapers.banks.kuveyt_turk import (
+    ARCHIVE_PATH,
+    BASE_URL,
+    CAMPAIGN_API_URL,
+    KuveytTurkScraper,
+)
 from app.scrapers.fetcher import Fetcher
 from app.scrapers.models import DiscoveredUrl
 
@@ -278,3 +283,53 @@ class TestUctanUca:
         assert sonuc.campaigns_new == 3
         segmentler = {k.segment for k in seeded_session.scalars(select(Campaign))}
         assert segmentler == {"bireysel", "kurumsal"}
+
+
+class TestKampanyaUcu:
+    """JSON ucu ve YEDEKLİ davranışı.
+
+    Liste sayfası "Daha Fazla Yükle" arkasındaki kayıtları veremiyor ve
+    kategori başına tam 9'da kesiliyordu. Uç `StartDate`/`EndDate` alanlarını
+    yapısal olarak döndürüyor, ama WAF yolunda olduğu için kırılgan.
+    """
+
+    def test_uctan_kampanyalar_kesfedilir(
+        self,
+        tmp_path: Path,
+        read_fixture,  # type: ignore[no-untyped-def]
+        make_transport,  # type: ignore[no-untyped-def]
+    ) -> None:
+        govde = read_fixture("json/kuveyt_turk_campaign_list.json")
+        scraper = _scraper(tmp_path, make_transport({CAMPAIGN_API_URL: (200, govde)}))
+        try:
+            bulunan = scraper.discover()
+        finally:
+            scraper.close()
+
+        sluglar = {u.url.rsplit("/", 1)[-1] for u in bulunan}
+        assert "colinsde-vade-farksiz-4-aya-varan-taksit-firsati" in sluglar
+        assert "barcin-sporda-4-taksit-firsati" in sluglar
+        # Göreli `Url` mutlaklaştırıldı.
+        assert all(u.url.startswith(BASE_URL) for u in bulunan)
+
+    def test_uc_dususe_liste_yolu_calisir(
+        self, tmp_path: Path, make_transport: Callable[..., httpx.MockTransport]
+    ) -> None:
+        """⚠️ WAF yolu rotasyona girerse banka boş kalmamalı."""
+        scraper = _scraper(tmp_path, make_transport({}))
+        try:
+            # Uç 404, liste sayfaları da boş → hata değil, yalnızca sonuç yok.
+            bulunan = scraper.discover()
+        finally:
+            scraper.close()
+
+        assert bulunan == []
+
+    def test_bozuk_json_cokertmez(
+        self, tmp_path: Path, make_transport: Callable[..., httpx.MockTransport]
+    ) -> None:
+        scraper = _scraper(tmp_path, make_transport({CAMPAIGN_API_URL: (200, "<html>bozuk")}))
+        try:
+            assert scraper.discover() == []
+        finally:
+            scraper.close()

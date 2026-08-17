@@ -68,15 +68,31 @@ def scraper_ortami(
 
 
 class TestKesif:
-    def test_urun_sayfasi_filtrelenmez(
+    def test_urun_sayfasi_kaybedilmez_urun_kancasina_gider(
         self, scraper_ortami: tuple[HayatFinansScraper, Settings]
     ) -> None:
-        """⚠️ Ön ek filtresi uygulanırsa bu bağlantı kaybedilirdi."""
-        scraper, _ = scraper_ortami
-        keşifler = {item.url: item for item in scraper.discover()}
+        """⚠️ Ön ek filtresi uygulanırsa bu bağlantı kaybedilirdi.
 
-        assert URUN_URL in keşifler
-        assert keşifler[URUN_URL].doc_type == "product"
+        Adres kaybolmuyor ama artık `discover()` değil `discover_products()`
+        döndürüyor: eskiden `parse_detail` ürün sayfalarına sessizce `None`
+        veriyordu ve 80 belge arşivlenip sıfır ürün üretiliyordu.
+        """
+        scraper, _ = scraper_ortami
+
+        kampanyalar = {item.url for item in scraper.discover()}
+        urunler = {item.url: item for item in scraper.discover_products()}
+
+        assert URUN_URL not in kampanyalar
+        assert URUN_URL in urunler
+        assert urunler[URUN_URL].doc_type == "product"
+
+    def test_kampanya_kesfi_yalnizca_kampanya_dondurur(
+        self, scraper_ortami: tuple[HayatFinansScraper, Settings]
+    ) -> None:
+        """`parse_detail`'in sessizce `None` dönmesi imkânsız hâle geldi."""
+        scraper, _ = scraper_ortami
+
+        assert {item.doc_type for item in scraper.discover()} == {"campaign"}
 
     def test_kampanya_sayfalari_kesfedilir(
         self, scraper_ortami: tuple[HayatFinansScraper, Settings]

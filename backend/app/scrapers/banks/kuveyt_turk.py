@@ -30,6 +30,7 @@ Başlıktan türetme denemesi anlamsız; `href` birebir okunur.
 
 from __future__ import annotations
 
+import json
 from typing import Final
 from urllib.parse import urljoin, urlsplit
 
@@ -46,6 +47,17 @@ from app.utils.urls import is_same_site
 logger = get_logger(__name__)
 
 BASE_URL: Final[str] = "https://www.kuveytturk.com.tr"
+
+# JSON kampanya ucu. Liste sayfası "Daha Fazla Yükle" arkasındaki kayıtları
+# vermiyor ve kategori başına tam 9'da kesiliyordu; bu uç `StartDate`/`EndDate`
+# alanlarını YAPISAL olarak döndürüyor.
+#
+# ⚠️ Adres WAF arkasında ve hex token taşıyor; rotasyona girerse uç sessizce
+# boşa döner. Bu yüzden YEDEKLİ kullanılır: uç çalışmazsa liste sayfası
+# yolunun tamamı yine işler. robots.txt bu yolu engellemiyor (ölçüldü).
+CAMPAIGN_API_URL: Final[str] = (
+    f"{BASE_URL}/ck0d84?12078A5155AB8EB05557BBCAD58BCB84&p1=1176&p2=&p5=false&p6=&p7=&p8=false"
+)
 
 CAMPAIGN_ROOT: Final[str] = "/kampanyalar"
 
@@ -109,6 +121,20 @@ class KuveytTurkScraper(BaseScraper):
         discovered: list[DiscoveredUrl] = []
         seen: set[str] = set()
 
+        for url in self._api_links():
+            if url in seen:
+                continue
+            seen.add(url)
+            discovered.append(
+                DiscoveredUrl(
+                    url=url,
+                    doc_type="campaign",
+                    category_hint=self.category_from_url(url),
+                    segment_hint=self.segment_from_url(url),
+                    discovery_method="listing",
+                )
+            )
+
         for listing_url, arsiv in self._listing_pages():
             for url in self._campaign_links(listing_url):
                 if url in seen:
@@ -126,6 +152,51 @@ class KuveytTurkScraper(BaseScraper):
                 )
 
         return discovered
+
+    def _api_links(self) -> list[str]:
+        """JSON ucundaki kampanya adreslerini döndürür.
+
+        ⚠️ Uç çalışmazsa (WAF yolu rotasyona girdiyse, JSON bozuksa) BOŞ LİSTE
+        döner ve liste sayfası yolu devreye girer. Banka hiçbir durumda boş
+        kalmaz; eksiklik `partial` olarak değil, daha az kayıt olarak görünür.
+
+        Returns:
+            Mutlak kampanya adresleri; uç kullanılamazsa boş liste.
+        """
+        fetch = self.fetcher.fetch(CAMPAIGN_API_URL)
+        if not fetch.is_success or not fetch.html:
+            logger.info(
+                "kampanya_ucu_kullanilamadi",
+                banka=self.bank_code,
+                durum=fetch.status_code,
+                hata=fetch.error,
+            )
+            return []
+
+        try:
+            govde = json.loads(fetch.html)
+        except json.JSONDecodeError as exc:
+            logger.warning("kampanya_ucu_json_degil", banka=self.bank_code, hata=str(exc))
+            return []
+
+        if not isinstance(govde, list):
+            logger.warning("kampanya_ucu_beklenmeyen_yapi", banka=self.bank_code)
+            return []
+
+        bulunan: list[str] = []
+        for kayit in govde:
+            if not isinstance(kayit, dict):
+                continue
+            yol = kayit.get("Url")
+            if not isinstance(yol, str) or not yol.strip():
+                continue
+            mutlak = urljoin(BASE_URL, yol.strip())
+            if self._is_campaign_url(mutlak):
+                bulunan.append(mutlak)
+
+        if not bulunan:
+            logger.info("kampanya_ucu_bos", banka=self.bank_code, kayit=len(govde))
+        return bulunan
 
     def _listing_pages(self) -> list[tuple[str, bool]]:
         """Taranacak (adres, arşiv mi) çiftlerini üretir.

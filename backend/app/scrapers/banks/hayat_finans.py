@@ -86,21 +86,45 @@ class HayatFinansScraper(BaseScraper):
     version = "1.0.0"
 
     def discover(self) -> list[DiscoveredUrl]:
-        """sitemap.xml ve listeleme sayfasından adresleri toplar.
+        """Kampanya adreslerini toplar (sitemap + listeleme sayfası).
+
+        ⚠️ Ürün adresleri BURADA DÖNDÜRÜLMEZ. Eskiden dönüyor, çekiliyor ve
+        `parse_detail` onlara sessizce `None` veriyordu: 80 belge arşivlendi,
+        sıfır ürün üretildi. Ürünler artık `discover_products()` üzerinden
+        ürün hattına gidiyor.
 
         Returns:
-            Keşfedilen adresler (tekilleştirilmiş).
+            Keşfedilen kampanya adresleri (tekilleştirilmiş).
+        """
+        return self._discover(doc_type="campaign")
+
+    def discover_products(self) -> list[DiscoveredUrl]:
+        """Ürün/finansman adreslerini toplar.
+
+        Returns:
+            Keşfedilen ürün adresleri (tekilleştirilmiş).
+        """
+        return self._discover(doc_type="product")
+
+    def _discover(self, *, doc_type: str) -> list[DiscoveredUrl]:
+        """İstenen türdeki adresleri sitemap ve listeden toplar.
+
+        Args:
+            doc_type: `campaign` veya `product`.
+
+        Returns:
+            Tekilleştirilmiş adresler.
         """
         discovered: dict[str, DiscoveredUrl] = {}
 
         for url in self._discover_from_sitemap():
             entry = self._classify(url, discovery_method="sitemap")
-            if entry:
+            if entry and entry.doc_type == doc_type:
                 discovered[entry.url] = entry
 
         for url in self._discover_from_listing():
             entry = self._classify(url, discovery_method="listing")
-            if entry and entry.url not in discovered:
+            if entry and entry.doc_type == doc_type and entry.url not in discovered:
                 discovered[entry.url] = entry
 
         return list(discovered.values())
@@ -201,10 +225,6 @@ class HayatFinansScraper(BaseScraper):
         Returns:
             Kampanya verisi; sayfa kampanya değilse veya başlık yoksa None.
         """
-        if hint.doc_type != "campaign":
-            # Ürün sayfaları PART 2'de işlenecek; ham HTML yine de arşivlendi.
-            return None
-
         title = extract_title(html)
         if not title:
             return None
