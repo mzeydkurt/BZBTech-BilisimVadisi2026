@@ -218,3 +218,34 @@ class TestYenidenBaglama:
         assert ozeti.oksuz == 5
         assert veri.scalar(select(func.count()).select_from(GoldAnnotation)) == 5
         assert all(e.campaign_id is None for e in veri.scalars(select(GoldAnnotation)))
+
+
+class TestGoldSilme:
+    """Gold silme AÇIK bayrak gerektirir; kazara silinmemeli."""
+
+    def test_varsayilan_olarak_gold_korunur(self, veri: Session, tmp_path: Path) -> None:
+        disa_aktar(veri, hedef=tmp_path)
+        damga_bas(tmp_path)
+
+        sifirla(veri, export_dizini=tmp_path)
+
+        assert veri.scalar(select(func.count()).select_from(GoldAnnotation)) == 5
+
+    def test_gold_sil_bayragiyla_silinir(self, veri: Session, tmp_path: Path) -> None:
+        """⚠️ Yalnızca doğrulanmış dışa aktarma varken; dosyada kararlı
+        anahtarla duruyor ve geri yüklenebilir."""
+        disa_aktar(veri, hedef=tmp_path)
+        damga_bas(tmp_path)
+
+        ozeti = sifirla(veri, export_dizini=tmp_path, gold_sil=True)
+
+        assert ozeti.silinen["gold_annotations"] == 5
+        assert veri.scalar(select(func.count()).select_from(GoldAnnotation)) == 0
+
+    def test_dogrulanmamis_aktarmada_gold_silinmez(self, veri: Session, tmp_path: Path) -> None:
+        disa_aktar(veri, hedef=tmp_path)
+
+        with pytest.raises(PermissionError):
+            sifirla(veri, export_dizini=tmp_path, gold_sil=True)
+
+        assert veri.scalar(select(func.count()).select_from(GoldAnnotation)) == 5

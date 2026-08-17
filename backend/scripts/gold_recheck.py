@@ -69,7 +69,9 @@ def denetle(session: Session) -> list[Bulgu]:
         .outerjoin(SourceDocument, Campaign.source_document_id == SourceDocument.id)
     ).all()
 
-    gruplar: dict[str, list[tuple[str, str | None, str | None, str, str | None]]] = defaultdict(list)
+    gruplar: dict[str, list[tuple[str, str | None, str | None, str, str | None]]] = defaultdict(
+        list
+    )
     for anahtar, alan, deger, kanit, baslik, metin in satirlar:
         gruplar[anahtar].append((alan, deger, kanit, baslik, metin))
 
@@ -141,9 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging()
 
     with SessionLocal() as session:
-        toplam = session.scalar(
-            select(GoldAnnotation.campaign_key).distinct().order_by(None)
-        )
+        toplam = session.scalar(select(GoldAnnotation.campaign_key).distinct().order_by(None))
         anahtarlar = set(session.scalars(select(GoldAnnotation.campaign_key)))
         bulgular = denetle(session)
 

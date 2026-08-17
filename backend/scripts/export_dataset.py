@@ -270,9 +270,7 @@ def disa_aktar(session: Session, *, hedef: Path) -> dict[str, Any]:
         "uretildi": datetime.now().astimezone().isoformat(),
         "alembic_revision": _alembic_revision(session),
         "satir_sayilari": sayilar,
-        "dosya_ozetleri": {
-            yol.name: _sha256(yol) for yol in sorted(hedef.glob("*.jsonl"))
-        },
+        "dosya_ozetleri": {yol.name: _sha256(yol) for yol in sorted(hedef.glob("*.jsonl"))},
         "verified_at": None,
     }
     (hedef / "manifest.json").write_text(

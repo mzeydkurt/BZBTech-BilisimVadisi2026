@@ -34,6 +34,35 @@ ORNEK_ORANI = 0.10
 ORNEK_SEED = 42
 
 
+def cozumle_dizin(yol: str | Path) -> Path:
+    """Dışa aktarma yolunu çözümler; `backend/` önekini tolere eder.
+
+    Betikler `backend/` dizininde çalışıyor, ama kullanıcı komutu depo
+    kökünden yazıyor ve doğal olarak `backend/data/exports/...` diye veriyor.
+    İkisi de kabul edilir.
+
+    Args:
+        yol: Kullanıcının verdiği yol.
+
+    Returns:
+        Var olan dizin; hiçbiri bulunamazsa verilen yol olduğu gibi.
+    """
+    aday = Path(yol)
+    if aday.is_dir():
+        return aday
+    # `backend/data/...` -> `data/...`
+    parcalar = aday.parts
+    if parcalar and parcalar[0] == "backend":
+        kirpik = Path(*parcalar[1:])
+        if kirpik.is_dir():
+            return kirpik
+    # `data/...` -> `backend/data/...`
+    onekli = Path("backend") / aday
+    if onekli.is_dir():
+        return onekli
+    return aday
+
+
 def _oku_jsonl(yol: Path) -> list[dict[str, Any]]:
     """JSONL dosyasını okur."""
     if not yol.exists():
@@ -104,7 +133,11 @@ def dogrula(dizin: Path) -> list[str]:
         )
 
     # 5: ham arşiv
-    bulgular.extend(_ham_arsivi_dogrula(belgeler, gold_anahtarlari=set(g["campaign_key"] for g in gold), kampanyalar=kampanyalar))
+    bulgular.extend(
+        _ham_arsivi_dogrula(
+            belgeler, gold_anahtarlari=set(g["campaign_key"] for g in gold), kampanyalar=kampanyalar
+        )
+    )
 
     return bulgular
 
@@ -128,7 +161,9 @@ def _ham_arsivi_dogrula(
     tam_denetim = [b for b in belgeler if b.get("url") in gold_urls]
     digerleri = [b for b in belgeler if b.get("url") not in gold_urls]
     rastgele = random.Random(ORNEK_SEED)
-    ornek = rastgele.sample(digerleri, k=max(1, int(len(digerleri) * ORNEK_ORANI))) if digerleri else []
+    ornek = (
+        rastgele.sample(digerleri, k=max(1, int(len(digerleri) * ORNEK_ORANI))) if digerleri else []
+    )
 
     for belge in [*tam_denetim, *ornek]:
         yol_metni = belge.get("raw_html_path")
@@ -172,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     configure_logging()
 
-    dizin = Path(args.dizin)
+    dizin = cozumle_dizin(args.dizin)
     if not dizin.is_dir():
         print(f"Dizin bulunamadı: {dizin}")  # noqa: T201
         return 2

@@ -80,8 +80,9 @@ def yeniden_bagla(
         Yeniden bağlama özeti.
     """
     kampanyalar = session.execute(
-        select(Campaign.id, Bank.code, Campaign.external_slug, Campaign.source_url, Campaign.title)
-        .join(Bank, Campaign.bank_id == Bank.id)
+        select(
+            Campaign.id, Bank.code, Campaign.external_slug, Campaign.source_url, Campaign.title
+        ).join(Bank, Campaign.bank_id == Bank.id)
     ).all()
 
     slug_haritasi: dict[str, int] = {}
