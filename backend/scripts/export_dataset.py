@@ -214,6 +214,22 @@ def disa_aktar(session: Session, *, hedef: Path) -> dict[str, Any]:
         ],
     )
 
+    # ── data/gold/gold_set.jsonl — ŞARTNAME §4.6 BİÇİMİ ──
+    #
+    # ⚠️ Yukarıdaki `gold_annotations.jsonl`'dan AYRI bir dosyadır ve amacı
+    # farklıdır. O dosya arşiv: satır başına bir alan etiketi, geri yükleme
+    # için. Bu dosya ise şartnamenin istediği KANONİK gold set biçimi:
+    # kampanya başına tek satır, alanlar `fields` altında iç içe.
+    #
+    # ⚠️ Sabit yola yazılır (`data/gold/`), zaman damgalı dışa aktarma
+    # dizinine DEĞİL: şartname §12 bu dosyanın repoda durmasını istiyor.
+    #
+    # ⚠️ MANİFESTE GİRMEZ. `verify_export` manifestteki her dosyayı dışa
+    # aktarma DİZİNİNDE arıyor; buraya eklenirse doğrulama "gold_set.jsonl
+    # eksik" diyerek damgayı reddeder ve silme akışı kilitlenir.
+    gold_set_adet = _gold_set_yaz(session, kampanya_by_key, anahtarlar)
+    logger.info("gold_set_yazildi", yol=str(GOLD_SET_PATH), kampanya=gold_set_adet)
+
     # ── campaign_extractions ──
     # Ölçüldü: `is_validated` 2883/2883 satırda True; bu alanı HALÜSİNASYON
     # GUARD'ı yazıyor, insan değil. Yani ayrı bir "insan dokunuşu" alt kümesi
@@ -285,8 +301,83 @@ def _alembic_revision(session: Session) -> str | None:
 
     try:
         return session.scalar(text("SELECT version_num FROM alembic_version"))
-    except Exception:  # noqa: BLE001 — sürüm okunamazsa aktarma engellenmez
+    except Exception:
         return None
+
+
+# Şartname §4.6'nın istediği gold set dosyası. Zaman damgalı dışa aktarma
+# dizininin dışında, sabit yolda tutulur.
+GOLD_SET_PATH: Path = Path(__file__).resolve().parents[2] / "data" / "gold" / "gold_set.jsonl"
+
+
+def _gold_set_yaz(
+    session: Session,
+    kampanya_by_key: dict[str, Any],
+    anahtarlar: dict[int, str],
+) -> int:
+    """`data/gold/gold_set.jsonl` dosyasını şartname §4.6 biçiminde yazar.
+
+    Kampanya başına TEK satır; alan etiketleri `fields` altında iç içe,
+    taksonomi etiketleri `labels` altında eksen eksen gruplanmış.
+
+    ⚠️ `campaign_id` DEĞİL `campaign_key` kimliktir. Autoincrement id yeniden
+    kazımada değişiyor; dosya kararlı anahtarla yazılır ve `campaign_id`
+    yalnızca bilgi amaçlı taşınır.
+
+    ⚠️ Etiketi olmayan kampanya dosyaya GİRMEZ: gold set cevap anahtarıdır,
+    boş satır "bu kampanyada hiçbir alan yok" anlamına gelirdi.
+
+    Args:
+        session: Veritabanı oturumu.
+        kampanya_by_key: `campaign_key` → kampanya nesnesi.
+        anahtarlar: `campaign_id` → `campaign_key`.
+
+    Returns:
+        Yazılan satır (kampanya) sayısı.
+    """
+    kayitlar: dict[str, dict[str, Any]] = {}
+
+    for etiket in session.scalars(select(GoldAnnotation)):
+        anahtar = etiket.campaign_key
+        if anahtar is None:
+            continue
+        kampanya = kampanya_by_key.get(anahtar)
+        kayit = kayitlar.setdefault(
+            anahtar,
+            {
+                "campaign_key": anahtar,
+                "campaign_id": etiket.campaign_id,
+                "bank_code": anahtar.split(":", 1)[0],
+                "source_url": getattr(kampanya, "source_url", None),
+                "title": getattr(kampanya, "title", None),
+                "annotator": etiket.annotator,
+                "method": etiket.method,
+                "is_difficult": bool(etiket.is_difficult),
+                "note": etiket.note,
+                "fields": {},
+                "labels": {},
+            },
+        )
+        # ⚠️ "Metinde yok" (∅) kaydı da YAZILIR: `value=None`. Alanın hiç
+        # görünmemesi ile "bakıldı, yok" ayrı bilgilerdir ve değerlendirme
+        # doğru susmayı bu ayrımla ölçüyor.
+        kayit["fields"][etiket.field_name] = {
+            "value": etiket.gold_value,
+            "unit": etiket.unit,
+            "evidence": etiket.evidence_text,
+        }
+        # Zor vaka işareti kampanya düzeyinde: herhangi bir alan zor ise zor.
+        kayit["is_difficult"] = kayit["is_difficult"] or bool(etiket.is_difficult)
+
+    # Taksonomi etiketleri eksen eksen gruplanır.
+    for kategori in session.scalars(select(CampaignCategory)):
+        anahtar = anahtarlar.get(kategori.campaign_id)
+        if anahtar is None or anahtar not in kayitlar:
+            continue
+        kayitlar[anahtar]["labels"].setdefault(kategori.axis, []).append(kategori.value)
+
+    GOLD_SET_PATH.parent.mkdir(parents=True, exist_ok=True)
+    return _yaz_jsonl(GOLD_SET_PATH, [kayitlar[k] for k in sorted(kayitlar)])
 
 
 def main(argv: list[str] | None = None) -> int:
