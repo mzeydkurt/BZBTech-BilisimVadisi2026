@@ -1,7 +1,7 @@
 {
   "mode": "llm_only",
-  "gold_campaigns": 40,
-  "gold_annotations": 880,
+  "gold_campaigns": 60,
+  "gold_annotations": 1320,
   "micro_f1": 0.0,
   "macro_f1": 0.0,
   "hallucination_rate": 0.0,
@@ -9,211 +9,205 @@
   "overall": {
     "tp": 0,
     "fp": 0,
-    "fn": 305,
-    "tn": 575
+    "fn": 486,
+    "tn": 834
   },
   "by_field": {
     "profit_rate_pct": {
       "tp": 0,
       "fp": 0,
-      "fn": 7,
-      "tn": 33
+      "fn": 8,
+      "tn": 52
     },
     "profit_share_rate_pct": {
       "tp": 0,
       "fp": 0,
-      "fn": 2,
-      "tn": 38
+      "fn": 1,
+      "tn": 59
     },
     "allocation_fee_pct": {
       "tp": 0,
       "fp": 0,
-      "fn": 3,
-      "tn": 37
+      "fn": 0,
+      "tn": 60
     },
     "file_fee_try": {
       "tp": 0,
       "fp": 0,
       "fn": 0,
-      "tn": 40
+      "tn": 60
     },
     "has_no_fee": {
       "tp": 0,
       "fp": 0,
-      "fn": 10,
-      "tn": 30
+      "fn": 3,
+      "tn": 57
     },
     "term_months_min": {
       "tp": 0,
       "fp": 0,
-      "fn": 5,
-      "tn": 35
+      "fn": 2,
+      "tn": 58
     },
     "term_months_max": {
       "tp": 0,
       "fp": 0,
-      "fn": 6,
-      "tn": 34
+      "fn": 5,
+      "tn": 55
     },
     "installment_count": {
       "tp": 0,
       "fp": 0,
-      "fn": 12,
-      "tn": 28
+      "fn": 19,
+      "tn": 41
     },
     "financing_amount_min": {
       "tp": 0,
       "fp": 0,
       "fn": 3,
-      "tn": 37
+      "tn": 57
     },
     "financing_amount_max": {
       "tp": 0,
       "fp": 0,
       "fn": 4,
-      "tn": 36
+      "tn": 56
     },
     "min_spend_try": {
       "tp": 0,
       "fp": 0,
-      "fn": 17,
-      "tn": 23
+      "fn": 27,
+      "tn": 33
     },
     "max_spend_try": {
       "tp": 0,
       "fp": 0,
       "fn": 6,
-      "tn": 34
+      "tn": 54
     },
     "reward_amount_try": {
       "tp": 0,
       "fp": 0,
-      "fn": 14,
-      "tn": 26
+      "fn": 29,
+      "tn": 31
     },
     "reward_type": {
       "tp": 0,
       "fp": 0,
-      "fn": 22,
-      "tn": 18
+      "fn": 54,
+      "tn": 6
     },
     "cashback_pct": {
       "tp": 0,
       "fp": 0,
-      "fn": 6,
-      "tn": 34
+      "fn": 10,
+      "tn": 50
     },
     "discount_pct": {
       "tp": 0,
       "fp": 0,
-      "fn": 2,
-      "tn": 38
+      "fn": 10,
+      "tn": 50
     },
     "loyalty_points": {
       "tp": 0,
       "fp": 0,
-      "fn": 4,
-      "tn": 36
+      "fn": 18,
+      "tn": 42
     },
     "start_date": {
       "tp": 0,
       "fp": 0,
-      "fn": 29,
+      "fn": 49,
       "tn": 11
     },
     "end_date": {
       "tp": 0,
       "fp": 0,
-      "fn": 38,
+      "fn": 58,
       "tn": 2
     },
     "target_customer": {
       "tp": 0,
       "fp": 0,
-      "fn": 40,
+      "fn": 60,
       "tn": 0
     },
     "product_type": {
       "tp": 0,
       "fp": 0,
-      "fn": 40,
+      "fn": 60,
       "tn": 0
     },
     "sector": {
       "tp": 0,
       "fp": 0,
-      "fn": 35,
-      "tn": 5
+      "fn": 60,
+      "tn": 0
     }
   },
   "by_method": {
     "blind": {
       "tp": 0,
       "fp": 0,
-      "fn": 226,
-      "tn": 434
+      "fn": 243,
+      "tn": 417
     },
     "assisted": {
       "tp": 0,
       "fp": 0,
-      "fn": 79,
-      "tn": 141
+      "fn": 243,
+      "tn": 417
     }
   },
   "by_bank": {
     "ziraat_katilim": {
       "tp": 0,
       "fp": 0,
-      "fn": 87,
-      "tn": 155
-    },
-    "hayat_finans": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 19,
-      "tn": 47
-    },
-    "dunya_katilim": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 25,
-      "tn": 63
-    },
-    "kuveyt_turk": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 36,
-      "tn": 52
-    },
-    "albaraka": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 25,
-      "tn": 41
-    },
-    "vakif_katilim": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 18,
-      "tn": 48
+      "fn": 182,
+      "tn": 302
     },
     "emlak_katilim": {
       "tp": 0,
       "fp": 0,
-      "fn": 30,
-      "tn": 80
+      "fn": 54,
+      "tn": 100
+    },
+    "vakif_katilim": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 48,
+      "tn": 84
+    },
+    "hayat_finans": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 44,
+      "tn": 88
+    },
+    "albaraka": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 43,
+      "tn": 67
+    },
+    "kuveyt_turk": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 79,
+      "tn": 119
+    },
+    "dunya_katilim": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 17,
+      "tn": 49
     },
     "tom_bank": {
       "tp": 0,
       "fp": 0,
-      "fn": 26,
-      "tn": 40
-    },
-    "turkiye_finans": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 39,
-      "tn": 49
+      "fn": 19,
+      "tn": 25
     }
   }
 }
