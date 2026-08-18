@@ -28,7 +28,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final
+from typing import Any, Final
 
 from bs4 import BeautifulSoup, Tag
 
@@ -608,6 +608,151 @@ def parse_ltv_matrices(html: str | None) -> list[LtvMatrix]:
     return matrisler
 
 
+def _parse_matrix_amount_band(text: str) -> tuple[Decimal | None, Decimal | None]:
+    """Tutar bandı dizesinden min ve max tutarlarını çıkarır."""
+    alt, ust = _parse_value_band(text)
+    if alt is not None or ust is not None:
+        return alt, ust
+
+    parcalar = re.split(r"\s*[-–—]\s*", text.strip())
+    if len(parcalar) == 2:
+        a_val, _ = parse_money(parcalar[0])
+        u_val, _ = parse_money(parcalar[1])
+        if a_val is not None and u_val is not None:
+            return min(a_val, u_val), max(a_val, u_val)
+        return a_val, u_val
+    elif len(parcalar) == 1:
+        t_val, _ = parse_money(parcalar[0])
+        return t_val, None
+    return None, None
+
+
+def _parse_matrix_term_header(header: str) -> dict[str, Any] | None:
+    """Vade başlığını (ör. '1 Aylık', '31 Günlük', '1 Yıl (%)') ay cinsinden vadeye çevirir."""
+    h = _fold(header)
+    if not h:
+        return None
+    m_days = re.search(r"(\d+)\s*gun", h)
+    if m_days:
+        d = int(m_days.group(1))
+        m = 1 if d >= 30 else None
+        return {"term_days_min": d, "term_days_max": d, "term_months": m, "term_label": header}
+    m_ay = re.search(r"(\d+)\s*ay", h)
+    if m_ay:
+        a = int(m_ay.group(1))
+        return {"term_months": a, "term_label": header}
+    m_yil = re.search(r"(\d+)\s*yil", h)
+    if m_yil:
+        y = int(m_yil.group(1))
+        return {"term_months": y * 12, "term_label": header}
+    if "yil" in h:
+        return {"term_months": 12, "term_days_min": 366, "term_label": header}
+    return None
+
+
+def _parse_matrix_rate_table(table: Tag, caption: str | None = None) -> RateTable | None:
+    """Katılma hesabı oran matrislerini (satır = tutar bandı, sütun = vadeler) ayrıştırır."""
+    rows = table.find_all("tr")
+    if len(rows) < 2:
+        return None
+
+    h_cells: list[str] = []
+    h_idx = 0
+    for i, r in enumerate(rows[:2]):
+        c = [normalize_text(cell.get_text(" ", strip=True)) for cell in r.find_all(["th", "td"])]
+        terms = [_parse_matrix_term_header(x) for x in c[1:]]
+        if sum(1 for t in terms if t is not None) >= 2:
+            h_cells = c
+            h_idx = i
+            break
+
+    if not h_cells:
+        return None
+
+    col_terms = [_parse_matrix_term_header(x) for x in h_cells]
+    table_caption = caption or _table_caption(table) or ""
+
+    curr = "TRY"
+    cap_fold = _fold(table_caption + " " + " ".join(h_cells))
+    if "dolar" in cap_fold or "usd" in cap_fold:
+        curr = "USD"
+    elif "euro" in cap_fold or "eur" in cap_fold:
+        curr = "EUR"
+    elif "altin" in cap_fold or "xau" in cap_fold or "gram" in cap_fold:
+        curr = "XAU"
+    elif "gumus" in cap_fold or "xag" in cap_fold:
+        curr = "XAG"
+
+    parsed_rows: list[RateRow] = []
+    for r in rows[h_idx + 1 :]:
+        cells = [normalize_text(cell.get_text(" ", strip=True)) for cell in r.find_all(["th", "td"])]
+        if not cells:
+            continue
+        row_label = cells[0]
+        alt, ust = _parse_matrix_amount_band(row_label)
+        for c_i, cell_val in enumerate(cells[1:], start=1):
+            if c_i >= len(col_terms):
+                continue
+            term_info = col_terms[c_i]
+            if term_info is None:
+                continue
+            if not cell_val or cell_val in ("-", "STOPAJ ORANI", "%"):
+                continue
+
+            is_sharing = any(w in cap_fold for w in ("paylasim", "bolusum", "kpo"))
+            inv, bnk = parse_profit_sharing_ratio(cell_val)
+            rate_type = "financing_rate"
+            profit: Decimal | None = None
+
+            if inv is not None:
+                rate_type = "profit_sharing_ratio"
+            elif is_sharing and cell_val.isdigit() and 1 <= int(cell_val) <= 100:
+                inv = Decimal(cell_val)
+                bnk = Decimal(100 - int(cell_val))
+                rate_type = "profit_sharing_ratio"
+            else:
+                pr = parse_rate(cell_val)
+                if pr is None and re.match(r"^\d+(?:[.,]\d+)?$", cell_val):
+                    try:
+                        pr = Decimal(cell_val.replace(",", "."))
+                    except Exception:
+                        pass
+                if pr is not None:
+                    profit = pr
+                    rate_type = "participation_yield"
+                else:
+                    continue
+
+            label_str = str(term_info.get("term_label", ""))
+            parsed_rows.append(
+                RateRow(
+                    rate_type=rate_type,
+                    term_months=term_info.get("term_months"),
+                    term_days_min=term_info.get("term_days_min"),
+                    term_days_max=term_info.get("term_days_max"),
+                    term_label=label_str,
+                    profit_rate_pct=profit,
+                    investor_share_pct=inv,
+                    bank_share_pct=bnk,
+                    amount_min=alt,
+                    amount_max=ust,
+                    currency=curr,
+                    evidence_text=f"{row_label} | {label_str} | {cell_val}",
+                )
+            )
+
+    if not parsed_rows:
+        return None
+
+    anahtar, etiket = _variant_from_caption(table_caption)
+    return RateTable(
+        rows=tuple(parsed_rows),
+        variant_key=anahtar,
+        variant_label=etiket,
+        caption=table_caption if table_caption else None,
+    )
+
+
 def parse_rate_tables(html: str | None) -> list[RateTable]:
     """Sayfadaki tüm kâr payı oranı tablolarını ayrıştırır.
 
@@ -628,32 +773,34 @@ def parse_rate_tables(html: str | None) -> list[RateTable]:
         if len(satirlar) < 2:
             continue
 
+        caption = _table_caption(table)
+
+        # 1. Öncelik: Standart dikey tablo eşleme
         basliklar = _cells(satirlar[0])
         kolonlar = _map_columns(basliklar)
 
-        # Oran veya bölüşüm kolonu yoksa bu bir oran tablosu değildir (ör. ücret listesi).
-        if "profit_rate_pct" not in kolonlar.values() and "profit_sharing_ratio" not in kolonlar.values():
-            continue
+        if "profit_rate_pct" in kolonlar.values() or "profit_sharing_ratio" in kolonlar.values():
+            veri: list[RateRow] = []
+            for satir in satirlar[1:]:
+                ayristirilan = _parse_row(_cells(satir), kolonlar, caption=caption)
+                if ayristirilan is not None:
+                    veri.append(ayristirilan)
 
-        caption = _table_caption(table)
-        veri: list[RateRow] = []
-        for satir in satirlar[1:]:
-            ayristirilan = _parse_row(_cells(satir), kolonlar, caption=caption)
-            if ayristirilan is not None:
-                veri.append(ayristirilan)
+            if veri:
+                anahtar, etiket = _variant_from_caption(caption)
+                tablolar.append(
+                    RateTable(
+                        rows=tuple(veri),
+                        variant_key=anahtar,
+                        variant_label=etiket,
+                        caption=caption,
+                    )
+                )
+                continue
 
-        if not veri:
-            continue
-
-        caption = _table_caption(table)
-        anahtar, etiket = _variant_from_caption(caption)
-        tablolar.append(
-            RateTable(
-                rows=tuple(veri),
-                variant_key=anahtar,
-                variant_label=etiket,
-                caption=caption,
-            )
-        )
+        # 2. Öncelik: Katılma hesabı oran matrisi (Satır=Tutar, Sütun=Vade)
+        matris_tablo = _parse_matrix_rate_table(table, caption=caption)
+        if matris_tablo is not None and not matris_tablo.is_empty:
+            tablolar.append(matris_tablo)
 
     return tablolar

@@ -82,3 +82,44 @@ class TestParticipationAccountTables:
         assert rows[1].investor_share_pct == Decimal("30")
         assert rows[2].currency == "XAU"
         assert rows[2].investor_share_pct == Decimal("10")
+
+    def test_matrix_layout_emlak_katilim(self) -> None:
+        html = """
+        <html><body>
+        <h3>Türk Lirası Kar Paylaşım Oranları</h3>
+        <table>
+            <tr><th>Minimum Bakiye</th><th>Maksimum Bakiye</th><th>1 Günlük</th><th>31 Günlük</th><th>3 Aylık</th></tr>
+            <tr><td>250</td><td>24.999</td><td>75</td><td>85</td><td>86</td></tr>
+        </table>
+        </body></html>
+        """
+        tablolar = parse_rate_tables(html)
+        assert len(tablolar) == 1
+        rows = tablolar[0].rows
+        assert len(rows) == 3
+        assert rows[0].rate_type == "profit_sharing_ratio"
+        assert rows[0].term_days_min == 1
+        assert rows[0].investor_share_pct == Decimal("75")
+        assert rows[0].currency == "TRY"
+        assert rows[1].term_days_min == 31
+        assert rows[1].investor_share_pct == Decimal("85")
+
+    def test_matrix_layout_turkiye_finans_yield(self) -> None:
+        html = """
+        <html><body>
+        <h3>E-Katılma Hesabı</h3>
+        <table>
+            <tr><th>E-Katılma Hesabı</th><th>1 Ay (%)</th><th>3 Ay (%)</th><th>1 Yıl (%)</th></tr>
+            <tr><td>250-10,000,000</td><td>28.29</td><td>28.73</td><td>31.21</td></tr>
+        </table>
+        </body></html>
+        """
+        tablolar = parse_rate_tables(html)
+        assert len(tablolar) == 1
+        rows = tablolar[0].rows
+        assert len(rows) == 3
+        assert rows[0].rate_type == "participation_yield"
+        assert rows[0].term_months == 1
+        assert rows[0].profit_rate_pct == Decimal("28.29")
+        assert rows[2].term_months == 12
+        assert rows[2].profit_rate_pct == Decimal("31.21")
