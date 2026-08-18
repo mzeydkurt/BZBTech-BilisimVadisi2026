@@ -226,7 +226,13 @@ hesaplayıcı formlarını bir kez envanterler. Sonuç veritabanına yazılır;
 python dev.py kur --playwright   # tek seferlik, ~400 MB
 python dev.py kesif-endpoint     # → docs/endpoint_discovery.md
 python dev.py kesif-hesaplayici  # → docs/calculator_inventory.md
+python dev.py envanter-uygula    # envanteri ürün limitlerine bağlar (ağa çıkmaz)
 ```
+
+⚠️ `envanter-uygula`, ORTAK hesaplayıcının birleşik vade listesini değil,
+seçenek etiketindeki ürüne özel sınırı yazar. Ziraat'in tek dropdown'ı 17
+finansman türünü sunuyor ve vade seçicisi 1-60 listeliyor; gerçek sınır
+etikette: `TAŞIT FINANSMANI(1-48 AY)`, `KONUT FINANSMANI (…/1-120 AY)`.
 
 ### Diğer
 

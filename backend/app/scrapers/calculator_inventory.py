@@ -24,6 +24,17 @@ from app.core.normalization.money import parse_decimal_tr
 from app.core.normalization.text import ascii_fold_tr, collapse_whitespace, lower_tr
 from app.core.vocab import VARIANT_VOCAB
 
+# Vade seçeneği gibi görünen etiketler. Vakıf Katılım vadeyi kelimeyle
+# yazıyor ("Aylık", "1 Yıl Üzeri", "Kırık Vade"); bunlar varyant değildir.
+_TERM_LABEL_RE: Final[re.Pattern[str]] = re.compile(r"\b(aylik|yillik|yil|vade|ay)\b")
+
+# Para birimi seçicisi de varyant değildir: Vakıf Katılım hesaplama
+# sayfasında TL/USD/EURO/ALTIN seçtiriyor, bu ürün varyantı değil işlem
+# para birimi.
+_CURRENCY_LABEL_RE: Final[re.Pattern[str]] = re.compile(
+    r"\b(tl|try|usd|eur|euro|gbp|altin|gumus|xau)\b"
+)
+
 # ── Varyant etiketi → kanonik anahtar eşlemesi ────────────
 #
 # Anahtar sırası ÖNEMLİDİR: daha özgül kalıplar önce denenir. "2. el konut"
@@ -147,12 +158,22 @@ class CalculatorForm:
         secenekler = tanim.get("options", [])
         if len(secenekler) < 2:
             return False
-        metinli = [
-            secenek
-            for secenek in secenekler
-            if not str(secenek.get("label", "")).strip().replace(".", "").isdigit()
-        ]
-        return len(metinli) >= 2
+
+        etiketler = [str(secenek.get("label", "")).strip() for secenek in secenekler]
+        metinli = [e for e in etiketler if not e.replace(".", "").isdigit()]
+        if len(metinli) < 2:
+            return False
+
+        # ⚠️ VADE SEÇENEKLERİ HER ZAMAN SAYI DEĞİL. Vakıf Katılım vadeyi
+        # kelimeyle yazıyor: "Aylık", "3 Aylık", "6 Aylık", "Yıllık",
+        # "1 Yıl Üzeri", "Kırık Vade". Yalnızca salt sayılar elendiğinde bu
+        # liste VARYANT sanılıyor ve altı sahte ürün varyantı üretiyordu.
+        def _eksen_gibi(etiket: str) -> bool:
+            katlanmis = ascii_fold_tr(lower_tr(etiket))
+            return bool(_TERM_LABEL_RE.search(katlanmis) or _CURRENCY_LABEL_RE.search(katlanmis))
+
+        eksen_gibi = sum(1 for e in etiketler if _eksen_gibi(e))
+        return eksen_gibi < len(etiketler) / 2
 
 
 def match_variant(label: str) -> tuple[str | None, str | None]:
@@ -512,3 +533,80 @@ def _first_integer(text: str) -> int | None:
     """Metindeki ilk tam sayıyı döndürür ("36 Ay" -> 36)."""
     eslesme = re.search(r"\d+", text)
     return int(eslesme.group()) if eslesme else None
+
+
+# ── Seçenek etiketinden ürün limiti (§3.4) ────────────────
+#
+# ⚠️ ORTAK HESAPLAYICI, ÜRÜNE ÖZEL BİLGİ TAŞIYABİLİR. Ziraat Katılım'ın
+# finansman hesaplayıcısı sitenin TAMAMINDA aynı: 17 seçenekli tek bir
+# dropdown, üç ayrı ürün sayfasında da birebir aynı çıkıyor. Vade seçicisi
+# 1-60 listeliyor ama bu BİRLEŞİK bir liste; hiçbir ürün 60 ay vermiyor.
+#
+# Gerçek sınır SEÇENEK ETİKETİNİN İÇİNDE yazılı:
+#
+#     "TAŞIT FINANSMANI(1-48 AY)"
+#     "İHTIYAÇ FINANSMANI (1-24 AY)"
+#     "KONUT FINANSMANI (0-10.000.000 TL/1-120 AY))"
+#
+# Vade seçicisini olduğu gibi ürüne yazmak taşıt finansmanını 60 aya kadar
+# gösterirdi; etiketten okunan 48 doğru değerdir.
+_OPTION_TERM_RE: Final[re.Pattern[str]] = re.compile(r"(\d{1,3})\s*-\s*(\d{1,3})\s*ay")
+_OPTION_AMOUNT_RE: Final[re.Pattern[str]] = re.compile(
+    r"([\d.]+)\s*-\s*([\d.]+)\s*tl", re.IGNORECASE
+)
+
+
+@dataclass(frozen=True)
+class OptionLimits:
+    """Bir hesaplayıcı seçeneğinden okunan ürün limitleri."""
+
+    label: str
+    product_name: str
+    term_months_min: int | None = None
+    term_months_max: int | None = None
+    amount_min: Decimal | None = None
+    amount_max: Decimal | None = None
+
+
+def parse_option_limits(label: str) -> OptionLimits | None:
+    """Hesaplayıcı seçenek etiketinden ürün adını ve limitlerini ayırır.
+
+    ⚠️ PARANTEZ İÇİ SINIR, ÜRÜN ADININ PARÇASI DEĞİLDİR. "TAŞIT
+    FINANSMANI(1-48 AY)" ile "TAŞIT FINANSMANI (1-36 AY)" AYNI ürünün iki
+    paketi; ad ayrılmazsa iki farklı ürün sanılır.
+
+    ⚠️ Parantez bazen bitişik ("FINANSMANI(1-12 AY)"), bazen boşluklu, bazen
+    fazladan kapanışlı ("...1-120 AY))") yazılmış. Ayrıştırma bunların
+    üçüne de dayanıklı olmalı.
+
+    Args:
+        label: Dropdown seçeneğinin görünen metni.
+
+    Returns:
+        Ayrıştırılmış limitler; etiket boşsa None.
+    """
+    temiz = collapse_whitespace(label or "")
+    if not temiz:
+        return None
+
+    # Parantezli sınır bloğunu addan ayır.
+    parantez = re.search(r"\(([^()]*)\)?\)?\s*$", temiz)
+    ad = collapse_whitespace(temiz[: parantez.start()] if parantez else temiz)
+    icerik = ascii_fold_tr(lower_tr(parantez.group(1))) if parantez else ""
+
+    vade = _OPTION_TERM_RE.search(icerik)
+    tutar = _OPTION_AMOUNT_RE.search(icerik)
+
+    alt_tutar = _as_decimal(tutar.group(1)) if tutar else None
+    ust_tutar = _as_decimal(tutar.group(2)) if tutar else None
+
+    return OptionLimits(
+        label=temiz,
+        product_name=ad or temiz,
+        term_months_min=int(vade.group(1)) if vade else None,
+        term_months_max=int(vade.group(2)) if vade else None,
+        # ⚠️ Alt sınır SIFIR limit değildir; "0-10.000.000 TL" ifadesinde
+        # anlamlı olan yalnızca tavan.
+        amount_min=alt_tutar if alt_tutar and alt_tutar > 0 else None,
+        amount_max=ust_tutar,
+    )

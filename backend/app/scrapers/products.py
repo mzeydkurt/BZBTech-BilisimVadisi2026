@@ -18,6 +18,8 @@ vadeler) ve hesaplayıcıya tek istek atmadan elde edilir; bu yüzden
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -26,8 +28,12 @@ from app.db.base import utc_now
 from app.db.models import Bank, Product, ProductRate, ScrapeRun, SourceDocument
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_title
-from app.processing.limits import extract_limits_from_text
-from app.processing.rate_tables import parse_rate_tables
+from app.processing.limits import derive_rate_from_payment_plan, extract_limits_from_text
+from app.processing.rate_tables import (
+    parse_ltv_matrices,
+    parse_payment_plan,
+    parse_rate_tables,
+)
 from app.scrapers.base import BaseScraper
 from app.scrapers.calculator_inventory import allowed_terms, amount_bounds, parse_form_controls
 from app.scrapers.models import (
@@ -41,6 +47,14 @@ from app.utils.hashing import canonicalize_url, sha256_text, url_hash
 from app.utils.slugify import slugify
 
 logger = get_logger(__name__)
+
+# Site geneli seçici eşiği: iki sayfanın seçenek kümesi bu oranda
+# örtüşüyorsa küme ürüne değil siteye aittir. Birebir eşitlik (1.0)
+# yetersiz kaldı — bankalar aynı seçeneği sayfadan sayfaya bir harf
+# farkla yazabiliyor ("Katılma Hesap" / "Katılma Hesabı"). Türkiye
+# Finans'ın dört seçeneğinin ikisi bu yüzden farklı yazılıyor ve
+# örtüşme tam 0.5 çıkıyor — eşik buna göre belirlendi.
+_SELECTOR_OVERLAP: float = 0.5
 
 # Bant boyutlarının kodlanma sırası. Sıra SABİT olmalı: değişirse aynı oran
 # farklı `band_key` üretir ve upsert satır çoğaltır.
@@ -192,19 +206,70 @@ class ProductRunner:
             sayfalar: (hint, belge, ham ürünler) üçlüleri; yerinde değiştirilir.
             bank_code: Log için banka kodu.
         """
-        # Her sayfanın varyant etiket kümesinin parmak izi.
-        imzalar: dict[frozenset[str], int] = {}
+        # Her sayfanın varyant etiket kümesi.
+        #
+        # ⚠️ BİREBİR EŞİTLİK YETMİYOR. Türkiye Finans aynı hesap seçicisini
+        # iki sayfada da gösteriyor ama etiketleri bir harf farklı yazıyor:
+        # "Katılma Hesap" / "Katılma Hesabı", "E-Katılma Hesap" /
+        # "E-Katılma Hesabı". Kümeler eşit olmadığı için eleme çalışmıyor ve
+        # 8 sahte varyant yazılıyordu. ÖRTÜŞME oranına bakılır.
+        kumeler: list[frozenset[str]] = []
         for _, _, raws in sayfalar:
-            etiketler = frozenset(r.variant_label or "" for r in raws if r.parent_external_key)
+            etiketler = frozenset(
+                (r.variant_label or "").casefold() for r in raws if r.parent_external_key
+            )
             if etiketler:
-                imzalar[etiketler] = imzalar.get(etiketler, 0) + 1
+                kumeler.append(etiketler)
 
-        site_geneli = {imza for imza, adet in imzalar.items() if adet > 1}
-        if not site_geneli:
+        site_geneli: set[frozenset[str]] = set()
+        for i, kume in enumerate(kumeler):
+            for j, digeri in enumerate(kumeler):
+                if i == j:
+                    continue
+                ortak = len(kume & digeri)
+                if ortak and ortak / min(len(kume), len(digeri)) >= _SELECTOR_OVERLAP:
+                    site_geneli.add(kume)
+                    break
+
+        # ⚠️ VADE EKSENİ DE AYNI SORUNU YAŞIYOR. Ziraat'in ortak
+        # hesaplayıcısı sunucu HTML'inde ve vade seçicisi 1-60 listeliyor;
+        # `limits_from_page` bunu her ürüne `term_months_max=60` olarak
+        # yazıyordu. Birleşik liste HİÇBİR ürünün gerçek sınırı değil:
+        # taşıt gerçekte 48 ay, konut 120 ay. Aynı vade kümesi birden çok
+        # üründe görülüyorsa o sınır ürüne ait değildir ve YAZILMAZ —
+        # `scripts/apply_inventory.py` seçenek etiketinden gerçek sınırı
+        # okuyup dolduruyor.
+        vade_imzalari: dict[tuple[int | None, int | None], int] = {}
+        for _, _, raws in sayfalar:
+            for kok in (r for r in raws if r.parent_external_key is None):
+                if kok.term_months_min is None and kok.term_months_max is None:
+                    continue
+                anahtar = (kok.term_months_min, kok.term_months_max)
+                vade_imzalari[anahtar] = vade_imzalari.get(anahtar, 0) + 1
+        ortak_vade = {imza for imza, adet in vade_imzalari.items() if adet > 1}
+
+        if not site_geneli and not ortak_vade:
             return
 
         for _, _, raws in sayfalar:
-            etiketler = frozenset(r.variant_label or "" for r in raws if r.parent_external_key)
+            for kok in (r for r in raws if r.parent_external_key is None):
+                if (kok.term_months_min, kok.term_months_max) in ortak_vade:
+                    logger.info(
+                        "site_geneli_vade_elendi",
+                        banka=bank_code,
+                        urun=kok.external_key,
+                        vade=f"{kok.term_months_min}-{kok.term_months_max}",
+                    )
+                    kok.term_months_min = None
+                    kok.term_months_max = None
+                    kok.allowed_terms = None
+
+            # ⚠️ `site_geneli` kümeleri CASEFOLD edilmiş; burada da aynı
+            # dönüşüm uygulanmazsa üyelik denetimi hiç tutmaz ve eleme
+            # sessizce devre dışı kalır (24 sahte varyant geri gelmişti).
+            etiketler = frozenset(
+                (r.variant_label or "").casefold() for r in raws if r.parent_external_key
+            )
             if etiketler not in site_geneli:
                 continue
             atilan = [r for r in raws if r.parent_external_key]
@@ -563,6 +628,95 @@ class ProductRunner:
         session.commit()
 
 
+def rates_from_payment_plan(html: str | None) -> list[RawProductRate]:
+    """Ödeme planından kâr payı oranını geri hesaplar (§7.5).
+
+    ⚠️ ALBARAKA ORANI YAZMIYOR, PLANI YAZIYOR. Konut finansmanı sayfasında
+    23 satırlık taksit tablosu var; oran annüite denkleminden çözülür.
+
+    ⚠️ KAYNAK `payment_plan_derived` (güven 0.950), `html_table` DEĞİL:
+    bankanın ilan ettiği bir sayı değil, bizim türettiğimiz bir değer. Bir
+    kademe düşük güven bu farkı kayıt altına alır.
+
+    ⚠️ SAYFANIN "YILLIK MALİYET ORANI" DEĞERİ AYRI BİR BÜYÜKLÜKTÜR ve buraya
+    yazılmaz. Albaraka %82,39 yazıyor; o değer ücretler düşüldükten sonra net
+    ele geçen tutar üzerinden bileşik yıllık maliyet (aynı planla %82,73
+    doğrulandı). Buradaki oran ücretsiz, aylık kâr payıdır.
+
+    Args:
+        html: Ürün sayfasının HTML'i.
+
+    Returns:
+        Tek elemanlı liste; plan yoksa ya da oran çözülemezse boş liste.
+    """
+    plan = parse_payment_plan(html)
+    if plan is None:
+        return []
+
+    # ⚠️ GERİ ÖDEME TOPLAMI ÜCRET İÇEREBİLİR. Albaraka'nın arsa finansmanı
+    # planında "Taksit Tutarı" toplamı 293.744,08 TL, oysa ana para +
+    # kâr payı = 249.033,88 TL; aradaki 44.710,20 TL ücret ve vergi.
+    # Toplam üzerinden hesaplanan oran KÂR PAYI DEĞİL maliyet olur ve
+    # bankayı olduğundan pahalı gösterir. Kâr payı kolonu varsa esas alınır.
+    geri_odeme: Decimal | None
+    if plan.principal is not None and plan.total_profit is not None:
+        geri_odeme = plan.principal + plan.total_profit
+    else:
+        geri_odeme = plan.total_repayment
+
+    oran = derive_rate_from_payment_plan(plan.principal, geri_odeme, plan.term_months)
+    if oran is None:
+        return []
+
+    return [
+        RawProductRate(
+            rate_source="payment_plan_derived",
+            term_months=plan.term_months,
+            profit_rate_pct=oran,
+            amount_min=plan.principal,
+            amount_max=plan.principal,
+            evidence_text=plan.evidence_text,
+        )
+    ]
+
+
+def rates_from_ltv_matrices(html: str | None) -> list[RawProductRate]:
+    """Konut değeri × enerji sınıfı LTV matrislerini oran satırlarına çevirir.
+
+    ⚠️ HER HÜCRE AYRI SATIR. Matris tek bir "LTV %90" değerine indirgenmez:
+    %90 yalnızca 5 milyon altı A-B sınıfı konutta geçerli, 20 milyon üstü
+    DİĞER sınıfta oran %20. İndirgeme yapılırsa karşılaştırma motoru pahalı
+    konutlarda bankayı olduğundan cömert gösterir.
+
+    ⚠️ `profit_rate_pct` DOLDURULMAZ. Bu satırlar kâr payı değil TEMİNAT
+    ORANI taşıyor; kâr payı kolonuna yazmak iki farklı büyüklüğü aynı alanda
+    toplar ve "en düşük kâr payı" sıralamasını bozar.
+
+    Args:
+        html: Ürün sayfasının HTML'i.
+
+    Returns:
+        Her matris hücresi için bir oran satırı; matris yoksa boş liste.
+    """
+    bulunan: list[RawProductRate] = []
+    for matris in parse_ltv_matrices(html):
+        for hucre in matris.cells:
+            bulunan.append(
+                RawProductRate(
+                    rate_source="html_table",
+                    ltv_band_max_pct=hucre.ltv_max_pct,
+                    energy_class=hucre.energy_class,
+                    amount_min=hucre.amount_min,
+                    amount_max=hucre.amount_max,
+                    # Matris başlığı varyantı taşıyor: "Standart Konut Alımı"
+                    # ile "2. ve Sonraki Konut Alımı" oranları tamamen farklı.
+                    variant=matris.caption,
+                    evidence_text=hucre.evidence_text,
+                )
+            )
+    return bulunan
+
+
 def rates_from_tables(
     html: str | None,
     *,
@@ -630,8 +784,11 @@ def limits_from_page(html: str, text: str) -> tuple[dict[str, object], str]:
             alanlar[ad] = metin_degeri
             kaynaklar.append("text")
 
+    # ⚠️ SIFIR TAVAN LİMİT DEĞİLDİR. Kuveyt Türk'ün "Yuvam TL Katılma
+    # Hesabı" sayfasında `amount_max=0` yazılıyordu; sıfır bir üst sınır
+    # değil, ayrıştırma artığıdır.
     _ata("amount_min", tutar_min, metinden.amount_min)
-    _ata("amount_max", tutar_max, metinden.amount_max)
+    _ata("amount_max", _sifirsiz(tutar_max), _sifirsiz(metinden.amount_max))
     _ata("allowed_terms", vadeler, metinden.allowed_terms)
     _ata(
         "term_months_min",
@@ -694,3 +851,12 @@ __all__ = [
     "rates_from_tables",
     "run_products",
 ]
+
+
+def _sifirsiz(deger: object) -> object:
+    """Sıfır tutarı `None`a çevirir.
+
+    Sıfır bir üst sınır değildir; ayrıştırma artığı ya da hesaplayıcı
+    yer tutucusudur ("Ödenecek Toplam Tutar 0 TL").
+    """
+    return None if deger is not None and deger == 0 else deger

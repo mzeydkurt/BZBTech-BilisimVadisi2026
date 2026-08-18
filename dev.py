@@ -235,6 +235,16 @@ def kesif_hesaplayici() -> int:
     )
 
 
+def envanter_uygula() -> int:
+    """Hesaplayıcı envanterini ürün limitlerine uygular (ağa çıkmaz).
+
+    `kesif-hesaplayici` sayfanın ne sunduğunu tabloya yazar; bu komut o
+    envanteri `products` satırlarına bağlar. Ortak hesaplayıcının BİRLEŞİK
+    vade listesi değil, seçenek etiketindeki ürüne özel sınır esas alınır.
+    """
+    return _calistir([_python(), "-m", "scripts.apply_inventory", *_ek_argumanlar()], cwd=BACKEND)
+
+
 def geri_doldur() -> int:
     """Bankanın kendi kategori etiketini arşivlenmiş HTML'den geri doldurur.
 
@@ -476,6 +486,7 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "gold-ornek": (gold_ornek, "Gold set örneklemi seçer (ağa çıkmaz)"),
     "etiketle": (etiketle, "Gold set etiketleme arayüzünü açar"),
     "gold-durum": (gold_durum, "Etiketleme ilerlemesini raporlar"),
+    "envanter-uygula": (envanter_uygula, "Hesaplayıcı envanterini ürün limitlerine uygular"),
     "cikarim": (cikarim, "Kampanya metinlerinden bilgi çıkarır (ağa çıkmaz)"),
     "degerlendir": (degerlendir, "Gold set'e karşı F1 ölçer (ağa çıkmaz)"),
     "ablation": (ablation, "Üç kipi karşılaştırır, ablasyon tablosunu üretir"),
