@@ -257,7 +257,7 @@ class TestBandKey:
         assert band_key(a) != band_key(b)
 
     def test_null_alanlar_anahtari_bozmaz(self) -> None:
-        bos = RawProductRate(rate_source="text")
+        bos = RawProductRate(rate_source="text", currency=None, rate_type=None)  # type: ignore[arg-type]
         assert band_key(bos) == "|" * (len(band_key(bos).split("|")) - 1)
 
 

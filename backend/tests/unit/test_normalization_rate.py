@@ -70,3 +70,29 @@ class TestParseRateRange:
 
     def test_bos_girdi(self) -> None:
         assert parse_rate_range(None) == (None, None)
+
+
+class TestParseProfitSharingRatio:
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("90/10", (Decimal("90"), Decimal("10"))),
+            ("90 / 10", (Decimal("90"), Decimal("10"))),
+            ("%90 - %10", (Decimal("90"), Decimal("10"))),
+            ("89.1 / 10.9", (Decimal("89.1"), Decimal("10.9"))),
+            ("98/2", (Decimal("98"), Decimal("2"))),
+            ("%75", (Decimal("75"), Decimal("25"))),
+        ],
+    )
+    def test_bolusum_orani_ayristirma(
+        self, text: str, expected: tuple[Decimal | None, Decimal | None]
+    ) -> None:
+        from app.core.normalization.rate import parse_profit_sharing_ratio
+
+        assert parse_profit_sharing_ratio(text) == expected
+
+    def test_gecersiz_bolusum_orani(self) -> None:
+        from app.core.normalization.rate import parse_profit_sharing_ratio
+
+        assert parse_profit_sharing_ratio(None) == (None, None)
+        assert parse_profit_sharing_ratio("metin") == (None, None)
