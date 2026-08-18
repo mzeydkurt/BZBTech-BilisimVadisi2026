@@ -212,6 +212,19 @@ def scrape_deneme() -> int:
     )
 
 
+def urun_kazi_deneme() -> int:
+    """Ürün kazımasını veritabanına yazmadan dener (ağa çıkar)."""
+    return _calistir(
+        [_python(), "-m", "scripts.scrape_products", "--dry-run", *_ek_argumanlar()],
+        cwd=BACKEND,
+    )
+
+
+def urun_dogrula() -> int:
+    """Ürün ve oran kapsamasını doğrular ve rapor üretir."""
+    return _calistir([_python(), "-m", "scripts.verify_products"], cwd=BACKEND)
+
+
 def kesif_endpoint() -> int:
     """Kampanya listesi JSON uçlarını arar.
 
@@ -481,6 +494,7 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "yeniden-isle": (yeniden_isle, "Temiz metni arşivden yeniden üretir (ağa çıkmaz)"),
     "urun-kazi": (urun_kazi, "Ürün/finansman limit, varyant ve oranlarını çeker"),
     "urun-kazi-deneme": (urun_kazi_deneme, "Ürün kazımasını yazmadan dener"),
+    "urun-dogrula": (urun_dogrula, "Ürün ve oran kapsamasını doğrular ve rapor üretir"),
     "siniflandir": (siniflandir, "Kampanyaları dört eksende sınıflandırır (ağa çıkmaz)"),
     "llm-saglik": (llm_saglik, "LLM sağlayıcısının durumunu kontrol eder"),
     "gold-ornek": (gold_ornek, "Gold set örneklemi seçer (ağa çıkmaz)"),
