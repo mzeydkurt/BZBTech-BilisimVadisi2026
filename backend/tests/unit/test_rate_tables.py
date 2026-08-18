@@ -10,7 +10,11 @@ from decimal import Decimal
 
 import pytest
 
-from app.processing.rate_tables import parse_ltv_matrices, parse_rate_tables
+from app.processing.rate_tables import (
+    parse_ltv_matrices,
+    parse_rate_tables,
+    parse_vehicle_limit_matrices,
+)
 
 FIXTURE = "html/turkiye_finans/oran_tablolari.html"
 
@@ -153,3 +157,24 @@ def test_oran_tablosu_olmayan_sayfada_ltv_uretilmez() -> None:
     html = "<table><tr><th>Vade</th><th>Tutar</th></tr><tr><td>12</td><td>100 TL</td></tr></table>"
 
     assert parse_ltv_matrices(html) == []
+
+
+def test_vehicle_limit_matrices_parsing() -> None:
+    html = """
+    <table>
+        <tr><th>Kasko/Satış Değeri</th><th>Finansman Tutarının Taşıt Tutarına Oranı</th><th>Vade Üst Sınırı (Ay)</th></tr>
+        <tr><td>0 - 400.000 TL</td><td>%70</td><td>48</td></tr>
+        <tr><td>400.001 - 800.000 TL</td><td>%50</td><td>36</td></tr>
+        <tr><td>2.000.001 TL ve üzeri</td><td>%0</td><td>Kullandırılmayacaktır.</td></tr>
+    </table>
+    """
+    limits = parse_vehicle_limit_matrices(html)
+    assert len(limits) == 3
+    assert limits[0].asset_value_min == Decimal("0")
+    assert limits[0].asset_value_max == Decimal("400000")
+    assert limits[0].financing_ratio_pct == Decimal("70")
+    assert limits[0].term_months_max == 48
+
+    assert limits[2].asset_value_min == Decimal("2000001")
+    assert limits[2].financing_ratio_pct == Decimal("0")
+    assert limits[2].term_months_max is None

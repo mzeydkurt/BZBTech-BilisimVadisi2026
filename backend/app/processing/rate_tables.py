@@ -201,6 +201,19 @@ class LtvMatrix:
 
 
 @dataclass(frozen=True)
+class VehicleLimitRow:
+    """Taşıt limit matrisinin tek bir satırı: (taşıt değeri bandı) → (azami finansman oranı × azami vade)."""
+
+    asset_value_min: Decimal | None = None
+    asset_value_max: Decimal | None = None
+    financing_ratio_pct: Decimal | None = None
+    term_months_max: int | None = None
+    vehicle_age_min: int | None = None
+    vehicle_age_max: int | None = None
+    evidence_text: str | None = None
+
+
+@dataclass(frozen=True)
 class RateRow:
     """Oran tablosunun tek bir satırı."""
 
@@ -606,6 +619,71 @@ def parse_ltv_matrices(html: str | None) -> list[LtvMatrix]:
             matrisler.append(LtvMatrix(cells=tuple(hucreler), caption=_table_caption(table)))
 
     return matrisler
+
+
+def parse_vehicle_limit_matrices(html: str | None) -> list[VehicleLimitRow]:
+    """Sayfadaki taşıt finansmanı limit matrislerini (Fatura Değeri × Finansman Oranı × Azami Vade) ayrıştırır."""
+    if not html:
+        return []
+
+    soup = BeautifulSoup(html, "lxml")
+    limits: list[VehicleLimitRow] = []
+
+    for table in soup.find_all("table"):
+        rows = table.find_all("tr")
+        if len(rows) < 2:
+            continue
+        h_cells = [normalize_text(c.get_text(" ", strip=True)) for c in rows[0].find_all(["th", "td"])]
+        h_fold = _fold(" ".join(h_cells))
+        if not (
+            ("fatura" in h_fold or "kasko" in h_fold or "arac" in h_fold or "tasit" in h_fold)
+            and ("oran" in h_fold or "finansman" in h_fold)
+            and ("vade" in h_fold)
+        ):
+            continue
+
+        col_value: int | None = None
+        col_ratio: int | None = None
+        col_term: int | None = None
+
+        for idx, h in enumerate(h_cells):
+            hf = _fold(h)
+            if "vade" in hf:
+                if col_term is None:
+                    col_term = idx
+            elif "oran" in hf or "%" in hf:
+                if col_ratio is None:
+                    col_ratio = idx
+            elif any(w in hf for w in ("fatura", "kasko", "deger", "arac", "tasit")):
+                if col_value is None:
+                    col_value = idx
+
+        if col_value is None and len(h_cells) >= 3:
+            col_value = 0
+
+        if col_value is None or col_ratio is None or col_term is None:
+            continue
+
+        for r in rows[1:]:
+            cells = [normalize_text(c.get_text(" ", strip=True)) for c in r.find_all(["th", "td"])]
+            if len(cells) <= max(col_value, col_ratio, col_term):
+                continue
+            alt, ust = _parse_matrix_amount_band(cells[col_value])
+            ratio = parse_rate(cells[col_ratio])
+            if ratio is None and "0" in cells[col_ratio]:
+                ratio = Decimal("0")
+            vade = _term_months(cells[col_term])
+
+            limits.append(
+                VehicleLimitRow(
+                    asset_value_min=alt,
+                    asset_value_max=ust,
+                    financing_ratio_pct=ratio,
+                    term_months_max=vade,
+                    evidence_text=" | ".join(cells),
+                )
+            )
+    return limits
 
 
 def _parse_matrix_amount_band(text: str) -> tuple[Decimal | None, Decimal | None]:

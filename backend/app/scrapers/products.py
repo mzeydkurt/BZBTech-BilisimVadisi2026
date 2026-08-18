@@ -33,6 +33,7 @@ from app.processing.rate_tables import (
     parse_ltv_matrices,
     parse_payment_plan,
     parse_rate_tables,
+    parse_vehicle_limit_matrices,
 )
 from app.scrapers.base import BaseScraper
 from app.scrapers.calculator_inventory import allowed_terms, amount_bounds, parse_form_controls
@@ -778,7 +779,7 @@ def rates_from_payment_plan(html: str | None) -> list[RawProductRate]:
 
 
 def limits_from_ltv_matrices(html: str | None) -> list[RawProductLimit]:
-    """Konut değeri × enerji sınıfı LTV matrislerini limit satırlarına çevirir.
+    """Konut ve taşıt limit matrislerini RawProductLimit listesine çevirir.
 
     ⚠️ SPRINT 2.5: Bu satırlar kâr payı değil TEMİNAT/KREDİ ORANI taşıyor.
     Oran tablosuna (product_rates) yazılmak yerine product_limits tablosuna aktarılır.
@@ -802,6 +803,20 @@ def limits_from_ltv_matrices(html: str | None) -> list[RawProductLimit]:
                     evidence_text=hucre.evidence_text,
                 )
             )
+
+    for v_lim in parse_vehicle_limit_matrices(html):
+        bulunan.append(
+            RawProductLimit(
+                extraction_method="html_table",
+                financing_ratio_pct=v_lim.financing_ratio_pct,
+                term_months_max=v_lim.term_months_max,
+                asset_value_min=v_lim.asset_value_min,
+                asset_value_max=v_lim.asset_value_max,
+                vehicle_age_min=v_lim.vehicle_age_min,
+                vehicle_age_max=v_lim.vehicle_age_max,
+                evidence_text=v_lim.evidence_text,
+            )
+        )
     return bulunan
 
 
