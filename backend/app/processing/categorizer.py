@@ -271,6 +271,7 @@ def categorize(
     title: str,
     description: str | None = None,
     conditions_text: str | None = None,
+    body_text: str | None = None,
     source_url: str = "",
     bank_category: str | None = None,
 ) -> list[CategoryLabel]:
@@ -289,7 +290,16 @@ def categorize(
     # Başlık ve açıklama sinyal bakımından en yoğun kısım; koşul metni uzun ve
     # gürültülü olduğu için yalnızca fayda/hedef kitle aramasına katılır.
     baslik_alani = " ".join(filter(None, (title, description)))
-    tum_metin = " ".join(filter(None, (title, description, conditions_text)))
+    # ⚠️ GÖVDE METNİ DE KATILIR. Kampanyaların **%46'sında `conditions_text`
+    # BOŞ** (277/602): o kampanyalar yalnızca başlıktan sınıflandırılıyordu ve
+    # gövdedeki açık sinyaller ("%10 ila %50 arasında indirimlerden") hiç
+    # görülmüyordu.
+    #
+    # ⚠️ Gövde MENÜ VE GEZİNTİ metni de taşıyor. Bu yüzden ürün türü ve sektör
+    # aramaları gövdeye AÇILMAZ — yalnızca başlık+açıklamada kalır. Gövde
+    # sadece fayda ve hedef kitle aramasına katılır; ikisinin de gürültü
+    # kaynakları sözlük düzeyinde elenmiş durumda.
+    tum_metin = " ".join(filter(None, (title, description, conditions_text, body_text)))
 
     baslik_katlanmis = _fold(baslik_alani)
     tum_katlanmis = _fold(tum_metin)

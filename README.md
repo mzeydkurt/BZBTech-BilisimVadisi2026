@@ -66,6 +66,21 @@ arayüzü, kalan 9 bankanın scraper'ı, kampanya karşılaştırma motoru.
 > tarih yoksa kampanya bitmiş sayılmaz; bunu "süresi dolmuş" göstermek yanlış
 > bilgi üretirdi.
 
+## SPRINT 2 kapsamı
+
+| Alan | Durum | Sonuç |
+|---|---|---|
+| Şema genişletmesi (ürün varyantı, taksonomi, hesaplayıcı envanteri) | ✅ | 5 yeni tablo · `downgrade` turu sınandı |
+| Kalan 8 bankanın scraper'ı | ✅ | **10 bankanın tamamı** · sitemap, JSON ucu ve liste sayfası yolları |
+| Kampanya taksonomisi (4 dik eksen) | ✅ | **2970 etiket** · her kampanyada en az 2 |
+| Ürün / finansman verisi | ✅ | **222 ürün** · varyant, limit ve teminat türü |
+| Yapısal oran tabloları | ✅ | **253 oran** / 5 banka · LTV matrisi ve ödeme planı dahil |
+| Hesaplayıcı form envanteri | ✅ | 10 envanter / 6 banka · **hiçbir hesaplayıcı sorgulanmadı** |
+| Veri sıfırlama ve dışa aktarma zinciri | ✅ | Kararlı anahtarlı dışa aktarma + doğrulama damgası |
+
+**Kapsam dışı (sonraki sprintler):** sohbet arayüzü, kampanya karşılaştırma
+motoru, yerel LLM ile çalıştırma.
+
 
 ---
 
@@ -159,9 +174,16 @@ python dev.py kart-uret          # varlık kartları (SPRINT 5 gömme girdisi)
 ```bash
 python dev.py gold-ornek         # örneklem seç
 python dev.py etiketle           # etiketleme arayüzü → /api/v1/annotate/ui
-python dev.py gold-durum         # ilerleme + kanıt denetimi
+python dev.py gold-durum         # ilerleme + kanıt + öz-tutarlılık
 python dev.py gold-denetle       # kanıtı doğrulanamayan etiketleri raporla
 ```
+
+**Öz-tutarlılık (kılavuz §4).** İlk 15 kaydı etiketledikten sonra durun ve
+**ertesi gün** aynı 15'i yeniden etiketleyin: arayüzdeki "Etiketleyen"
+kutusuna farklı bir ad yazmanız yeterli (ör. `Zeyd-tur2`). Kör kayıtlarda
+ön-doldurma yapılmadığı için ikinci tur gerçekten kördür. Uyum oranı
+`gold-durum` çıktısında görünür; **≥ %85** beklenir. Altındaysa sorun
+etiketleyicide değil KILAVUZDADIR — tereddüt edilen nokta kurala çevrilir.
 
 ### Veri yenileme zinciri
 
@@ -173,6 +195,8 @@ her biri bir öncekine bağlıdır.
 python dev.py disa-aktar
 #    -> "Dışa aktarıldı: data/exports/20260817T161318"
 #    Komut bu yolu ekrana yazar; sonraki adımlara olduğu gibi kopyalayın.
+#    Ayrıca data/gold/gold_set.jsonl dosyasını SABİT yola yazar (şartname
+#    §4.6 biçimi); o dosya dışa aktarma dizinine girmez.
 
 # 2. Doğrula ve damgala — damga olmadan silme REDDEDİLİR
 python dev.py disa-aktar-dogrula --dizin data/exports/20260817T161318
