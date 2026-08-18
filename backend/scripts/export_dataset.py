@@ -227,8 +227,13 @@ def disa_aktar(session: Session, *, hedef: Path) -> dict[str, Any]:
     # ⚠️ MANİFESTE GİRMEZ. `verify_export` manifestteki her dosyayı dışa
     # aktarma DİZİNİNDE arıyor; buraya eklenirse doğrulama "gold_set.jsonl
     # eksik" diyerek damgayı reddeder ve silme akışı kilitlenir.
-    gold_set_adet = _gold_set_yaz(session, kampanya_by_key, anahtarlar)
-    logger.info("gold_set_yazildi", yol=str(GOLD_SET_PATH), kampanya=gold_set_adet)
+    gold_set_target = (
+        (hedef / "gold_set.jsonl")
+        if (hedef and not str(hedef.resolve()).startswith(str(EXPORT_ROOT.resolve())))
+        else GOLD_SET_PATH
+    )
+    gold_set_adet = _gold_set_yaz(session, kampanya_by_key, anahtarlar, target_path=gold_set_target)
+    logger.info("gold_set_yazildi", yol=str(gold_set_target), kampanya=gold_set_adet)
 
     # ── campaign_extractions ──
     # Ölçüldü: `is_validated` 2883/2883 satırda True; bu alanı HALÜSİNASYON
@@ -300,7 +305,8 @@ def _alembic_revision(session: Session) -> str | None:
     from sqlalchemy import text
 
     try:
-        return session.scalar(text("SELECT version_num FROM alembic_version"))
+        rev = session.scalar(text("SELECT version_num FROM alembic_version"))
+        return str(rev) if rev is not None else None
     except Exception:
         return None
 
@@ -314,6 +320,7 @@ def _gold_set_yaz(
     session: Session,
     kampanya_by_key: dict[str, Any],
     anahtarlar: dict[int, str],
+    target_path: Path = GOLD_SET_PATH,
 ) -> int:
     """`data/gold/gold_set.jsonl` dosyasını şartname §4.6 biçiminde yazar.
 
@@ -331,6 +338,7 @@ def _gold_set_yaz(
         session: Veritabanı oturumu.
         kampanya_by_key: `campaign_key` → kampanya nesnesi.
         anahtarlar: `campaign_id` → `campaign_key`.
+        target_path: Hedef dosya yolu (varsayılan data/gold/gold_set.jsonl).
 
     Returns:
         Yazılan satır (kampanya) sayısı.
@@ -342,6 +350,7 @@ def _gold_set_yaz(
         if anahtar is None:
             continue
         kampanya = kampanya_by_key.get(anahtar)
+        is_diff = bool(etiket.is_difficult)
         kayit = kayitlar.setdefault(
             anahtar,
             {
@@ -352,7 +361,7 @@ def _gold_set_yaz(
                 "title": getattr(kampanya, "title", None),
                 "annotator": etiket.annotator,
                 "method": etiket.method,
-                "is_difficult": bool(etiket.is_difficult),
+                "is_difficult": is_diff,
                 "note": etiket.note,
                 "fields": {},
                 "labels": {},
@@ -367,17 +376,20 @@ def _gold_set_yaz(
             "evidence": etiket.evidence_text,
         }
         # Zor vaka işareti kampanya düzeyinde: herhangi bir alan zor ise zor.
-        kayit["is_difficult"] = kayit["is_difficult"] or bool(etiket.is_difficult)
+        if is_diff:
+            kayit["is_difficult"] = True
 
     # Taksonomi etiketleri eksen eksen gruplanır.
     for kategori in session.scalars(select(CampaignCategory)):
-        anahtar = anahtarlar.get(kategori.campaign_id)
-        if anahtar is None or anahtar not in kayitlar:
+        if kategori.campaign_id is None:
             continue
-        kayitlar[anahtar]["labels"].setdefault(kategori.axis, []).append(kategori.value)
+        anahtar_kat = anahtarlar.get(kategori.campaign_id)
+        if anahtar_kat is None or anahtar_kat not in kayitlar:
+            continue
+        kayitlar[anahtar_kat]["labels"].setdefault(kategori.axis, []).append(kategori.value)
 
-    GOLD_SET_PATH.parent.mkdir(parents=True, exist_ok=True)
-    return _yaz_jsonl(GOLD_SET_PATH, [kayitlar[k] for k in sorted(kayitlar)])
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    return _yaz_jsonl(target_path, [kayitlar[k] for k in sorted(kayitlar)])
 
 
 def main(argv: list[str] | None = None) -> int:

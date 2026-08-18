@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError
 from app.db.base import utc_now
-from app.db.models import Bank, Product, ProductRate, ScrapeRun, SourceDocument
+from app.db.models import Bank, Product, ProductLimit, ProductRate, ScrapeRun, SourceDocument
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_title
 from app.processing.limits import derive_rate_from_payment_plan, extract_limits_from_text
@@ -41,6 +41,7 @@ from app.scrapers.models import (
     FetchResult,
     ProductRunResult,
     RawProduct,
+    RawProductLimit,
     RawProductRate,
 )
 from app.utils.hashing import canonicalize_url, sha256_text, url_hash
@@ -58,8 +59,12 @@ _SELECTOR_OVERLAP: float = 0.5
 
 # Bant boyutlarının kodlanma sırası. Sıra SABİT olmalı: değişirse aynı oran
 # farklı `band_key` üretir ve upsert satır çoğaltır.
+# ⚠️ SPRINT 2.5: Katılma hesabı oranları para birimine, kademeye ve müşteri
+# tipine göre farklılaşıyor; bunlar bant boyutuna eklendi.
 _BAND_FIELDS: tuple[str, ...] = (
     "term_months",
+    "term_days_min",
+    "term_days_max",
     "variant",
     "amount_min",
     "amount_max",
@@ -68,6 +73,10 @@ _BAND_FIELDS: tuple[str, ...] = (
     "energy_class",
     "vehicle_age_min",
     "vehicle_age_max",
+    "currency",
+    "account_tier",
+    "customer_type",
+    "rate_type",
 )
 
 
@@ -87,6 +96,25 @@ def band_key(rate: RawProductRate) -> str:
     parcalar: list[str] = []
     for alan in _BAND_FIELDS:
         deger = getattr(rate, alan)
+        parcalar.append("" if deger is None else str(deger))
+    return "|".join(parcalar)
+
+
+_LIMIT_BAND_FIELDS: tuple[str, ...] = (
+    "asset_value_min",
+    "asset_value_max",
+    "energy_class",
+    "vehicle_age_min",
+    "vehicle_age_max",
+    "currency",
+)
+
+
+def limit_band_key(limit: RawProductLimit) -> str:
+    """Limit bant boyutlarını NULL-güvenli, deterministik tek dizeye kodlar."""
+    parcalar: list[str] = []
+    for alan in _LIMIT_BAND_FIELDS:
+        deger = getattr(limit, alan)
         parcalar.append("" if deger is None else str(deger))
     return "|".join(parcalar)
 
@@ -358,6 +386,7 @@ class ProductRunner:
             if urun is not None:
                 key_to_id[raw.external_key] = urun.id
                 self._write_rates(session, urun.id, raw.rates, document, result, dry_run=dry_run)
+                self._write_limits(session, urun.id, raw.limits, document, result, dry_run=dry_run)
 
         for raw in varyantlar:
             anahtar = raw.parent_external_key or ""
@@ -395,6 +424,7 @@ class ProductRunner:
             )
             if urun is not None:
                 self._write_rates(session, urun.id, raw.rates, document, result, dry_run=dry_run)
+                self._write_limits(session, urun.id, raw.limits, document, result, dry_run=dry_run)
 
     def _upsert_product(
         self,
@@ -544,9 +574,15 @@ class ProductRunner:
                     product_id=product_id,
                     band_key=anahtar,
                     rate_source=raw.rate_source,
+                    rate_type=raw.rate_type,
                     effective_date=gecerlilik,
                     term_months=raw.term_months,
+                    term_days_min=raw.term_days_min,
+                    term_days_max=raw.term_days_max,
+                    term_label=raw.term_label,
                     profit_rate_pct=raw.profit_rate_pct,
+                    investor_share_pct=raw.investor_share_pct,
+                    bank_share_pct=raw.bank_share_pct,
                     allocation_fee_pct=raw.allocation_fee_pct,
                     monthly_cost_pct=raw.monthly_cost_pct,
                     annual_cost_pct=raw.annual_cost_pct,
@@ -558,11 +594,72 @@ class ProductRunner:
                     energy_class=raw.energy_class,
                     vehicle_age_min=raw.vehicle_age_min,
                     vehicle_age_max=raw.vehicle_age_max,
+                    currency=raw.currency,
+                    account_tier=raw.account_tier,
+                    customer_type=raw.customer_type,
+                    is_gross=raw.is_gross,
                     source_document_id=document.id,
                     evidence_text=raw.evidence_text,
                 )
             )
             result.rates_new += 1
+
+        session.flush()
+
+    def _write_limits(
+        self,
+        session: Session,
+        product_id: int,
+        raws: list[RawProductLimit],
+        document: SourceDocument,
+        result: ProductRunResult,
+        *,
+        dry_run: bool,
+    ) -> None:
+        """Limit matrisi satırlarını product_limits tablosuna yazar."""
+        if dry_run or not raws:
+            return
+
+        yazilanlar: set[tuple[str, str]] = set()
+
+        for raw in raws:
+            anahtar = limit_band_key(raw)
+            kimlik = (raw.extraction_method, anahtar)
+            if kimlik in yazilanlar:
+                continue
+            yazilanlar.add(kimlik)
+
+            var_mi = session.scalar(
+                select(ProductLimit.id).where(
+                    ProductLimit.product_id == product_id,
+                    ProductLimit.extraction_method == raw.extraction_method,
+                    ProductLimit.band_key == anahtar,
+                )
+            )
+            if var_mi is not None:
+                continue
+
+            session.add(
+                ProductLimit(
+                    product_id=product_id,
+                    band_key=anahtar,
+                    asset_value_min=raw.asset_value_min,
+                    asset_value_max=raw.asset_value_max,
+                    financing_ratio_pct=raw.financing_ratio_pct,
+                    term_months_min=raw.term_months_min,
+                    term_months_max=raw.term_months_max,
+                    amount_max=raw.amount_max,
+                    energy_class=raw.energy_class,
+                    vehicle_age_min=raw.vehicle_age_min,
+                    vehicle_age_max=raw.vehicle_age_max,
+                    currency=raw.currency,
+                    source_url=raw.source_url or document.url,
+                    evidence_text=raw.evidence_text,
+                    extraction_method=raw.extraction_method,
+                    source_document_id=document.id,
+                    fetched_at=document.fetched_at,
+                )
+            )
 
         session.flush()
 
@@ -680,41 +777,37 @@ def rates_from_payment_plan(html: str | None) -> list[RawProductRate]:
     ]
 
 
-def rates_from_ltv_matrices(html: str | None) -> list[RawProductRate]:
-    """Konut değeri × enerji sınıfı LTV matrislerini oran satırlarına çevirir.
+def limits_from_ltv_matrices(html: str | None) -> list[RawProductLimit]:
+    """Konut değeri × enerji sınıfı LTV matrislerini limit satırlarına çevirir.
 
-    ⚠️ HER HÜCRE AYRI SATIR. Matris tek bir "LTV %90" değerine indirgenmez:
-    %90 yalnızca 5 milyon altı A-B sınıfı konutta geçerli, 20 milyon üstü
-    DİĞER sınıfta oran %20. İndirgeme yapılırsa karşılaştırma motoru pahalı
-    konutlarda bankayı olduğundan cömert gösterir.
-
-    ⚠️ `profit_rate_pct` DOLDURULMAZ. Bu satırlar kâr payı değil TEMİNAT
-    ORANI taşıyor; kâr payı kolonuna yazmak iki farklı büyüklüğü aynı alanda
-    toplar ve "en düşük kâr payı" sıralamasını bozar.
+    ⚠️ SPRINT 2.5: Bu satırlar kâr payı değil TEMİNAT/KREDİ ORANI taşıyor.
+    Oran tablosuna (product_rates) yazılmak yerine product_limits tablosuna aktarılır.
 
     Args:
         html: Ürün sayfasının HTML'i.
 
     Returns:
-        Her matris hücresi için bir oran satırı; matris yoksa boş liste.
+        Her matris hücresi için bir limit satırı; matris yoksa boş liste.
     """
-    bulunan: list[RawProductRate] = []
+    bulunan: list[RawProductLimit] = []
     for matris in parse_ltv_matrices(html):
         for hucre in matris.cells:
             bulunan.append(
-                RawProductRate(
-                    rate_source="html_table",
-                    ltv_band_max_pct=hucre.ltv_max_pct,
+                RawProductLimit(
+                    extraction_method="html_table",
+                    financing_ratio_pct=hucre.ltv_max_pct,
                     energy_class=hucre.energy_class,
-                    amount_min=hucre.amount_min,
-                    amount_max=hucre.amount_max,
-                    # Matris başlığı varyantı taşıyor: "Standart Konut Alımı"
-                    # ile "2. ve Sonraki Konut Alımı" oranları tamamen farklı.
-                    variant=matris.caption,
+                    asset_value_min=hucre.amount_min,
+                    asset_value_max=hucre.amount_max,
                     evidence_text=hucre.evidence_text,
                 )
             )
     return bulunan
+
+
+def rates_from_ltv_matrices(html: str | None) -> list[RawProductRate]:
+    """Eski uyumluluk kancası. Oransız LTV satırları artık product_limits'e gidiyor."""
+    return []
 
 
 def rates_from_tables(
@@ -740,12 +833,24 @@ def rates_from_tables(
             bulunan.append(
                 RawProductRate(
                     rate_source="html_table",
+                    rate_type=getattr(satir, "rate_type", "financing_rate"),
                     term_months=satir.term_months,
+                    term_days_min=getattr(satir, "term_days_min", None),
+                    term_days_max=getattr(satir, "term_days_max", None),
+                    term_label=getattr(satir, "term_label", None),
                     profit_rate_pct=satir.profit_rate_pct,
+                    investor_share_pct=getattr(satir, "investor_share_pct", None),
+                    bank_share_pct=getattr(satir, "bank_share_pct", None),
                     allocation_fee_pct=satir.allocation_fee_pct,
                     monthly_cost_pct=satir.monthly_cost_pct,
                     annual_cost_pct=satir.annual_cost_pct,
                     variant=tablo.variant_key or tablo.variant_label or variant,
+                    amount_min=getattr(satir, "amount_min", None),
+                    amount_max=getattr(satir, "amount_max", None),
+                    currency=getattr(satir, "currency", "TRY"),
+                    account_tier=getattr(satir, "account_tier", None),
+                    customer_type=getattr(satir, "customer_type", None),
+                    is_gross=getattr(satir, "is_gross", None),
                     evidence_text=satir.evidence_text,
                 )
             )
