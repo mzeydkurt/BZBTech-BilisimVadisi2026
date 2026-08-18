@@ -56,6 +56,10 @@ VEHICLE_AGE_MAX_RE: Final[re.Pattern[str]] = re.compile(r"(\d{1,2})\s*yas\w*\s*k
 ZERO_VEHICLE_RE: Final[re.Pattern[str]] = re.compile(r"(sifir\s*(km|arac|tasit)|0\s*km)")
 USED_VEHICLE_RE: Final[re.Pattern[str]] = re.compile(r"(ikinci\s*el|2\.\s*el|2\s*el)")
 
+# Annüite kökünü bulan ikili aramanın adım sayısı. 80 adım, [0, 1]
+# aralığında 1e-24 hassasiyet verir — 4 ondalıklı sonuç için fazlasıyla yeter.
+_BISECTION_STEPS: Final[int] = 80
+
 # ⚠️ PARA ARALIĞI, PARA BİRİMİ İŞARETİ TAŞIMAK ZORUNDA.
 #
 # GERÇEK VERİDE ÖLÇÜLDÜ (Dünya Katılım, 17 Ağustos 2026). `parse_money_range`
@@ -68,6 +72,15 @@ USED_VEHICLE_RE: Final[re.Pattern[str]] = re.compile(r"(ikinci\s*el|2\.\s*el|2\s
 # İkisi de sessizce ürün limitine yazılıyordu. En az bir uçta `TL`/`₺`
 # aranması bu iki sınıfı da eliyor; gerçek tutar aralıkları
 # ("1.000 TL - 100.000 TL arası") birimi zaten taşıyor.
+# Para birimi işareti taşıyan TEKİL tutar.
+#
+# ⚠️ ÇARPAN KELİMESİ SAYI İLE BİRİMİN ARASINA GİRER: "azami 1 milyon TL".
+# Çarpan atlanırsa şartname örneği (§7.4) eşleşmiyor ve tutar hiç
+# okunamıyor — testle yakalandı.
+AMOUNT_WITH_CURRENCY_RE: Final[re.Pattern[str]] = re.compile(
+    r"[\d][\d.,]*\s*(?:bin|milyon|milyar)?\s*(?:TL|₺)", re.IGNORECASE
+)
+
 MONEY_RANGE_RE: Final[re.Pattern[str]] = re.compile(
     r"([\d.][\d.,]*)\s*(?:TL|₺)?\s*[-–—]\s*([\d.][\d.,]*)\s*(?:TL|₺)"
     r"|([\d.][\d.,]*)\s*(?:TL|₺)\s*[-–—]\s*([\d.][\d.,]*)",
@@ -149,7 +162,16 @@ def parse_amount_limit(text: str | None) -> tuple[Decimal | None, Decimal | None
         if en_az is not None and en_cok is not None and en_az != en_cok:
             return (en_az if en_az > 0 else None), en_cok
 
-    tutar = parse_money(text)
+    # ⚠️ TEKİL TUTAR DA PARA BİRİMİ İŞARETİ İSTER — aralıkla aynı gerekçe.
+    # `parse_money` sayfanın tamamında çıplak sayı buluyor ve metnin herhangi
+    # bir yerinde geçen "kadar" kelimesi onu üst sınır yapıyordu. Ziraat'in
+    # arsa/işyeri/ipotekli finansman ürünlerinde ölçüldü: sayfada TEK BİR TL
+    # tutarı yokken `amount_max` sırasıyla 36, 60 ve 80 yazılmıştı — bunlar
+    # "36 ay", "60 ay" ve "%80" ifadelerinden sızmış sayılardı.
+    birimli = AMOUNT_WITH_CURRENCY_RE.search(text)
+    if birimli is None:
+        return None, None
+    tutar = parse_money(birimli.group())
     if tutar is None:
         return None, None
     deger = tutar[0]
@@ -260,12 +282,27 @@ def derive_rate_from_payment_plan(
 ) -> Decimal | None:
     """Ödeme planından aylık efektif kâr payı oranını geri hesaplar.
 
-    Albaraka ödeme planını sayfada yayımlıyor ama oranı yazmıyor. Toplam geri
-    ödeme ile ana para arasındaki fark, vadeye bölününce aylık orana yaklaşır.
+    Albaraka ödeme planını sayfada yayımlıyor ama oranı yazmıyor. Oran,
+    eşit taksitli ödeme (annüite) denkleminin kökü olarak çözülür:
 
-    ⚠️ Bu bir YAKLAŞIKTIR, bankanın ilan ettiği oran değildir. `rate_source`
-    `payment_plan_derived` olur ve güveni 0.95'tir — tabloya göre bir kademe
-    düşük.
+        ana_para = taksit × [1 − (1 + r)^−vade] / r
+
+    ⚠️ BASİT BÖLME KULLANILMAZ — ÖLÇÜLDÜ. Önceki gerçekleme
+    `kâr_payı / ana_para / vade` yazıyordu. Albaraka'nın gerçek planında
+    (150.000 TL ana para, 23 taksit × 9.169,06 TL) bu formül aylık %1,7649
+    veriyor; annüite denklemi ise **%3,0495**. Basit bölme ana paranın vade
+    boyunca sabit kaldığını varsayıyor, oysa her taksitte azalıyor. Fark
+    %42'lik bir EKSİK GÖSTERİMDİR ve karşılaştırma motorunda bankayı
+    olduğundan ucuz sıralar.
+
+    ⚠️ BU ORAN "YILLIK MALİYET ORANI" DEĞİLDİR. Albaraka sayfasında %82,39
+    yazıyor; o değer ÜCRETLER düşüldükten sonra net ele geçen tutar
+    üzerinden hesaplanmış bileşik yıllık maliyettir (doğrulandı: aynı planla
+    %82,73 çıkıyor). Buradaki değer ücretsiz, aylık kâr payı oranıdır; ikisi
+    farklı büyüklüklerdir ve birbirinin yerine yazılmaz.
+
+    ⚠️ `float` KULLANILMAZ (proje kuralı). Kök, `Decimal` üzerinde ikili
+    aramayla bulunur.
 
     Args:
         principal: Ana para.
@@ -280,9 +317,23 @@ def derive_rate_from_payment_plan(
     if principal <= 0 or term_months <= 0 or total_repayment <= principal:
         return None
 
-    toplam_kar_payi = total_repayment - principal
-    aylik = (toplam_kar_payi / principal / Decimal(term_months)) * Decimal(100)
-    return aylik.quantize(Decimal("0.0001"))
+    taksit = total_repayment / Decimal(term_months)
+
+    def _taksit_tutari(oran: Decimal) -> Decimal:
+        """Verilen aylık oranda annüite taksitini döndürür."""
+        carpan = (Decimal(1) + oran) ** term_months
+        return principal * oran * carpan / (carpan - Decimal(1))
+
+    # Aylık oran hiçbir gerçek üründe %100'ü aşmaz; arama aralığı buna göre.
+    alt, ust = Decimal("0.0000001"), Decimal("1")
+    for _ in range(_BISECTION_STEPS):
+        orta = (alt + ust) / Decimal(2)
+        if _taksit_tutari(orta) > taksit:
+            ust = orta
+        else:
+            alt = orta
+
+    return ((alt + ust) / Decimal(2) * Decimal(100)).quantize(Decimal("0.0001"))
 
 
 def extract_limits_from_text(text: str | None) -> ProductLimits:

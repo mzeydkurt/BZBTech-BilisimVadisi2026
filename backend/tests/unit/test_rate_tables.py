@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.processing.rate_tables import parse_rate_tables
+import pytest
+
+from app.processing.rate_tables import parse_ltv_matrices, parse_rate_tables
 
 FIXTURE = "html/turkiye_finans/oran_tablolari.html"
 
@@ -78,3 +80,76 @@ class TestIlgisizTablolar:
 
     def test_baslik_satiri_olmayan_tablo_atlanir(self) -> None:
         assert parse_rate_tables("<table><tr><td>3</td></tr></table>") == []
+
+
+# ── LTV matrisi (konut değeri × enerji sınıfı) ─────────────
+#
+# ⚠️ HTML üç bankanın CANLI SAYFASINDAN alınan yapıyı birebir taklit eder.
+
+LTV_HTML = """
+<h3>Standart Konut Alımında Kullandırılabilecek Azami Tutar</h3>
+<table>
+  <tr><td colspan="4">KONUT ALIMINDA KULLANDIRILABİLECEK AZAMİ KREDİ TUTARI</td></tr>
+  <tr><td rowspan="2">Konut Değeri</td><td colspan="3">Enerji Sınıf</td></tr>
+  <tr><td>A-B</td><td>C</td><td>DİĞER</td></tr>
+  <tr><td>Değer &lt;= 5 Milyon TL</td>
+      <td>Değer x 90%</td><td>Değer x 80%</td><td>Değer x 70%</td></tr>
+  <tr><td>5 Milyon - 7 Milyon TL</td>
+      <td>Değer x 80%</td><td>Değer x 70%</td><td>Değer x 60%</td></tr>
+  <tr><td>20 Milyon TL Üzeri</td>
+      <td>Değer x 40%</td><td>Değer x 30%</td><td>Değer x 20%</td></tr>
+</table>
+"""
+
+
+def test_ltv_matrisi_her_hucreyi_ayri_satir_yazar() -> None:
+    """⚠️ Matris TEK bir orana indirgenmez.
+
+    %90 yalnızca 5 milyon altı A-B sınıfında geçerli; 20 milyon üstü DİĞER
+    sınıfta oran %20. İndirgeme pahalı konutlarda bankayı olduğundan cömert
+    gösterirdi.
+    """
+    matrisler = parse_ltv_matrices(LTV_HTML)
+
+    assert len(matrisler) == 1
+    assert len(matrisler[0].cells) == 9  # 3 değer bandı × 3 enerji sınıfı
+
+
+@pytest.mark.parametrize(
+    ("sinif", "alt", "ust", "beklenen"),
+    [
+        ("A-B", None, Decimal("5000000"), Decimal("90")),
+        ("DİĞER", None, Decimal("5000000"), Decimal("70")),
+        ("A-B", Decimal("5000000"), Decimal("7000000"), Decimal("80")),
+        ("DİĞER", Decimal("20000000"), None, Decimal("20")),
+    ],
+)
+def test_ltv_deger_bandi_ve_sinif_dogru_eslesir(
+    sinif: str, alt: Decimal | None, ust: Decimal | None, beklenen: Decimal
+) -> None:
+    """Değer bandının üç yazım biçimi de doğru uçlara çevrilmeli."""
+    hucreler = parse_ltv_matrices(LTV_HTML)[0].cells
+
+    eslesen = [
+        h
+        for h in hucreler
+        if h.energy_class == sinif and h.amount_min == alt and h.amount_max == ust
+    ]
+    assert len(eslesen) == 1, f"{sinif} {alt}-{ust} bandı bulunamadı"
+    assert eslesen[0].ltv_max_pct == beklenen
+
+
+def test_enerji_sinif_basligi_son_harfsiz_de_taninir() -> None:
+    """⚠️ Emlak Katılım başlığı "Enerji Sınıf" yazıyor, "Sınıfı" değil.
+
+    Bankanın dizgi hatası; tam eşleşme arandığında Emlak'ın matrisi hiç
+    bulunamıyordu.
+    """
+    assert parse_ltv_matrices(LTV_HTML)[0].cells
+
+
+def test_oran_tablosu_olmayan_sayfada_ltv_uretilmez() -> None:
+    """Enerji sınıfı başlığı olmayan tablo LTV matrisi sayılmaz."""
+    html = "<table><tr><th>Vade</th><th>Tutar</th></tr><tr><td>12</td><td>100 TL</td></tr></table>"
+
+    assert parse_ltv_matrices(html) == []

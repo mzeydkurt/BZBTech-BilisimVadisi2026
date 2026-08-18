@@ -108,10 +108,23 @@ class TestIzinliVadeler:
 class TestOdemePlanindanOran:
     """`derive_rate_from_payment_plan` — Albaraka, sorgulamasız."""
 
-    def test_aylik_oran_hesaplanir(self) -> None:
-        # 100.000 ana para, 124.000 geri ödeme, 12 ay -> aylık %2
+    def test_aylik_oran_annuite_denkleminden_cozulur(self) -> None:
+        """⚠️ BEKLENEN DEĞER DEĞİŞTİ — eski değer YANLIŞTI.
+
+        Bu test önce `2.0000` bekliyordu; o sayı `kâr_payı / ana_para / vade`
+        basit bölmesinden geliyordu ve ana paranın vade boyunca SABİT
+        kaldığını varsayıyordu. Gerçekte ana para her taksitte azalıyor, bu
+        yüzden aynı nakit akışının gerçek aylık oranı daha yüksek.
+
+        100.000 TL ana para, 124.000 TL geri ödeme, 12 ay:
+            basit bölme  -> %2,0000   (eski, hatalı)
+            annüite      -> %3,4753   (doğru)
+
+        Albaraka'nın gerçek planında fark %42'ye çıkıyordu ve bankayı
+        olduğundan ucuz gösteriyordu.
+        """
         oran = derive_rate_from_payment_plan(Decimal("100000"), Decimal("124000"), 12)
-        assert oran == Decimal("2.0000")
+        assert oran == Decimal("3.4753")
 
     def test_dort_ondalige_yuvarlanir(self) -> None:
         oran = derive_rate_from_payment_plan(Decimal("100000"), Decimal("113333"), 12)
@@ -205,3 +218,41 @@ def test_birimli_aralik_okunmaya_devam_ediyor() -> None:
         Decimal("1000"),
         Decimal("100000"),
     )
+
+
+# ── Ödeme planından oran geri hesaplama (§7.5) ─────────────
+
+
+def test_odeme_planindan_oran_annuite_ile_cozulur() -> None:
+    """⚠️ BASİT BÖLME BANKAYI UCUZ GÖSTERİYORDU.
+
+    Albaraka'nın gerçek konut planı: 150.000 TL ana para, 23 taksit,
+    toplam geri ödeme 210.888,82 TL.
+
+        basit bölme (eski)  -> aylık %1,7649   (yıllık ~%21)
+        annüite (doğru)     -> aylık %3,0495   (bileşik yıllık %43,4)
+
+    Basit bölme ana paranın vade boyunca sabit kaldığını varsayıyor; oysa
+    her taksitte azalıyor. %42'lik eksik gösterim karşılaştırma motorunda
+    bankayı olduğundan ucuz sıralar.
+    """
+    oran = derive_rate_from_payment_plan(Decimal("150000"), Decimal("210888.82"), 23)
+
+    assert oran == Decimal("3.0495")
+
+
+@pytest.mark.parametrize(
+    ("ana_para", "toplam", "vade"),
+    [
+        (Decimal("50000"), Decimal("50000"), 12),  # kâr payı yok
+        (Decimal("50000"), Decimal("40000"), 12),  # toplam ana paradan küçük
+        (Decimal("0"), Decimal("1000"), 12),  # ana para sıfır
+        (Decimal("100000"), Decimal("120000"), 0),  # vade sıfır
+        (None, Decimal("120000"), 12),  # eksik veri
+    ],
+)
+def test_gecersiz_planda_oran_uretilmez(
+    ana_para: Decimal | None, toplam: Decimal | None, vade: int
+) -> None:
+    """⚠️ Hesaplanamayan oran UYDURULMAZ, None döner."""
+    assert derive_rate_from_payment_plan(ana_para, toplam, vade) is None
