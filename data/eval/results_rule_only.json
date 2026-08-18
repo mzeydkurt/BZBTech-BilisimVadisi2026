@@ -2,15 +2,15 @@
   "mode": "rule_only",
   "gold_campaigns": 50,
   "gold_annotations": 1100,
-  "micro_f1": 0.801,
-  "macro_f1": 0.7493,
+  "micro_f1": 0.8102,
+  "macro_f1": 0.7789,
   "hallucination_rate": 0.1654,
-  "correct_silence_rate": 0.9135,
+  "correct_silence_rate": 0.9145,
   "overall": {
     "tp": 318,
     "fp": 63,
-    "fn": 95,
-    "tn": 665
+    "fn": 86,
+    "tn": 674
   },
   "by_field": {
     "profit_rate_pct": {
@@ -22,8 +22,8 @@
     "profit_share_rate_pct": {
       "tp": 1,
       "fp": 0,
-      "fn": 3,
-      "tn": 46
+      "fn": 0,
+      "tn": 49
     },
     "allocation_fee_pct": {
       "tp": 0,
@@ -64,14 +64,14 @@
     "financing_amount_min": {
       "tp": 2,
       "fp": 1,
-      "fn": 4,
-      "tn": 43
+      "fn": 1,
+      "tn": 46
     },
     "financing_amount_max": {
       "tp": 4,
       "fp": 2,
-      "fn": 1,
-      "tn": 43
+      "fn": 0,
+      "tn": 44
     },
     "min_spend_try": {
       "tp": 17,
@@ -82,8 +82,8 @@
     "max_spend_try": {
       "tp": 5,
       "fp": 3,
-      "fn": 2,
-      "tn": 40
+      "fn": 1,
+      "tn": 41
     },
     "reward_amount_try": {
       "tp": 23,
@@ -100,8 +100,8 @@
     "cashback_pct": {
       "tp": 3,
       "fp": 0,
-      "fn": 7,
-      "tn": 40
+      "fn": 6,
+      "tn": 41
     },
     "discount_pct": {
       "tp": 5,
@@ -150,14 +150,14 @@
     "blind": {
       "tp": 189,
       "fp": 49,
-      "fn": 55,
-      "tn": 397
+      "fn": 54,
+      "tn": 398
     },
     "assisted": {
       "tp": 129,
       "fp": 14,
-      "fn": 40,
-      "tn": 268
+      "fn": 32,
+      "tn": 276
     }
   },
   "by_bank": {
@@ -176,14 +176,14 @@
     "vakif_katilim": {
       "tp": 38,
       "fp": 9,
-      "fn": 11,
-      "tn": 80
+      "fn": 10,
+      "tn": 81
     },
     "hayat_finans": {
       "tp": 28,
       "fp": 8,
-      "fn": 18,
-      "tn": 85
+      "fn": 16,
+      "tn": 87
     },
     "albaraka": {
       "tp": 36,
@@ -194,8 +194,8 @@
     "kuveyt_turk": {
       "tp": 44,
       "fp": 19,
-      "fn": 17,
-      "tn": 86
+      "fn": 16,
+      "tn": 87
     },
     "dunya_katilim": {
       "tp": 6,
@@ -206,8 +206,8 @@
     "tom_bank": {
       "tp": 11,
       "fp": 1,
-      "fn": 13,
-      "tn": 20
+      "fn": 8,
+      "tn": 25
     }
   }
 }
