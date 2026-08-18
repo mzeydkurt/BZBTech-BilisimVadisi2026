@@ -283,13 +283,50 @@ PRODUCT_TYPE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
     "ihtiyac_finansmani": ("ihtiyaç finansman", "ihtiyaç kredi"),
     "isyeri_finansmani": ("işyeri finansman", "iş yeri finansman"),
     "finansman": ("finansman kullan", "finansman kampanya", "karz-ı hasen"),
-    "kart": ("kredi kartı", "bankkart", "kart kampanya", "banka kartı", "kartınız"),
+    # ⚠️ KART MARKA ADIYLA ANILIYOR. Bankalar kartı ürün adıyla değil marka
+    # adıyla yazıyor: "Biz Kart", "Hadi Kartı", "VKart", "Paraf", "TROY".
+    # Yalnızca "kredi kartı"/"banka kartı" arandığında bu kampanyalar ürün
+    # türü ALMIYORDU — 19 kampanyanın ikinci etiketsiz kalmasının başlıca
+    # sebebi buydu. `kartı`/`kart ` genel biçimleri de eklendi.
+    "kart": (
+        "kredi kartı",
+        "bankkart",
+        "kart kampanya",
+        "banka kartı",
+        "kartınız",
+        "kartı",
+        "kartla",
+        "troy",
+        "paraf",
+        "vkart",
+        "world kart",
+    ),
     "alisveris_puani": ("bankkart lira", "worldpuan", "paraf para", "puan kazan"),
     "yeni_musteri": ("yeni müşteri", "müşterimiz ol", "ilk kez", "müşteri ol"),
-    "yatirim_urunu": ("yatırım fon", "hisse", "altın hesab", "döviz hesab", "kıymetli maden"),
-    "birikim_katilma_hesabi": ("katılma hesab", "birikim hesab", "katılım fonu", "vadeli hesap"),
+    # ⚠️ Gümüş/platin/paladyum da kıymetli maden hesabı; yalnızca "altın"
+    # arandığında Hayat Finans'ın gümüş kampanyası boşta kalıyordu.
+    "yatirim_urunu": (
+        "yatırım fon",
+        "hisse",
+        "altın hesab",
+        "döviz hesab",
+        "kıymetli maden",
+        "gümüş",
+        "platin hesab",
+        "paladyum",
+    ),
+    "birikim_katilma_hesabi": (
+        "katılma hesab",
+        "birikim hesab",
+        "katılım fonu",
+        "vadeli hesap",
+        "avantajlı hesap",
+        "günlük hesap",
+        "cari hesap",
+    ),
     "sigorta": ("sigorta poliçe", "sigortası", "bes ", "bireysel emeklilik"),
-    "pos_uye_isyeri": ("üye işyeri", "pos cihaz", "sanal pos"),
+    # ⚠️ "POS" tek başına da ürün adı: "Meyve Dalından POS Vakıf Katılım'dan".
+    "pos_uye_isyeri": ("üye işyeri", "pos cihaz", "sanal pos", "pos "),
     "dijital_bankacilik": ("mobil uygulama", "internet şube", "dijital bankacılık", "mobilden"),
     "odeme_fatura": ("fatura ödeme", "vergi ödeme", "mtv", "otomatik ödeme"),
     "kobi_ticari": ("kobi", "ticari müşteri", "esnaf", "işletme"),

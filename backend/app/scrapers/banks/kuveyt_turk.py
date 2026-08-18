@@ -106,11 +106,88 @@ EXCLUSION_KEYWORDS: Final[tuple[str, ...]] = (
 )
 
 
+# Ürün/finansman sayfaları. Adresler SITEMAP'TEN doğrulandı (17 Ağustos 2026);
+# düz sitemap, 3480 adres.
+#
+# ⚠️ Yalnızca `/kendim-icin/` (bireysel) alındı; `/isim-icin/` ticari taraf
+# şartname kapsamının dışında tutuldu.
+_F = "/kendim-icin/finansmanlar"
+_H = "/kendim-icin/hesaplar"
+
+PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
+    # ── Konut ──
+    (f"{_F}/konut-finansmanlari/konut-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/konut-finansmanlari/ilk-evim-konut-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/konut-finansmanlari/arsa-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/konut-finansmanlari/2b-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/konut-finansmanlari/is-yeri-finansmani", "isyeri_finansmani", "konut"),
+    (
+        f"{_F}/konut-finansmanlari/gurbetten-silaya-gayrimenkul-finansmani",
+        "konut_finansmani",
+        "konut",
+    ),
+    (f"{_F}/surdurulebilir-finansmanlar/yesil-konut-finansmani", "konut_finansmani", "konut"),
+    # ── Taşıt ──
+    (f"{_F}/arac-finansmanlari/arac-finansmani", "tasit_finansmani", "tasit"),
+    (f"{_F}/arac-finansmanlari/dijital-arac-finansmani", "tasit_finansmani", "tasit"),
+    (f"{_F}/arac-finansmanlari/motosiklet-finansmani", "tasit_finansmani", "tasit"),
+    (f"{_F}/arac-finansmanlari/dijital-motosiklet-finansmani", "tasit_finansmani", "tasit"),
+    (f"{_F}/arac-finansmanlari/togg-finansmani", "tasit_finansmani", "tasit"),
+    (
+        f"{_F}/surdurulebilir-finansmanlar/surdurulebilir-arac-finansmani",
+        "tasit_finansmani",
+        "tasit",
+    ),
+    # ── İhtiyaç ──
+    (f"{_F}/ihtiyac-finansmanlari/ihtiyac-kart", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac-finansmanlari/egitim-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac-finansmanlari/hac-umre-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac-finansmanlari/kira-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac-finansmanlari/seyahat-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac-finansmanlari/bisiklet-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac-finansmanlari/kazancli-fon-finansmani", "ihtiyac_finansmani", "diger"),
+    (f"{_F}/ihtiyac-finansmanlari/tekne-tuketici-finansmani", "ihtiyac_finansmani", "diger"),
+    (
+        f"{_F}/ihtiyac-finansmanlari/elektrikli-arac-sarj-unitesi-finansmani",
+        "ihtiyac_finansmani",
+        "yok",
+    ),
+    (f"{_F}/surdurulebilir-finansmanlar/cati-ges-finansmani", "ihtiyac_finansmani", "diger"),
+    # ── Alışveriş finansmanı ──
+    (f"{_F}/alisveris-finansmanlari/alisveris-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/alisveris-finansmanlari/taksitlio-alisveris-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/alisveris-finansmanlari/trendyol-alisveris-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/alisveris-finansmanlari/hepsiburada-alisveris-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/alisveris-finansmanlari/teknosa-alisveris-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/alisveris-finansmanlari/lc-waikiki-alisveris-finansmani", "ihtiyac_finansmani", "yok"),
+    # ── Katılma hesapları ──
+    (f"{_H}/katilma-hesaplari/katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/dijital-katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/birikimli-katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (
+        f"{_H}/katilma-hesaplari/ara-donem-kar-payi-odemeli-hesaplar",
+        "birikim_katilma_hesabi",
+        "yok",
+    ),
+    (f"{_H}/katilma-hesaplari/guvenceli-birikim-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/hos-geldin-katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/ceyiz-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/konut-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/yuvam-tl-katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/sepet-hesap", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/incir-katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/diger-kiymetli-maden-hesaplari/gumus-hesap", "yatirim_urunu", "diger"),
+    (f"{_H}/diger-kiymetli-maden-hesaplari/platin-hesap", "yatirim_urunu", "diger"),
+)
+
+
 class KuveytTurkScraper(BaseScraper):
     """Kuveyt Türk kampanya scraper'ı."""
 
     bank_code = "kuveyt_turk"
     version = "1.0.0"
+    product_base_url = BASE_URL
+    product_pages = PRODUCT_PAGES
 
     def discover(self) -> list[DiscoveredUrl]:
         """Segment × kategori liste sayfalarını ve arşivi tarar.

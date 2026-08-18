@@ -67,11 +67,68 @@ EXCLUSION_KEYWORDS: Final[tuple[str, ...]] = (
 )
 
 
+# Ürün/finansman sayfaları. Adresler SITEMAP'TEN doğrulandı (17 Ağustos 2026);
+# kök sitemap INDEX, `/XML/..._tr_sitemap.xml` 590 adres veriyor.
+#
+# ⚠️ `/deneme-finansman-sayfasi` ALINMADI — bankanın test sayfası, ürün değil.
+# ⚠️ §7.6: konut değeri × enerji sınıfı LTV matrisi bu sayfalarda.
+_F = "/tr/bireysel/finansmanlar"
+_H = "/tr/bireysel/hesaplar"
+_K = "/tr/bireysel/kartlar"
+
+PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
+    # ── Konut ve gayrimenkul ──
+    (f"{_F}/konut-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/konut-finansmani/cevreci-konut-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/tamamlayici-konut-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/gonlune-gore-konut-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/kentsel-donusum-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/birlikte-arsa-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/isyeri-finansmani", "isyeri_finansmani", "konut"),
+    (f"{_F}/birlikte-isyeri-finansmani", "isyeri_finansmani", "konut"),
+    (f"{_F}/toki-islemleri", "konut_finansmani", "konut"),
+    (f"{_F}/gayrimenkul-sertifikasi-finansmani", "konut_finansmani", "konut"),
+    # ── Taşıt ve ihtiyaç ──
+    (f"{_F}/tasit-finansmani", "tasit_finansmani", "tasit"),
+    (f"{_F}/ihtiyac-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/elektronik-urun-senedi-elus-alim-finansmani", "ihtiyac_finansmani", "diger"),
+    # ── Katılma hesapları ──
+    (f"{_H}/katilma-hesaplari/katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/e-katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/cevik-hesap", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/ceyiz-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/konut-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/biriktiren-hesaplar", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/zumrut-katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/uretenle-kazan-katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/yuvam-katilim-hesabi", "birikim_katilma_hesabi", "yok"),
+    (
+        f"{_H}/katilma-hesaplari/tfs-degerlenen-pesinat-katilma-hesabi",
+        "birikim_katilma_hesabi",
+        "yok",
+    ),
+    (
+        f"{_H}/katilma-hesaplari/proje-tercihli-ozel-fon-havuzu-katilma-hesabi",
+        "birikim_katilma_hesabi",
+        "yok",
+    ),
+    (f"{_H}/katilma-hesaplari/ziynet-altin-katilma-hesabi", "yatirim_urunu", "diger"),
+    (f"{_H}/cari-hesaplar/altin-hesaplari", "yatirim_urunu", "diger"),
+    (f"{_H}/cari-hesaplar/ceyrek-hesap", "yatirim_urunu", "diger"),
+    (f"{_H}/cari-hesaplar/cari-hesap", "birikim_katilma_hesabi", "yok"),
+    # ── Kartlar ──
+    (f"{_K}/kredi-karti", "kart", "yok"),
+    (f"{_K}/banka-karti", "kart", "yok"),
+)
+
+
 class EmlakKatilimScraper(BaseScraper):
     """Türkiye Emlak Katılım kampanya scraper'ı."""
 
     bank_code = "emlak_katilim"
     version = "1.0.0"
+    product_base_url = BASE_URL
+    product_pages = PRODUCT_PAGES
 
     def discover(self) -> list[DiscoveredUrl]:
         """Bireysel ve kurumsal listeleme sayfalarından kampanya adreslerini toplar.

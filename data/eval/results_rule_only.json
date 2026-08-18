@@ -2,14 +2,14 @@
   "mode": "rule_only",
   "gold_campaigns": 50,
   "gold_annotations": 1100,
-  "micro_f1": 0.739,
-  "macro_f1": 0.7008,
-  "hallucination_rate": 0.1737,
-  "correct_silence_rate": 0.9198,
+  "micro_f1": 0.7513,
+  "macro_f1": 0.7077,
+  "hallucination_rate": 0.172,
+  "correct_silence_rate": 0.9185,
   "overall": {
-    "tp": 276,
-    "fp": 58,
-    "fn": 137,
+    "tp": 284,
+    "fp": 59,
+    "fn": 129,
     "tn": 665
   },
   "by_field": {
@@ -134,9 +134,9 @@
       "tn": 0
     },
     "product_type": {
-      "tp": 27,
-      "fp": 5,
-      "fn": 23,
+      "tp": 35,
+      "fp": 6,
+      "fn": 15,
       "tn": 0
     },
     "sector": {
@@ -148,15 +148,15 @@
   },
   "by_method": {
     "blind": {
-      "tp": 162,
+      "tp": 167,
       "fp": 46,
-      "fn": 82,
+      "fn": 77,
       "tn": 397
     },
     "assisted": {
-      "tp": 114,
-      "fp": 12,
-      "fn": 55,
+      "tp": 117,
+      "fp": 13,
+      "fn": 52,
       "tn": 268
     }
   },
@@ -168,9 +168,9 @@
       "tn": 214
     },
     "emlak_katilim": {
-      "tp": 31,
+      "tp": 35,
       "fp": 6,
-      "fn": 17,
+      "fn": 13,
       "tn": 84
     },
     "vakif_katilim": {
@@ -180,15 +180,15 @@
       "tn": 80
     },
     "hayat_finans": {
-      "tp": 22,
+      "tp": 24,
       "fp": 6,
-      "fn": 24,
+      "fn": 22,
       "tn": 85
     },
     "albaraka": {
-      "tp": 30,
+      "tp": 32,
       "fp": 9,
-      "fn": 13,
+      "fn": 11,
       "tn": 61
     },
     "kuveyt_turk": {
@@ -205,7 +205,7 @@
     },
     "tom_bank": {
       "tp": 11,
-      "fp": 0,
+      "fp": 1,
       "fn": 13,
       "tn": 20
     }

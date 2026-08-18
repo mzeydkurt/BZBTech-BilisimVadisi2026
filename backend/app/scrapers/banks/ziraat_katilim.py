@@ -119,11 +119,67 @@ EXCLUSION_KEYWORDS: Final[tuple[str, ...]] = (
 DATE_SECTION_KEYWORDS: Final[tuple[str, ...]] = ("kampanya dönemi", "son gün")
 
 
+# Ürün/finansman sayfaları. Adresler SITEMAP'TEN doğrulandı (17 Ağustos 2026);
+# kök sitemap bir INDEX, 8 alt sitemap'e işaret ediyor.
+#
+# ⚠️ Teminat türü `core.vocab.COLLATERAL_TYPES` sözlüğünden.
+# ⚠️ Kategori indeksleri ve yüzde kodlu (`%C3%BC`) çift adresler alınmadı.
+_F = "/bireysel/finansman-urunleri"
+_H = "/bireysel/hesaplar"
+_K = "/bireysel/kartlar"
+
+PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
+    # ── Konut ve gayrimenkul ──
+    (f"{_F}/konut-gayrimenkul-finansmani", "konut_finansmani", "konut"),
+    (f"{_F}/konut-gayrimenkul-finansmani/bireysel-arsa-finansmani", "konut_finansmani", "konut"),
+    (
+        f"{_F}/konut-gayrimenkul-finansmani/bireysel-is-yeri-finansmani",
+        "isyeri_finansmani",
+        "konut",
+    ),
+    (f"{_F}/konut-finansmani/kentsel-donusum-finansmani", "konut_finansmani", "konut"),
+    # ── Taşıt ──
+    (f"{_F}/tasit-finansmani/tasit-finansmani", "tasit_finansmani", "tasit"),
+    (f"{_F}/tasit-finansmani/togg-finansmani", "tasit_finansmani", "tasit"),
+    # ── İhtiyaç ──
+    (f"{_F}/ihtiyac-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac-finansmani/aninda-finansman", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac-finansmani/egitim-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac-finansmani/hac-ve-umre-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac-finansmani/dayanikli-tuketim-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac-finansmani/dogal-gaz-donusum-finansmani", "ihtiyac_finansmani", "yok"),
+    (f"{_F}/ihtiyac-finansmani/ipotekli-bireysel-finansman", "ihtiyac_finansmani", "konut"),
+    (f"{_F}/alisveris-finansmani", "ihtiyac_finansmani", "yok"),
+    # ── Katılma hesapları ──
+    (f"{_H}/katilma-hesaplari/katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/tl-katilma-hesabi", "birikim_katilma_hesabi", "yok"),
+    (
+        f"{_H}/katilma-hesaplari/ara-donem-kar-payi-odemeli-katilma-hesabi",
+        "birikim_katilma_hesabi",
+        "yok",
+    ),
+    (f"{_H}/katilma-hesaplari/birikimli-tasarruf-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/eli-bol-hesap", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/konut-hesabi", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/katilma-hesaplari/Yuvam-hesap", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/aninda-gunluk-hesap", "birikim_katilma_hesabi", "yok"),
+    (f"{_H}/altin-hesaplar/altin-katilma-hesabi", "yatirim_urunu", "diger"),
+    (f"{_H}/altin-hesaplar/altin-depo-hesabi", "yatirim_urunu", "diger"),
+    # ── Kartlar ──
+    (f"{_K}/kredi-karti", "kart", "yok"),
+    (f"{_K}/banka-karti", "kart", "yok"),
+    (f"{_K}/aile-kart-troy", "kart", "yok"),
+    (f"{_K}/bankkart-sanal-kart", "kart", "yok"),
+)
+
+
 class ZiraatKatilimScraper(BaseScraper):
     """Ziraat Katılım kampanya scraper'ı."""
 
     bank_code = "ziraat_katilim"
     version = "2.0.0"
+    product_base_url = BASE_URL
+    product_pages = PRODUCT_PAGES
     brand_headings = BRAND_HEADINGS
 
     def discover(self) -> list[DiscoveredUrl]:

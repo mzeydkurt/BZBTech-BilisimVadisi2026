@@ -109,14 +109,43 @@ NON_CAMPAIGN_PAGES: Final[frozenset[str]] = frozenset(
 )
 
 # Ürün sayfaları — yapısal oran tablolarının kaynağı.
-PRODUCT_PAGES: Final[tuple[str, ...]] = (
-    "/tr-tr/bireysel/Sayfalar/Kar-Payi-Oranlari.aspx",
-    "/tr-tr/bireysel/Sayfalar/Kar-Paylasim-Oranlari.aspx",
-    "/tr-tr/bireysel/ihtiyac-finansmani/Sayfalar/ihtiyac-finansmani.aspx",
-    "/tr-tr/bireysel/konut-finansmani/Sayfalar/konut-finansmani.aspx",
-    # ⚠️ Büyük 'F' bilinçli: yol küçük harfe çevrilirse adres bozulur.
-    "/tr-tr/bireysel/tasit-finansmani/Sayfalar/tasit-Finansmani.aspx",
-    "/tr-tr/bireysel/katilma-hesaplari/Sayfalar/katilma-hesaplari.aspx",
+#
+# ⚠️ SITEMAP KULLANILAMAZ. `/sitemap.xml` bir index ve `sitemap0.xml`'e
+# işaret ediyor, ama o adres XML değil HTML döndürüyor ("junk after document
+# element"). Liste ana sayfa gezintisinden doğrulandı (17 Ağustos 2026).
+#
+# ⚠️ `Kar-Payi-Oranlari.aspx` §7.6'nın ⭐ kaynağı: `Vade | Kâr Payı | Tahsis
+# Ücreti | Aylık Maliyet | Yıllık Maliyet` tablosu ve sigortalı/sigortasız
+# ayrımı burada.
+#
+# (yol, ürün türü, teminat türü) — teminat `COLLATERAL_TYPES` sözlüğünden.
+_B = "/tr-tr/bireysel"
+
+PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
+    # ── Yapısal oran tabloları ──
+    (f"{_B}/Sayfalar/Kar-Payi-Oranlari.aspx", "finansman", None),
+    (f"{_B}/Sayfalar/Kar-Paylasim-Oranlari.aspx", "birikim_katilma_hesabi", "yok"),
+    (f"{_B}/Sayfalar/urun-hizmet-ucretleri.aspx", "finansman", None),
+    # ── Finansman ──
+    (f"{_B}/konut-finansmani/Sayfalar/konut-finansmani.aspx", "konut_finansmani", "konut"),
+    # ⚠️ Küçük 't', büyük 'F' bilinçli: yol küçük harfe çevrilirse adres bozulur.
+    (f"{_B}/tasit-finansmani/Sayfalar/tasit-Finansmani.aspx", "tasit_finansmani", "tasit"),
+    (f"{_B}/ihtiyac-finansmani/Sayfalar/ihtiyac-finansmani.aspx", "ihtiyac_finansmani", "yok"),
+    (f"{_B}/ihtiyac-finansmani/Sayfalar/hazir-limit.aspx", "ihtiyac_finansmani", "yok"),
+    (f"{_B}/Sayfalar/arsa-finansmani.aspx", "konut_finansmani", "konut"),
+    (f"{_B}/Sayfalar/isyeri-finansmani.aspx", "isyeri_finansmani", "konut"),
+    # ── Hesaplar ──
+    (f"{_B}/katilma-hesaplari/Sayfalar/katilma-hesaplari.aspx", "birikim_katilma_hesabi", "yok"),
+    (f"{_B}/katilma-hesaplari/Sayfalar/e-katilma-hesabi.aspx", "birikim_katilma_hesabi", "yok"),
+    (f"{_B}/katilma-hesaplari/Sayfalar/bol-kepce-hesap.aspx", "birikim_katilma_hesabi", "yok"),
+    (f"{_B}/Sayfalar/gunluk-hesap.aspx", "birikim_katilma_hesabi", "yok"),
+    (f"{_B}/Sayfalar/yedek-hesap.aspx", "birikim_katilma_hesabi", "yok"),
+    (f"{_B}/cari-hesaplar/Sayfalar/cari-hesaplar.aspx", "birikim_katilma_hesabi", "yok"),
+    (f"{_B}/altin-urunleri/Sayfalar/altin-hesap.aspx", "yatirim_urunu", "diger"),
+    (f"{_B}/altin-urunleri/Sayfalar/gumus-hesap.aspx", "yatirim_urunu", "diger"),
+    # ── Kartlar ──
+    (f"{_B}/Sayfalar/kredi-kartlari.aspx", "kart", "yok"),
+    (f"{_B}/banka-kartlari/Sayfalar/default.aspx", "kart", "yok"),
 )
 
 CONDITION_KEYWORDS: Final[tuple[str, ...]] = (
@@ -138,6 +167,8 @@ class TurkiyeFinansScraper(BaseScraper):
 
     bank_code = "turkiye_finans"
     version = "1.0.0"
+    product_base_url = BASE_URL
+    product_pages = PRODUCT_PAGES
 
     def discover(self) -> list[DiscoveredUrl]:
         """Kategori ve arşiv sayfalarından kampanya adreslerini toplar.
