@@ -70,11 +70,25 @@ class RawProductRate:
 
     `rate_source` ZORUNLUDUR: güven değeri `ProductRate.__init__` içinde
     bundan türetilir, elle yazılmaz.
+
+    ⚠️ `rate_type` ZORUNLUDUR (SPRINT 2.5): aynı kolona yazılırsa bölüşüm
+    oranı (90/10) ile getiri yüzdesi (%31,22) karışır ve karşılaştırma
+    sessizce yanlış sonuç verir.
     """
 
     rate_source: str
+    # ⭐ SPRINT 2.5: financing_rate | participation_yield | profit_sharing_ratio
+    rate_type: str = "financing_rate"
     term_months: int | None = None
+    # ⚠️ Kuveyt Türk katılma hesabında "2-6 Gün" → aya sığmaz.
+    term_days_min: int | None = None
+    term_days_max: int | None = None
+    # Kaynaktaki vade ifadesi BİREBİR: "1 Yıldan Uzun (366-999 Gün)"
+    term_label: str | None = None
     profit_rate_pct: Decimal | None = None
+    # ⚠️ Bölüşüm oranı: "90/10" → investor=90, bank=10. profit_rate_pct'ye yazılMAZ.
+    investor_share_pct: Decimal | None = None
+    bank_share_pct: Decimal | None = None
     allocation_fee_pct: Decimal | None = None
     monthly_cost_pct: Decimal | None = None
     annual_cost_pct: Decimal | None = None
@@ -87,7 +101,33 @@ class RawProductRate:
     energy_class: str | None = None
     vehicle_age_min: int | None = None
     vehicle_age_max: int | None = None
+    # ⚠️ XAU/XAG'de amount_min/max GRAM cinsindendir, TL değil.
+    currency: str = "TRY"
+    # Katılma hesabı kademesi: klasik | gumus | altin | platin | platin_plus
+    account_tier: str | None = None
+    customer_type: str | None = None
+    # Brüt/net ayrımı: stopaj öncesi oran ile sonrası aynı değildir.
+    is_gross: bool | None = None
     evidence_text: str | None = None
+
+
+@dataclass
+class RawProductLimit:
+    """Tek bir limit matrisi satırı (tutar/varlık değeri bandı × azami vade × finansman oranı)."""
+
+    asset_value_min: Decimal | None = None
+    asset_value_max: Decimal | None = None
+    financing_ratio_pct: Decimal | None = None
+    term_months_min: int | None = None
+    term_months_max: int | None = None
+    amount_max: Decimal | None = None
+    energy_class: str | None = None
+    vehicle_age_min: int | None = None
+    vehicle_age_max: int | None = None
+    currency: str = "TRY"
+    source_url: str = ""
+    evidence_text: str | None = None
+    extraction_method: str = "html_table"
 
 
 @dataclass
@@ -131,6 +171,7 @@ class RawProduct:
     non_binding_notice: str | None = None
 
     rates: list[RawProductRate] = field(default_factory=list)
+    limits: list[RawProductLimit] = field(default_factory=list)
 
 
 @dataclass

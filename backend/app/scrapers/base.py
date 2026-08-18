@@ -238,9 +238,9 @@ class BaseScraper(ABC):
         # ⚠️ YEREL İÇE AKTARMA ZORUNLU: `products.py` bu modülü içe aktarıyor,
         # modül düzeyinde yazılırsa döngü oluşur.
         from app.scrapers.products import (
+            limits_from_ltv_matrices,
             limits_from_page,
             product_external_key,
-            rates_from_ltv_matrices,
             rates_from_payment_plan,
             rates_from_tables,
         )
@@ -270,8 +270,10 @@ class BaseScraper(ABC):
             non_binding_notice=find_legal_notice(html),
             rates=[
                 *rates_from_tables(html),
-                *rates_from_ltv_matrices(html),
                 *rates_from_payment_plan(html),
+            ],
+            limits=[
+                *limits_from_ltv_matrices(html),
             ],
             **limitler,  # type: ignore[arg-type]
         )

@@ -13,7 +13,7 @@ sigortasız oranıyla kıyaslar ve sessizce yanlış sonuç üretir.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
@@ -32,13 +32,18 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.vocab import (
+    ACCOUNT_TIERS,
     COLLATERAL_TYPES,
+    CURRENCIES,
+    CUSTOMER_TYPES,
+    LIMIT_EXTRACTION_METHODS,
     LIMIT_SOURCES,
     RATE_SOURCES,
+    RATE_TYPES,
     VARIANT_DIMENSIONS,
     VARIANT_SOURCES,
 )
-from app.db.base import Base, TimestampMixin, in_check
+from app.db.base import Base, TimestampMixin, UtcDateTime, in_check
 
 if TYPE_CHECKING:
     from app.db.models.bank import Bank
@@ -135,9 +140,20 @@ class Product(TimestampMixin, Base):
     is_binding: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     non_binding_notice: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # ── İzleme ────────────────────────────────────────────
+    # ⚠️ Ürün sayfadan KALKINCA satır SİLİNMEZ, `is_active=False` olur.
+    # Silmek, o ürünün hiç var olmadığı izlenimi yaratır ve geçmiş
+    # karşılaştırmaları geçersiz kılar.
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    first_seen_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+
     bank: Mapped[Bank] = relationship(back_populates="products")
     source_document: Mapped[SourceDocument | None] = relationship()
     rates: Mapped[list[ProductRate]] = relationship(
+        back_populates="product", cascade="all, delete-orphan"
+    )
+    limits: Mapped[list[ProductLimit]] = relationship(
         back_populates="product", cascade="all, delete-orphan"
     )
     parent: Mapped[Product | None] = relationship(
@@ -174,6 +190,8 @@ def _band_key_from_kwargs(kwargs: dict[str, Any]) -> str:
     """
     alanlar = (
         "term_months",
+        "term_days_min",
+        "term_days_max",
         "variant",
         "amount_min",
         "amount_max",
@@ -182,6 +200,10 @@ def _band_key_from_kwargs(kwargs: dict[str, Any]) -> str:
         "energy_class",
         "vehicle_age_min",
         "vehicle_age_max",
+        "currency",
+        "account_tier",
+        "customer_type",
+        "rate_type",
     )
     return "|".join("" if kwargs.get(a) is None else str(kwargs[a]) for a in alanlar)
 
@@ -199,6 +221,22 @@ class ProductRate(Base):
     __tablename__ = "product_rates"
     __table_args__ = (
         CheckConstraint(in_check("rate_source", RATE_SOURCES), name="rate_source_valid"),
+        CheckConstraint(in_check("rate_type", RATE_TYPES), name="rate_type_valid"),
+        CheckConstraint(in_check("currency", CURRENCIES), name="rate_currency_valid"),
+        CheckConstraint(in_check("account_tier", ACCOUNT_TIERS), name="account_tier_valid"),
+        CheckConstraint(in_check("customer_type", CUSTOMER_TYPES), name="customer_type_valid"),
+        # ⚠️ Bölüşüm oranının iki ucu 100'ü aşamaz. "90/10" toplamı 100 olmalı
+        # ama bazı bankalar masrafı ayırıp "89.1/10.9" yazıyor; tam eşitlik
+        # ZORLANMAZ, yalnızca üst sınır denetlenir.
+        CheckConstraint(
+            "investor_share_pct IS NULL OR (investor_share_pct >= 0 "
+            "AND investor_share_pct <= 100)",
+            name="investor_share_range_valid",
+        ),
+        CheckConstraint(
+            "term_days_min IS NULL OR term_days_max IS NULL OR term_days_min <= term_days_max",
+            name="term_days_range_valid",
+        ),
         CheckConstraint("confidence >= 0 AND confidence <= 1", name="confidence_range_valid"),
         CheckConstraint(
             "amount_min IS NULL OR amount_max IS NULL OR amount_min <= amount_max",
@@ -228,8 +266,31 @@ class ProductRate(Base):
     # Bant boyutlarının NULL-güvenli kodlaması; bkz. `scrapers/products.py`.
     band_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
+    # ⭐ ORAN TÜRÜ — VARSAYILANI YOK, HER SATIRDA DOLU.
+    #
+    # ⚠️ "Kâr payı" üç ayrı büyüklüğü anlatıyor ve aynı kolona yazılırlarsa
+    # karşılaştırma sessizce yanlış sonuç verir. Ayrıntı `core/vocab.py`:
+    #   financing_rate       → finansman maliyeti      (%4,15)
+    #   participation_yield  → katılma hesabı getirisi (%31,22)
+    #   profit_sharing_ratio → bölüşüm oranı           (90/10)
+    #
+    # Sunucu tarafı varsayılanı `financing_rate`: göç sırasında mevcut 253
+    # satır finansman oranıdır. YENİ kayıtlarda açıkça verilmelidir.
+    rate_type: Mapped[str] = mapped_column(Text, nullable=False, default="financing_rate")
+
     term_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # ⚠️ Vade her zaman AY değil: Kuveyt Türk katılma hesabında "2-6 Gün" gibi
+    # kısa vadeler var. Aya yuvarlamak 2 günlük hesabı 0 ay yapardı.
+    term_days_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    term_days_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Kaynaktaki vade ifadesi BİREBİR: "1 Yıldan Uzun (366-999 Gün)".
+    term_label: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     profit_rate_pct: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    # ⚠️ Bölüşüm oranının İKİ ucu da saklanır. Yalnızca müşteri payını tutmak
+    # "90/10" ile "90/8 + %2 masraf" ayrımını kaybettirir.
+    investor_share_pct: Mapped[Decimal | None] = mapped_column(Numeric(6, 3), nullable=True)
+    bank_share_pct: Mapped[Decimal | None] = mapped_column(Numeric(6, 3), nullable=True)
     allocation_fee_pct: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
     monthly_cost_pct: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
     annual_cost_pct: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
@@ -247,6 +308,14 @@ class ProductRate(Base):
     energy_class: Mapped[str | None] = mapped_column(Text, nullable=True)
     vehicle_age_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     vehicle_age_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # ⚠️ XAU/XAG'de `amount_min/max` GRAM cinsindendir, TL değil.
+    currency: Mapped[str] = mapped_column(Text, nullable=False, default="TRY")
+    # Katılma hesabında paylaşım oranı bakiye kademesine göre değişiyor.
+    account_tier: Mapped[str | None] = mapped_column(Text, nullable=True)
+    customer_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # ⚠️ Brüt/net ayrımı: stopaj öncesi oran ile sonrası aynı sayı değildir.
+    # Bilinmiyorsa NULL kalır — varsayım yapılmaz.
+    is_gross: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     # ── Kaynak ve güven (ZORUNLU) ─────────────────────────
     # ⚠️ NOT NULL: kaynağı bilinmeyen oran karşılaştırmaya giremez.
@@ -258,6 +327,9 @@ class ProductRate(Base):
     source_document_id: Mapped[int | None] = mapped_column(
         ForeignKey("source_documents.id", ondelete="SET NULL"), nullable=True
     )
+    # ⚠️ False = hesaplayıcıdan ya da ödeme planından TÜRETİLMİŞ; bankanın
+    # ilan ettiği bir taahhüt değildir. Karşılaştırmada ayrı işaretlenir.
+    is_binding: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Oranın okunduğu ham metin parçası — jüriye ve kullanıcıya kanıt.
     evidence_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -279,3 +351,93 @@ class ProductRate(Base):
         if not kwargs.get("band_key"):
             kwargs["band_key"] = _band_key_from_kwargs(kwargs)
         super().__init__(**kwargs)
+
+
+class ProductLimit(Base):
+    """Tutar bandı × ayrım boyutu → finansman oranı ve azami vade matrisi.
+
+    ⚠️ NEDEN AYRI TABLO. Bankaların çoğu finansman KÂR PAYI ORANINI
+    yayımlamıyor (sektör normu; oran başvuruda veriliyor). Ama neredeyse
+    hepsi şunu yayımlıyor: "konut değeri şu banttaysa değerin %X'i kadar,
+    en fazla Y ay vadeyle finanse edilir."
+
+    Bu, oran olmayan yerde karşılaştırmayı mümkün kılan tek veridir
+    (şartname 5.7 — "En Uzun Vade", finansman oranı).
+
+    ⚠️ `product_rates`'E YAZILAMAZ. Oran tablosunda `profit_rate_pct=NULL`
+    olan satırlar birikirse "oran" tablosu oran içermeyen satırlarla dolar ve
+    sıralama sorguları bunları elemek zorunda kalır. Ölçüldü: LTV matrisi
+    oran tablosuna yazıldığında 253 satırın 105'i oransız kalıyordu.
+    """
+
+    __tablename__ = "product_limits"
+    __table_args__ = (
+        CheckConstraint(
+            in_check("extraction_method", LIMIT_EXTRACTION_METHODS),
+            name="limit_extraction_method_valid",
+        ),
+        CheckConstraint(in_check("currency", CURRENCIES), name="limit_currency_valid"),
+        CheckConstraint(
+            "asset_value_min IS NULL OR asset_value_max IS NULL "
+            "OR asset_value_min <= asset_value_max",
+            name="asset_value_range_valid",
+        ),
+        CheckConstraint(
+            "financing_ratio_pct IS NULL "
+            "OR (financing_ratio_pct >= 0 AND financing_ratio_pct <= 100)",
+            name="financing_ratio_range_valid",
+        ),
+        CheckConstraint(
+            "vehicle_age_min IS NULL OR vehicle_age_max IS NULL "
+            "OR vehicle_age_min <= vehicle_age_max",
+            name="limit_vehicle_age_range_valid",
+        ),
+        # ⚠️ Bant sınırları NULL olabildiği için (üst uç açık: "20 Milyon
+        # Üzeri") doğrudan bileşik anahtar kullanılamaz; `band_key` NULL
+        # güvenli kodlamadır — `product_rates` ile aynı desen.
+        UniqueConstraint(
+            "product_id",
+            "band_key",
+            "extraction_method",
+            name="uq_product_limits_product_id_band_key_extraction_method",
+        ),
+        Index("ix_product_limits_product_id", "product_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), nullable=False
+    )
+    band_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    # ── Varlık değeri bandı ───────────────────────────────
+    # "Değer <= 5 Milyon TL" · "5 Milyon - 7 Milyon TL" · "20 Milyon Üzeri"
+    asset_value_min: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    asset_value_max: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+
+    # Varlık değerinin yüzde kaçı finanse edilir ("Değer x %70").
+    financing_ratio_pct: Mapped[Decimal | None] = mapped_column(Numeric(6, 3), nullable=True)
+    term_months_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    term_months_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    amount_max: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+
+    # ── Ayrım boyutları — hangisi geçerliyse dolar ────────
+    # ⚠️ Enerji sınıfı kaynaktaki BİREBİR etikettir ("A-B", "A -B", "DİĞER").
+    # Bankalar aynı sınıfı farklı yazıyor; normalize etmek kaynağı bozar.
+    energy_class: Mapped[str | None] = mapped_column(Text, nullable=True)
+    vehicle_age_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    vehicle_age_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    currency: Mapped[str] = mapped_column(Text, nullable=False, default="TRY")
+
+    # ── Kaynak ────────────────────────────────────────────
+    source_url: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Tablo satırının birebir metni — "Değer <= 5 Milyon TL | A-B | Değer x 90%"
+    evidence_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    extraction_method: Mapped[str] = mapped_column(Text, nullable=False, default="html_table")
+    source_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("source_documents.id", ondelete="SET NULL"), nullable=True
+    )
+    fetched_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+
+    product: Mapped[Product] = relationship(back_populates="limits")
+    source_document: Mapped[SourceDocument | None] = relationship()

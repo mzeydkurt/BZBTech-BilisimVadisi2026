@@ -33,17 +33,41 @@ from typing import Final
 from bs4 import BeautifulSoup, Tag
 
 from app.core.normalization.money import parse_money
-from app.core.normalization.rate import parse_rate
+from app.core.normalization.rate import parse_profit_sharing_ratio, parse_rate
 from app.core.normalization.term import parse_term_months
 from app.core.normalization.text import ascii_fold_tr, lower_tr, normalize_text
 
 # Kolon başlığı → alan adı. Eşleştirme katlanmış metinle yapılır.
+# ⚠️ SIRA ÖNEMLİ: profit_sharing_ratio (kar paylasim) önceliklidir; "oran" kelimesi
+# profit_rate_pct içinde olduğu için "kar paylasim orani" başlığını kapmasın.
 COLUMN_ALIASES: Final[dict[str, tuple[str, ...]]] = {
-    "term_months": ("vade",),
-    "profit_rate_pct": ("kar payi orani", "kar payi", "oran"),
+    "term_months": ("vade", "vade (ay)", "vade ay"),
+    "profit_sharing_ratio": (
+        "kar paylasim orani",
+        "kar paylasim",
+        "paylasim orani",
+        "paylasim",
+        "kar paylasimi",
+        "bolusum",
+    ),
+    "profit_rate_pct": (
+        "kar payi orani",
+        "kar payi",
+        "brut kar payi",
+        "net kar payi",
+        "yillik brut kar payi",
+        "yillik kar payi",
+        "getiri",
+        "yillik getiri",
+        "net getiri",
+        "brut getiri",
+        "oran",
+    ),
     "allocation_fee_pct": ("tahsis ucreti", "tahsis"),
     "monthly_cost_pct": ("aylik toplam maliyet", "aylik maliyet"),
     "annual_cost_pct": ("yillik toplam maliyet", "yillik maliyet"),
+    "amount_band": ("tutar bandi", "bakiye", "tutar", "bakiye araligi", "bakiye kademesi"),
+    "currency": ("para birimi", "doviz cinsi", "birim"),
 }
 
 # Tablonun üstündeki başlıkta aranan varyant ifadeleri.
@@ -180,11 +204,23 @@ class LtvMatrix:
 class RateRow:
     """Oran tablosunun tek bir satırı."""
 
+    rate_type: str = "financing_rate"
     term_months: int | None = None
+    term_days_min: int | None = None
+    term_days_max: int | None = None
+    term_label: str | None = None
     profit_rate_pct: Decimal | None = None
+    investor_share_pct: Decimal | None = None
+    bank_share_pct: Decimal | None = None
     allocation_fee_pct: Decimal | None = None
     monthly_cost_pct: Decimal | None = None
     annual_cost_pct: Decimal | None = None
+    amount_min: Decimal | None = None
+    amount_max: Decimal | None = None
+    currency: str = "TRY"
+    account_tier: str | None = None
+    customer_type: str | None = None
+    is_gross: bool | None = None
     evidence_text: str | None = None
 
 
@@ -296,7 +332,7 @@ def _term_months(raw: str) -> int | None:
     return ust if ust is not None else alt
 
 
-def _parse_row(cells: list[str], columns: dict[int, str]) -> RateRow | None:
+def _parse_row(cells: list[str], columns: dict[int, str], caption: str | None = None) -> RateRow | None:
     """Veri satırını `RateRow`'a çevirir; veri yoksa None."""
     degerler: dict[str, object] = {}
 
@@ -309,20 +345,72 @@ def _parse_row(cells: list[str], columns: dict[int, str]) -> RateRow | None:
 
         if alan == "term_months":
             degerler[alan] = _term_months(ham)
+            degerler["term_label"] = ham
+        elif alan == "profit_sharing_ratio":
+            inv, bnk = parse_profit_sharing_ratio(ham)
+            if inv is not None and bnk is not None:
+                degerler["investor_share_pct"] = inv
+                degerler["bank_share_pct"] = bnk
+                degerler["rate_type"] = "profit_sharing_ratio"
+        elif alan == "amount_band":
+            alt, ust = _parse_value_band(ham)
+            if alt is not None:
+                degerler["amount_min"] = alt
+            if ust is not None:
+                degerler["amount_max"] = ust
+        elif alan == "currency":
+            katlanmis = _fold(ham)
+            if "usd" in katlanmis or "dolar" in katlanmis:
+                degerler["currency"] = "USD"
+            elif "eur" in katlanmis or "euro" in katlanmis:
+                degerler["currency"] = "EUR"
+            elif "xau" in katlanmis or "altin" in katlanmis:
+                degerler["currency"] = "XAU"
+            elif "xag" in katlanmis or "gumus" in katlanmis:
+                degerler["currency"] = "XAG"
+            else:
+                degerler["currency"] = "TRY"
+        elif alan == "profit_rate_pct":
+            # ⚠️ Hücre bölüşüm oranı taşıyorsa (ör. 90/10) profit_sharing_ratio olarak işle
+            inv, bnk = parse_profit_sharing_ratio(ham)
+            if inv is not None and bnk is not None and ("/" in ham or "-" in ham):
+                degerler["investor_share_pct"] = inv
+                degerler["bank_share_pct"] = bnk
+                degerler["rate_type"] = "profit_sharing_ratio"
+            else:
+                # Türkçe ondalık ayracı: "%4,20" -> 4.20
+                degerler[alan] = parse_rate(ham)
         else:
-            # ⚠️ Türkçe ondalık ayracı: "%4,20" -> 4.20
             degerler[alan] = parse_rate(ham)
+
+    # Başlık veya kolonlarda "kar paylasim" veya "bölüşüm" geçiyorsa rate_type 'profit_sharing_ratio' yapılır
+    rate_type = str(degerler.get("rate_type", ""))
+    if not rate_type:
+        caption_fold = _fold(caption or "")
+        if "kar paylasim" in caption_fold or "paylasim" in caption_fold:
+            rate_type = "profit_sharing_ratio"
+        elif "kar payi" in caption_fold or "getiri" in caption_fold:
+            rate_type = "participation_yield"
+        else:
+            rate_type = "financing_rate"
 
     dolu = [d for d in degerler.values() if d is not None]
     if len(dolu) < _MIN_FILLED_CELLS:
         return None
 
     return RateRow(
+        rate_type=rate_type,
         term_months=degerler.get("term_months"),  # type: ignore[arg-type]
+        term_label=degerler.get("term_label"),  # type: ignore[arg-type]
         profit_rate_pct=degerler.get("profit_rate_pct"),  # type: ignore[arg-type]
+        investor_share_pct=degerler.get("investor_share_pct"),  # type: ignore[arg-type]
+        bank_share_pct=degerler.get("bank_share_pct"),  # type: ignore[arg-type]
         allocation_fee_pct=degerler.get("allocation_fee_pct"),  # type: ignore[arg-type]
         monthly_cost_pct=degerler.get("monthly_cost_pct"),  # type: ignore[arg-type]
         annual_cost_pct=degerler.get("annual_cost_pct"),  # type: ignore[arg-type]
+        amount_min=degerler.get("amount_min"),  # type: ignore[arg-type]
+        amount_max=degerler.get("amount_max"),  # type: ignore[arg-type]
+        currency=str(degerler.get("currency", "TRY")),
         evidence_text=" | ".join(c for c in cells if c)[:300],
     )
 
@@ -543,13 +631,14 @@ def parse_rate_tables(html: str | None) -> list[RateTable]:
         basliklar = _cells(satirlar[0])
         kolonlar = _map_columns(basliklar)
 
-        # Oran kolonu yoksa bu bir oran tablosu değildir (ör. ücret listesi).
-        if "profit_rate_pct" not in kolonlar.values():
+        # Oran veya bölüşüm kolonu yoksa bu bir oran tablosu değildir (ör. ücret listesi).
+        if "profit_rate_pct" not in kolonlar.values() and "profit_sharing_ratio" not in kolonlar.values():
             continue
 
+        caption = _table_caption(table)
         veri: list[RateRow] = []
         for satir in satirlar[1:]:
-            ayristirilan = _parse_row(_cells(satir), kolonlar)
+            ayristirilan = _parse_row(_cells(satir), kolonlar, caption=caption)
             if ayristirilan is not None:
                 veri.append(ayristirilan)
 
