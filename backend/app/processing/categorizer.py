@@ -56,6 +56,22 @@ AMBIGUOUS_PENALTY: Final[Decimal] = Decimal("0.200")
 # gerekçeyi göstermek içindir, tüm sayfayı saklamak için değil.
 EVIDENCE_MAX_LENGTH: Final[int] = 160
 
+# Kampanyadan yararlanmak için ürüne SAHİP OLMAK gerektiğini gösteren iyelik
+# ekleri: "Kartınızla", "kartlarınız ile", "hesabınıza". Bu ekler müşterinin
+# ürünü halihazırda taşıdığının METİNDEKİ kanıtıdır.
+#
+# ⚠️ "Müşteri Ol" DÜĞMESİ buraya GİRMEZ. O bir gezinti öğesidir ve
+# kampanyanın yalnızca yeni müşteriye ait olduğunu göstermez — çoğu kampanya
+# hem mevcut hem yeni müşteriye açıktır ("Müşteri Ol, 4 taksit" kampanyası
+# mevcut müşteride de geçerli olabilir).
+OWNERSHIP_RE: Final[re.Pattern[str]] = re.compile(
+    r"kart\w*n\w{0,3}z\w*|hesab\w*n\w{0,3}z\w*|müşterilerimiz|kart sahi",
+    re.IGNORECASE,
+)
+
+# Açık işaretçi yokken varsayılan hedef kitle.
+DEFAULT_AUDIENCE: Final[str] = "mevcut_musteri"
+
 
 @dataclass(frozen=True)
 class CategoryLabel:
@@ -292,6 +308,13 @@ def categorize(
         baslik_katlanmis, baslik_alani, "product_type", PRODUCT_TYPE_KEYWORDS
     )
     etiketler += _anahtar_kelimeden(baslik_katlanmis, baslik_alani, "sector", SECTOR_KEYWORDS)
+    # ⚠️ HEDEF KİTLE TÜM METİNDE ARANIR — koşul metni dahil. "Kampanya
+    # yalnızca emekli müşterilerimiz için geçerlidir" gibi ifadeler yalnızca
+    # orada geçiyor (`test_hedef_kitle_kosul_metninden_de_okunur`).
+    #
+    # Gürültü kaynağı olan "Müşteri Ol" DÜĞMESİ metinden değil SÖZLÜKTEN
+    # elendi (bkz. `AUDIENCE_KEYWORDS`), böylece koşul metni okunmaya
+    # devam ediyor.
     etiketler += _anahtar_kelimeden(tum_katlanmis, tum_metin, "audience", AUDIENCE_KEYWORDS)
     etiketler += _anahtar_kelimeden(tum_katlanmis, tum_metin, "benefit", BENEFIT_KEYWORDS)
 
@@ -310,5 +333,32 @@ def categorize(
                 evidence=None,
             )
         )
+
+    # ⚠️ HEDEF KİTLE VARSAYILANI: SAHİPLİK KANITI VARSA "mevcut müşteri".
+    #
+    # Alan bilgisi: bir kampanyadan yararlanmak için kart ya da hesap
+    # gerekiyorsa, hedef kitle zaten mevcut müşteridir. Bunu METİN SÖYLÜYOR —
+    # "Kartınızla", "kartlarınız ile", "hesabınıza" ifadelerindeki İYELİK EKİ
+    # müşterinin ürüne halihazırda sahip olduğunun kanıtıdır. Uydurma değil,
+    # kanıtı gösterilebilir bir çıkarımdır; bu yüzden kanıt metni saklanır.
+    #
+    # ⚠️ YALNIZCA AÇIK İŞARETÇİ YOKKEN çalışır. "Yeni müşterilere özel",
+    # "gençlere özel", "emekli" gibi bir ifade varsa yukarıdaki anahtar
+    # kelime katmanı zaten etiketi üretmiştir ve buraya hiç girilmez.
+    #
+    # ⚠️ Güven DÜŞÜK (`FALLBACK_CONFIDENCE`): bu bir varsayılan, bankanın
+    # açık beyanı değil.
+    if not any(e.axis == "audience" for e in etiketler):
+        sahiplik = OWNERSHIP_RE.search(tum_metin)
+        if sahiplik is not None:
+            etiketler.append(
+                CategoryLabel(
+                    axis="audience",
+                    value=DEFAULT_AUDIENCE,
+                    source="keyword",
+                    confidence=FALLBACK_CONFIDENCE,
+                    evidence=_kirp(_baglam(tum_metin, sahiplik.group(0)) or sahiplik.group(0)),
+                )
+            )
 
     return etiketler

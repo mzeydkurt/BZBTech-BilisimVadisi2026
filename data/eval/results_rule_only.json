@@ -2,14 +2,14 @@
   "mode": "rule_only",
   "gold_campaigns": 50,
   "gold_annotations": 1100,
-  "micro_f1": 0.7513,
-  "macro_f1": 0.7077,
-  "hallucination_rate": 0.172,
+  "micro_f1": 0.7913,
+  "macro_f1": 0.7435,
+  "hallucination_rate": 0.1603,
   "correct_silence_rate": 0.9185,
   "overall": {
-    "tp": 284,
+    "tp": 309,
     "fp": 59,
-    "fn": 129,
+    "fn": 104,
     "tn": 665
   },
   "by_field": {
@@ -128,9 +128,9 @@
       "tn": 2
     },
     "target_customer": {
-      "tp": 4,
+      "tp": 29,
       "fp": 2,
-      "fn": 46,
+      "fn": 21,
       "tn": 0
     },
     "product_type": {
@@ -148,35 +148,35 @@
   },
   "by_method": {
     "blind": {
-      "tp": 167,
+      "tp": 180,
       "fp": 46,
-      "fn": 77,
+      "fn": 64,
       "tn": 397
     },
     "assisted": {
-      "tp": 117,
+      "tp": 129,
       "fp": 13,
-      "fn": 52,
+      "fn": 40,
       "tn": 268
     }
   },
   "by_bank": {
     "ziraat_katilim": {
-      "tp": 101,
+      "tp": 116,
       "fp": 9,
-      "fn": 32,
+      "fn": 17,
       "tn": 214
     },
     "emlak_katilim": {
-      "tp": 35,
+      "tp": 39,
       "fp": 6,
-      "fn": 13,
+      "fn": 9,
       "tn": 84
     },
     "vakif_katilim": {
-      "tp": 35,
+      "tp": 36,
       "fp": 9,
-      "fn": 14,
+      "fn": 13,
       "tn": 80
     },
     "hayat_finans": {
@@ -186,21 +186,21 @@
       "tn": 85
     },
     "albaraka": {
-      "tp": 32,
-      "fp": 9,
-      "fn": 11,
+      "tp": 34,
+      "fp": 10,
+      "fn": 9,
       "tn": 61
     },
     "kuveyt_turk": {
-      "tp": 41,
-      "fp": 18,
-      "fn": 20,
+      "tp": 43,
+      "fp": 17,
+      "fn": 18,
       "tn": 86
     },
     "dunya_katilim": {
-      "tp": 5,
+      "tp": 6,
       "fp": 1,
-      "fn": 4,
+      "fn": 3,
       "tn": 35
     },
     "tom_bank": {

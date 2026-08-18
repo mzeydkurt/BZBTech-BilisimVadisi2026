@@ -357,7 +357,20 @@ SECTOR_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
 }
 
 AUDIENCE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
-    "yeni_musteri": ("yeni müşteri", "ilk kez", "müşterimiz ol", "müşteri ol"),
+    # ⚠️ ÇIPLAK "müşteri ol" VE "ilk kez" SÖZLÜKTEN ÇIKARILDI — ölçüldü.
+    #
+    # "Müşteri Ol" bankaların neredeyse her sayfasında duran bir GEZİNTİ
+    # DÜĞMESİ. Sinyal sayıldığında gold set'te `mevcut_musteri` etiketli 41
+    # kampanyanın 9'una yanlış `yeni_musteri` yazıyordu. Anlamı da tek yönlü
+    # değil: "Müşteri Ol, 4 taksit" kampanyası mevcut müşteride de geçerli
+    # olabilir.
+    #
+    # "ilk kez" tek başına yanıltıcı: "İlk Ek Kredi Kartınıza 1.000 TL"
+    # kampanyası MEVCUT müşteriye ait — ek kart almak için zaten müşteri
+    # olmak gerekiyor.
+    #
+    # Belirsiz kalanlar `categorizer.OWNERSHIP_RE` varsayılanına bırakılır.
+    "yeni_musteri": ("yeni müşteri", "ilk kez müşteri", "müşterimiz olan"),
     # ⚠️ "müşterilerimiz" ANAHTAR DEĞİL: neredeyse her kampanya metni
     # "müşterilerimize özel" diyor ve bu ifade yeni müşteri kampanyalarında da
     # geçiyor. Ölçümde her kampanyaya hem `yeni_musteri` hem `mevcut_musteri`
