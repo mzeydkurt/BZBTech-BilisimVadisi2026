@@ -282,7 +282,14 @@ PRODUCT_TYPE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
     "tasit_finansmani": ("taşıt finansman", "araç finansman", "otomobil finansman"),
     "ihtiyac_finansmani": ("ihtiyaç finansman", "ihtiyaç kredi"),
     "isyeri_finansmani": ("işyeri finansman", "iş yeri finansman"),
-    "finansman": ("finansman kullan", "finansman kampanya", "karz-ı hasen"),
+    "finansman": (
+        "finansman kullan",
+        "finansman kampanya",
+        "karz-ı hasen",
+        "finansman fırsat",
+        "finansman imkan",
+        "finansman türü",
+    ),
     # ⚠️ KART MARKA ADIYLA ANILIYOR. Bankalar kartı ürün adıyla değil marka
     # adıyla yazıyor: "Biz Kart", "Hadi Kartı", "VKart", "Paraf", "TROY".
     # Yalnızca "kredi kartı"/"banka kartı" arandığında bu kampanyalar ürün
@@ -300,6 +307,7 @@ PRODUCT_TYPE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
         "paraf",
         "vkart",
         "world kart",
+        "kart",
     ),
     "alisveris_puani": ("bankkart lira", "worldpuan", "paraf para", "puan kazan"),
     "yeni_musteri": ("yeni müşteri", "müşterimiz ol", "ilk kez", "müşteri ol"),
@@ -392,7 +400,15 @@ AUDIENCE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
 BENEFIT_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
     "nakit_iade": ("nakit iade", "iade kazan", "para iade", "cashback", "geri ödeme"),
     "puan_mil": ("bankkart lira", "worldpuan", "paraf para", "puan", "mil"),
-    "vade_farksiz_taksit": ("vade farksız", "peşin fiyatına"),
+    # ⚠️ "Vade farkı bizden/iade" de vade farksız taksittir; banka aynı şeyi
+    # üç ayrı biçimde yazıyor.
+    "vade_farksiz_taksit": (
+        "vade farksız",
+        "peşin fiyatına",
+        "vade farkı iade",
+        "vade farkın bizden",
+        "vade farkı bizden",
+    ),
     "taksit": ("taksit", "taksitlendirme", "aya varan taksit"),
     "indirim": ("indirim", "indirimli"),
     "ucret_muafiyeti": (
@@ -405,7 +421,7 @@ BENEFIT_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
     "masrafsiz": ("masrafsız",),
     "hediye_ceki": ("alışveriş çeki", "hediye çeki", "hediye kartı"),
     "avantajli_kar_payi": ("avantajlı kâr payı", "özel oranlı", "düşük maliyetli finansman"),
-    "hediye_urun": ("hediye ürün", "hediyeniz"),
+    "hediye_urun": ("hediye ürün", "hediyeniz", "ikram"),
     "cekilis": ("çekiliş", "talihli", "kura"),
 }
 

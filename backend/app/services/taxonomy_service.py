@@ -67,6 +67,9 @@ def categorize_campaigns(session: Session, *, bank_code: str | None = None) -> T
             title=campaign.title,
             description=campaign.description,
             conditions_text=campaign.conditions_text,
+            # ⚠️ Kampanyaların %46'sında `conditions_text` boş; gövde metni
+            # olmadan yalnızca başlıktan sınıflandırılıyorlardı.
+            body_text=campaign.source_document.clean_text if campaign.source_document else None,
             source_url=campaign.source_url,
             bank_category=campaign.bank_category,
         )
