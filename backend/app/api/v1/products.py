@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session, selectinload
 from app.db.models.bank import Bank
 from app.db.models.product import Product, ProductLimit, ProductRate
 from app.db.session import get_db
+from app.schemas.compare import ComparisonRequest, ComparisonResponse, ComparisonWeights
+from app.services.comparison_service import compare_campaigns
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -83,3 +85,25 @@ def list_products(
         })
 
     return sonuclar
+
+
+@router.post("/compare", response_model=ComparisonResponse)
+def compare_products(
+    req: ComparisonRequest, db: Session = Depends(get_db)
+) -> ComparisonResponse:
+    """Seçilen kampanya veya ürünleri normalize alanlar üzerinden karşılaştırır."""
+    return compare_campaigns(db, req.campaign_ids, req.weights)
+
+
+@router.get("/compare", response_model=ComparisonResponse)
+def compare_products_get(
+    ids: Annotated[str, Query(description="Virgülle ayrılmış kampanya kimlikleri (örn: 1,2,3)")],
+    db: Session = Depends(get_db),
+) -> ComparisonResponse:
+    """GET parametreleri ile ürün ve finansman karşılaştırması yapar."""
+    try:
+        c_ids = [int(i.strip()) for i in ids.split(",") if i.strip()]
+    except ValueError:
+        c_ids = []
+    return compare_campaigns(db, c_ids, ComparisonWeights())
+
