@@ -20,7 +20,7 @@ from app.db.models.extraction_run import ExtractionRun
 from app.db.models.glossary import GlossaryTerm
 from app.db.models.gold_annotation import GoldAnnotation
 from app.db.models.llm_cache import LLMCache
-from app.db.models.product import Product, ProductRate
+from app.db.models.product import Product, ProductLimit, ProductRate
 from app.db.models.scrape_run import SCRAPE_RUN_STATUSES, ScrapeRun
 from app.db.models.source_document import DISCOVERY_METHODS, DOC_TYPES, SourceDocument
 
@@ -50,6 +50,7 @@ __all__ = [
     "GoldAnnotation",
     "LLMCache",
     "Product",
+    "ProductLimit",
     "ProductRate",
     "ScrapeRun",
     "SourceDocument",

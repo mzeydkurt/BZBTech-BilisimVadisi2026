@@ -147,3 +147,48 @@ def parse_rate_range(text: str | None) -> tuple[Decimal | None, Decimal | None]:
     if _LOWER_BOUND_RE.search(lowered):
         return value, None
     return value, value
+
+
+_PROFIT_SHARING_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?:%\s*)?(\d{1,2}(?:[.,]\d+)?)\s*(?:/|[-–—]|\b|\\\s*)\s*(?:%\s*)?(\d{1,2}(?:[.,]\d+)?)"
+)
+
+
+def parse_profit_sharing_ratio(text: str | None) -> tuple[Decimal | None, Decimal | None]:
+    """Bölüşüm oranını (investor_share, bank_share) olarak çıkarır.
+
+    Örnekler:
+        "90/10"          -> (90.0, 10.0)
+        "%90 - %10"      -> (90.0, 10.0)
+        "89.1 / 10.9"    -> (89.1, 10.9)
+        "98/2"           -> (98.0, 2.0)
+
+    Args:
+        text: Ayrıştırılacak metin.
+
+    Returns:
+        (investor_share_pct, bank_share_pct) ikilisi; okunamazsa (None, None).
+    """
+    if not text:
+        return None, None
+
+    lowered = lower_tr(normalize_text(text))
+
+    # Öncelikle "90/10" veya "%90 - %10" biçimlerini ara
+    m = re.search(
+        r"(?:%\s*)?(\d{1,2}(?:[.,]\d+)?)\s*(?:/|[-–—])\s*(?:%\s*)?(\d{1,2}(?:[.,]\d+)?)",
+        lowered,
+    )
+    if m:
+        inv = parse_decimal_tr(m.group(1))
+        bnk = parse_decimal_tr(m.group(2))
+        if inv is not None and bnk is not None:
+            if Decimal("0") <= inv <= Decimal("100") and Decimal("0") <= bnk <= Decimal("100"):
+                return inv, bnk
+
+    # Çıplak tek yüzde (ör. %90) varsa: investor=90, bank=10
+    rate = parse_rate(lowered)
+    if rate is not None and Decimal("0") < rate < Decimal("100"):
+        return rate, Decimal("100") - rate
+
+    return None, None

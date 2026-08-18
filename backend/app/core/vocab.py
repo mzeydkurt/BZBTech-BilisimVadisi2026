@@ -127,6 +127,49 @@ RATE_SOURCE_CONFIDENCE: Final[dict[str, Decimal]] = {
 RATE_SOURCES_NOT_COMPARABLE: Final[frozenset[str]] = frozenset({"js_default", "none"})
 
 
+# ── ORAN TÜRÜ — SPRINT 2.5'İN EN KRİTİK AYRIMI ────────────
+#
+# ⚠️ "KÂR PAYI" ÜÇ FARKLI ŞEY DEMEK. Aynı kolona yazılırlarsa karşılaştırma
+# elma ile armudu sıralar ve hata SESSİZ olur:
+#
+#   profit_sharing_ratio  bölüşüm oranı   "90/10" · "98/2"   → investor/bank_share_pct
+#   participation_yield   katılma getirisi "%31,22"          → profit_rate_pct
+#   financing_rate        finansman maliyeti "%4,15"          → profit_rate_pct
+#
+# Aynı bankanın aynı ürününde İKİSİ DE olabilir ve ikisi de doğrudur:
+# katılma hesabının hem bölüşüm oranı (90/10) hem getirisi (%31,22) yayımlanır.
+#
+# ⚠️ Türkiye Finans'ta iki sayfanın adı TEK HARF farklı:
+#     Kar-Payi-Oranlari.aspx     → participation_yield
+#     Kar-Paylasim-Oranlari.aspx → profit_sharing_ratio
+# Karıştırılırsa fark edilmez.
+RATE_TYPES: Final[tuple[str, ...]] = (
+    "financing_rate",
+    "participation_yield",
+    "profit_sharing_ratio",
+)
+
+# ⚠️ FARKLI TÜRLER ASLA AYNI SIRALAMAYA GİRMEZ. Karşılaştırma ucu
+# `rate_type` parametresini ZORUNLU tutar; varsayılan seçmez.
+RATE_TYPE_COMPARABLE_FIELD: Final[dict[str, str]] = {
+    "financing_rate": "profit_rate_pct",
+    "participation_yield": "profit_rate_pct",
+    "profit_sharing_ratio": "investor_share_pct",
+}
+
+# Para birimi. ⚠️ XAU/XAG'de tutar alanları GRAM cinsindendir, TL değil.
+CURRENCIES: Final[tuple[str, ...]] = ("TRY", "USD", "EUR", "XAU", "XAG")
+
+# Katılma hesabı kademesi — banka müşteriyi bakiyeye göre kademeliyor ve
+# paylaşım oranı kademeye göre değişiyor.
+ACCOUNT_TIERS: Final[tuple[str, ...]] = ("klasik", "gumus", "altin", "platin", "platin_plus")
+
+CUSTOMER_TYPES: Final[tuple[str, ...]] = ("gercek_kisi", "tuzel_kisi")
+
+# Limit matrisi satırının nereden okunduğu.
+LIMIT_EXTRACTION_METHODS: Final[tuple[str, ...]] = ("html_table", "pdf_table", "text")
+
+
 def rate_confidence(rate_source: str) -> Decimal:
     """Oran kaynağının güven katsayısını döndürür.
 
