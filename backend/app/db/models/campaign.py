@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from app.db.models.campaign_category import CampaignCategory
     from app.db.models.campaign_extraction import CampaignExtraction
     from app.db.models.campaign_metric import CampaignMetric
+    from app.db.models.campaign_product import CampaignProduct
     from app.db.models.source_document import SourceDocument
 
 # Kampanya durumu. `unknown`, tarih verisi hiç bulunmayan kampanyalar içindir ve
@@ -177,6 +178,11 @@ class Campaign(TimestampMixin, Base):
         back_populates="campaign", cascade="all, delete-orphan"
     )
     # Çok eksenli taksonomi etiketleri
+    # Kampanyanın konu aldığı ürünler; `campaign_products` üzerinden.
+    product_links: Mapped[list[CampaignProduct]] = relationship(
+        back_populates="campaign", cascade="all, delete-orphan"
+    )
+
     categories: Mapped[list[CampaignCategory]] = relationship(
         back_populates="campaign", cascade="all, delete-orphan"
     )

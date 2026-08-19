@@ -212,6 +212,20 @@ def scrape_deneme() -> int:
     )
 
 
+def urun_esle() -> int:
+    """Kampanyaları ürünlerle eşleştirir (ağa çıkmaz).
+
+    ⚠️ Bağ ÜRÜN TÜRÜNDEN kurulmaz; kampanya metninde ürünün ADI ya da
+    ADRESİ geçmelidir. Tür eşlemesi, ürünün oran tablosunu aynı türdeki her
+    kampanyaya kopyalamak olurdu.
+
+    `--kuru` yazmadan raporlar, `--banka` tek bankayla sınırlar.
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.match_campaign_products", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
 def urun_dogrula() -> int:
     """Ürün ve oran kapsamasını doğrular ve rapor üretir."""
     return _calistir([_python(), "-m", "scripts.verify_products"], cwd=BACKEND)
@@ -499,6 +513,16 @@ def bicimle() -> int:
 # 19 Ağustos'ta kalıplar düzeltildi, çıkarım 18 Ağustos'tan kalmıştı;
 # yapılan iyileştirmeler F1'e yansımıyordu.
 
+# ⚠️ KISMİ BAŞARI HATTI DURDURMAZ. `app.scrapers.run` çıkış kodunu ikiye
+# ayırıyor: 1 = bazı adresler alınamadı ama çalıştırma tamamlandı,
+# 2 = gerçek hata (banka koduna erişilemedi, yapılandırma bozuk).
+#
+# Bankalar biten kampanyayı siteden KALDIRIYOR; detay adresi 404 dönüyor ve
+# bu README'de de yazılı, beklenen bir durum. Kısmi başarıyı hata sayan bir
+# hat pratikte hiç çalışmaz: 602 kampanyanın 3'ü bayatladığı anda zincir
+# duruyor ve ondan sonraki yedi adım hiç yürütülmüyordu.
+_KISMI_BASARI_TOLERE_EDILEN: frozenset[str] = frozenset({"scrape", "urun-kazi"})
+
 _HAT_ADIMLARI: dict[str, tuple[str, bool]] = {
     # ad: (açıklama, ağa çıkar mı)
     "scrape": ("Kampanya sayfalarını çeker", True),
@@ -507,6 +531,7 @@ _HAT_ADIMLARI: dict[str, tuple[str, bool]] = {
     "cikarim": ("Metinlerden alanları çıkarır", False),
     "siniflandir": ("Dört eksende sınıflandırır", False),
     "kart-uret": ("Varlık kartlarını üretir", False),
+    "urun-esle": ("Kampanyaları ürünlerle eşleştirir", False),
     "urun-dogrula": ("Ürün/oran kapsamasını denetler", False),
     "degerlendir": ("Gold set'e karşı F1 ölçer", False),
 }
@@ -558,6 +583,7 @@ def boru_hatti() -> int:
     # F1 tek bankanın alt kümesinde ölçülür ve rapor yanıltıcı olur.
     suzgecli = {"scrape", "urun-kazi"}
 
+    uyarilar: list[str] = []
     for sira, (ad, _, _) in enumerate(secilen, start=1):
         print(f"\n\033[1m[{sira}/{len(secilen)}] {ad}\033[0m")
         modul, varsayilan = _HAT_MODULLERI[ad]
@@ -565,6 +591,13 @@ def boru_hatti() -> int:
         if ad in suzgecli:
             argumanlar += ["--banka", banka] if banka else ["--tumu"]
         kod = _calistir([_python(), "-m", modul, *argumanlar], cwd=BACKEND)
+        if kod == 1 and ad in _KISMI_BASARI_TOLERE_EDILEN:
+            print(
+                f"\n\033[33m'{ad}' kısmi başarıyla bitti — bazı adresler alınamadı. "
+                "Hat devam ediyor.\033[0m"
+            )
+            uyarilar.append(ad)
+            continue
         if kod != 0:
             print(f"\n\033[31mHat '{ad}' adımında durdu (çıkış {kod}).\033[0m")
             print("Sonraki adımlar bu adımın çıktısını okuyacaktı; yürütülmedi.")
@@ -586,6 +619,7 @@ _HAT_MODULLERI: dict[str, tuple[str, list[str]]] = {
     "cikarim": ("scripts.extract", ["--sadece-kural"]),
     "siniflandir": ("scripts.categorize", []),
     "kart-uret": ("scripts.build_cards", []),
+    "urun-esle": ("scripts.match_campaign_products", []),
     "urun-dogrula": ("scripts.verify_products", []),
     "degerlendir": ("scripts.evaluate", []),
 }
@@ -615,6 +649,7 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "yeniden-isle": (yeniden_isle, "Temiz metni arşivden yeniden üretir (ağa çıkmaz)"),
     "urun-kazi": (urun_kazi, "Ürün/finansman limit, varyant ve oranlarını çeker"),
     "urun-kazi-deneme": (urun_kazi_deneme, "Ürün kazımasını yazmadan dener"),
+    "urun-esle": (urun_esle, "Kampanyaları ürünlerle eşleştirir (ağa çıkmaz)"),
     "urun-dogrula": (urun_dogrula, "Ürün ve oran kapsamasını doğrular ve rapor üretir"),
     "siniflandir": (siniflandir, "Kampanyaları dört eksende sınıflandırır (ağa çıkmaz)"),
     "llm-saglik": (llm_saglik, "LLM sağlayıcısının durumunu kontrol eder"),

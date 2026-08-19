@@ -16,7 +16,7 @@ from sqlalchemy import Select, func, nulls_last, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.exceptions import NotFoundError
-from app.db.models import Bank, Campaign, CampaignCategory
+from app.db.models import Bank, Campaign, CampaignCategory, CampaignProduct
 
 # Kampanya tarihleri Türkiye yerel takvimine göre değerlendirilir: bir kampanya
 # "31.12.2026'ya kadar" ise Türkiye'de 31 Aralık boyunca geçerlidir.
@@ -240,6 +240,8 @@ def get_campaign(session: Session, campaign_id: int) -> Campaign:
             joinedload(Campaign.source_document),
             selectinload(Campaign.categories),
             selectinload(Campaign.sub_campaigns).joinedload(Campaign.bank),
+            # Bağlı ürünler detayda gösteriliyor; N+1 sorgu olmasın.
+            selectinload(Campaign.product_links).joinedload(CampaignProduct.product),
         )
     )
     if campaign is None:

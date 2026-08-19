@@ -9,7 +9,12 @@ from fastapi import APIRouter, HTTPException, Path, Query
 
 from app.api.deps import DbSession
 from app.db.models import Campaign
-from app.schemas.campaign import CampaignCategoryOut, CampaignDetail, CampaignListItem
+from app.schemas.campaign import (
+    CampaignCategoryOut,
+    CampaignDetail,
+    CampaignListItem,
+    LinkedProduct,
+)
 from app.schemas.common import Page
 from app.schemas.compare import CampaignRankingRequest, CampaignRankingResponse
 from app.services.campaign_service import (
@@ -156,4 +161,16 @@ def read_campaign(
         bank=campaign.bank,  # type: ignore[arg-type]
         source_document=campaign.source_document,  # type: ignore[arg-type]
         sub_campaigns=[_to_list_item(alt) for alt in campaign.sub_campaigns],
+        products=[
+            LinkedProduct(
+                product_id=bag.product_id,
+                product_name=bag.product.name,
+                product_type=bag.product.product_type,
+                variant_label=bag.product.variant_label,
+                match_method=bag.match_method,
+                confidence=bag.confidence,
+                evidence=bag.evidence,
+            )
+            for bag in campaign.product_links
+        ],
     )

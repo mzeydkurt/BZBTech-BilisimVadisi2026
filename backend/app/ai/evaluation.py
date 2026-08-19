@@ -257,7 +257,6 @@ def evaluate(session: Session, *, mode: str = "rule_only") -> EvaluationResult:
 
     sonuc = EvaluationResult(mode=mode)
 
-
     referans_tur = _referans_annotator(session)
 
     sorgu = (

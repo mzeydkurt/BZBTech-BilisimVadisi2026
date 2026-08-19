@@ -84,6 +84,26 @@ class SourceDocumentSummary(BaseModel):
     raw_html_sha256: str | None = None
 
 
+class LinkedProduct(BaseModel):
+    """Kampanyaya bağlanmış ürün.
+
+    ⚠️ `confidence` bağın ne kadar sağlam olduğunu söyler: ürün adı BAŞLIKTA
+    geçiyorsa 0,90; yalnızca gövde metninde geçiyorsa 0,60. Düşük güvenli bağ
+    "kampanya bu ürüne aittir" demez, "metinde bu ürün anılıyor" der. Arayüz
+    ikisini aynı ağırlıkta göstermemelidir.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    product_id: int
+    product_name: str
+    product_type: str | None = None
+    variant_label: str | None = None
+    match_method: str = Field(description="title | slug | body")
+    confidence: Decimal
+    evidence: str | None = None
+
+
 class CampaignDetail(CampaignListItem):
     """Kampanya detay yanıtı."""
 
@@ -102,4 +122,8 @@ class CampaignDetail(CampaignListItem):
     source_document: SourceDocumentSummary | None = None
     sub_campaigns: list[CampaignListItem] = Field(
         default_factory=list, description="Aynı sayfada yayımlanan alt kampanyalar"
+    )
+    products: list[LinkedProduct] = Field(
+        default_factory=list,
+        description="Kampanyanın konu aldığı ürünler; kanıtı ve güveniyle",
     )

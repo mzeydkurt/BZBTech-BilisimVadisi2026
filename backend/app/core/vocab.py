@@ -218,6 +218,24 @@ def is_valid_variant(dimension: str, key: str) -> bool:
 TAXONOMY_AXES: Final[tuple[str, ...]] = ("product_type", "sector", "audience", "benefit")
 
 # Etiketin kaynağı. `llm` SPRINT 3'te doldurulacak; SPRINT 2'de üretilmez.
+# Kampanya ↔ ürün bağının hangi sinyalden kurulduğu. Güç sırası:
+#   title — ürün adı kampanya BAŞLIĞINDA geçiyor (en güçlü)
+#   slug  — ürün adresi kampanya adresinde geçiyor
+#   body  — ürün adı yalnızca GÖVDE metninde geçiyor (zayıf: geçerken
+#           anılmış olabilir, "Bankkart ile alışveriş" gibi)
+#
+# ⚠️ ÜRÜN TÜRÜNDEN BAĞ KURULMAZ; listede bilerek yok. Tür eşlemesi ürünün
+# oran tablosunu aynı türdeki HER kampanyaya kopyalamak demektir.
+CAMPAIGN_PRODUCT_MATCH_METHODS: Final[tuple[str, ...]] = ("title", "slug", "body")
+
+# Yöntem → güven. `body` düşük tutulur; tüketen taraf eşiğe göre süzer.
+CAMPAIGN_PRODUCT_CONFIDENCE: Final[dict[str, Decimal]] = {
+    "title": Decimal("0.900"),
+    "slug": Decimal("0.850"),
+    "body": Decimal("0.600"),
+}
+
+
 CATEGORY_SOURCES: Final[tuple[str, ...]] = (
     "url",
     "bank_category",
