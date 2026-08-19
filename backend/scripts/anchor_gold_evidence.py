@@ -29,7 +29,7 @@ from collections import Counter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.vocab import OTO_KANIT_NOTU
+from app.core.vocab import OTO_KANIT_NOTU, SPAN_KANITINDAN_MUAF
 from app.db.models.campaign import Campaign
 from app.db.models.gold_annotation import GoldAnnotation
 from app.db.models.source_document import SourceDocument
@@ -39,9 +39,8 @@ from app.logging_config import configure_logging, get_logger
 logger = get_logger(__name__)
 
 # Otomatik bağlamanın uygulanmayacağı alanlar: değer metinde birebir geçmez.
-SINIFLANDIRMA_ALANLARI: frozenset[str] = frozenset(
-    {"product_type", "sector", "target_customer", "reward_type", "has_no_fee"}
-)
+# Kılavuz §2b ile aynı küme; tek yerde tanımlıdır ki rapor ile betik ayrışmasın.
+SINIFLANDIRMA_ALANLARI = SPAN_KANITINDAN_MUAF
 
 # Alan → kanıt penceresinde bulunması zorunlu bağlam kalıbı.
 # Bağlamı olmayan alan otomatik bağlanmaz; çıplak rakam kanıt sayılmaz.

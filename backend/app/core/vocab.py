@@ -283,6 +283,20 @@ ANNOTATION_METHODS: Final[tuple[str, ...]] = ("blind", "assisted")
 # verilseydi rapor, sahip olmadığımız bir titizliği iddia ederdi.
 OTO_KANIT_NOTU: Final[str] = "oto-kanit"
 
+# Span (cümle parçası) kanıtından MUAF alanlar — kılavuz §2b.
+#
+# ⚠️ Bu alanların değeri metnin BÜTÜNÜNDEN çıkar, tek bir cümle parçasından
+# değil: metin "seyahat_konaklama" yazmaz, "kobi" yazmaz, ödül türü için
+# "puan" değil "ParafPara" yazar. Zorlama bir span sahte kesinlik üretir —
+# kararın gerçekte başlık, sektör ve üye işyeri listesinin birlikte
+# okunmasından doğduğunu gizler.
+#
+# ⚠️ Bu bir gevşetme DEĞİLDİR: çıkarım alanlarında (tutar, oran, tarih,
+# vade) kanıt hâlâ zorunludur ve `gold-durum` iki grubu ayrı sayar.
+SPAN_KANITINDAN_MUAF: Final[frozenset[str]] = frozenset(
+    {"product_type", "sector", "target_customer", "reward_type", "has_no_fee"}
+)
+
 # Kart ve gömme üretilebilen varlık türleri.
 ENTITY_TYPES: Final[tuple[str, ...]] = (
     "campaign",

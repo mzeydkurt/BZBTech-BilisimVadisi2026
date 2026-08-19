@@ -15,8 +15,8 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.vocab import OTO_KANIT_NOTU, SPAN_KANITINDAN_MUAF
 from app.db.models import Campaign, GoldAnnotation, SourceDocument
-from app.core.vocab import OTO_KANIT_NOTU
 from app.db.session import SessionLocal
 from app.logging_config import configure_logging
 from app.services.gold_service import (
@@ -59,7 +59,14 @@ def _kanit_denetimi(session: Session) -> None:
             select(GoldAnnotation, SourceDocument.clean_text)
             .join(Campaign, Campaign.id == GoldAnnotation.campaign_id)
             .join(SourceDocument, Campaign.source_document_id == SourceDocument.id)
-            .where(GoldAnnotation.gold_value.isnot(None))
+            # ⚠️ ∅ ("metinde yok") kayıtları denetime GİRMEZ: değeri olmayan
+            # alanın kanıtı da olmaz, sayılırsa "kanıtı boş etiket" sahte
+            # şişer. Arayüz ∅'yi NULL yazıyor ama elle yapılan bir düzeltme
+            # boş dize bırakabilir; iki biçim de elenir.
+            .where(
+                GoldAnnotation.gold_value.isnot(None),
+                GoldAnnotation.gold_value != "",
+            )
         )
     )
     if not kayitlar:
@@ -69,13 +76,21 @@ def _kanit_denetimi(session: Session) -> None:
     tekrarlayan: set[int] = set()
     bulunamayan: set[int] = set()
     kanitsiz = 0
+    muaf = 0
     otomatik = 0
     kampanya_kanitlari: dict[int, list[str]] = defaultdict(list)
 
     for etiket, clean_text in kayitlar:
         kanit = " ".join((etiket.evidence_text or "").split())
         if not kanit:
-            kanitsiz += 1
+            # ⚠️ Sınıflandırma alanı span kanıtından MUAFTIR (kılavuz §2b):
+            # değeri metnin bütününden çıkar, tek bir cümle parçasından değil.
+            # Eksiklik sayılırsa rapor kapanmayacak bir açık gösterir ve
+            # gerçek açığı — çıkarım alanlarındaki boşluğu — gizler.
+            if etiket.field_name in SPAN_KANITINDAN_MUAF:
+                muaf += 1
+            else:
+                kanitsiz += 1
             continue
         # ⚠️ Otomatik bağlanan kanıt İNSAN DOĞRULAMASI DEĞİLDİR; ayrı sayılır.
         # Tek bir "kanıtlı etiket" sayısı verilirse rapor, sahip olmadığımız
@@ -93,13 +108,16 @@ def _kanit_denetimi(session: Session) -> None:
             tekrarlayan.add(kampanya_id)
 
     sorunlu = uzun | tekrarlayan | bulunamayan
+    insan = len(kayitlar) - kanitsiz - muaf - otomatik
     print("\nKanıt denetimi (§4.5 kural 2)")
-    print(f"  kanıtı boş etiket        : {kanitsiz}")
-    print(f"  ├─ insan seçimi kanıt    : {len(kayitlar) - kanitsiz - otomatik}")
-    print(f"  └─ otomatik bağlanan     : {otomatik}  (insan doğrulaması DEĞİL)")
-    print(f"  kanıt > {KANIT_MAX} karakter    : {len(uzun)} kampanya")
-    print(f"  tüm alanlarda aynı kanıt : {len(tekrarlayan)} kampanya")
-    print(f"  kanıt metinde bulunamadı : {len(bulunamayan)} kampanya")
+    print(f"  çıkarım alanı, kanıtı boş : {kanitsiz}   (0 beklenir)")
+    print(f"  sınıflandırma (muaf §2b)  : {muaf}   (eksiklik değildir)")
+    print(f"  kanıtlı etiket            : {insan + otomatik}")
+    print(f"  ├─ insan seçimi           : {insan}")
+    print(f"  └─ otomatik bağlanan      : {otomatik}  (insan doğrulaması DEĞİL)")
+    print(f"  kanıt > {KANIT_MAX} karakter     : {len(uzun)} kampanya")
+    print(f"  tüm alanlarda aynı kanıt  : {len(tekrarlayan)} kampanya")
+    print(f"  kanıt metinde bulunamadı  : {len(bulunamayan)} kampanya")
 
     if sorunlu:
         print(f"\n  ⚠️  {len(sorunlu)} kampanyanın kanıtı elden geçirilmeli:")
