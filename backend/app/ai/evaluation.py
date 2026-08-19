@@ -23,7 +23,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Final
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai.validation.merger import METHOD_PRIORITY
@@ -210,6 +210,25 @@ def _tally(hedefler: list[Counts], durum: str) -> None:
         setattr(sayac, durum, getattr(sayac, durum) + 1)
 
 
+def _referans_annotator(session: Session) -> str | None:
+    """Puanlamaya girecek etiketleme turunu seçer.
+
+    En çok etikete sahip etiketleyici referanstır. Öz-tutarlılık turları
+    kılavuz §4 gereği yalnızca ilk 15 kaydı kapsar; bu yüzden daima daha
+    küçüktür ve seçim kararlıdır.
+
+    Returns:
+        Referans etiketleyici adı; hiç etiket yoksa None.
+
+    """
+    return session.scalar(
+        select(GoldAnnotation.annotator)
+        .group_by(GoldAnnotation.annotator)
+        .order_by(func.count().desc())
+        .limit(1)
+    )
+
+
 def evaluate(session: Session, *, mode: str = "rule_only") -> EvaluationResult:
     """Gold set'e karşı çıkarım kalitesini ölçer.
 
@@ -238,13 +257,26 @@ def evaluate(session: Session, *, mode: str = "rule_only") -> EvaluationResult:
 
     sonuc = EvaluationResult(mode=mode)
 
-    etiketler = list(
-        session.execute(
-            select(GoldAnnotation, Bank.code)
-            .join(Campaign, Campaign.id == GoldAnnotation.campaign_id)
-            .join(Bank, Bank.id == Campaign.bank_id)
-        )
+    # ⚠️ YALNIZCA REFERANS TUR ÖLÇÜME GİRER. Öz-tutarlılık için yapılan
+    # ikinci tur (`Zeyd2` gibi) AYNI alanları tekrar etiketler; süzülmezse
+    # o kampanyalar puanlamaya İKİ KEZ girer ve makro F1 iki kez etiketlenmiş
+    # kampanyaların alan dağılımına doğru kayar. Ölçüldü: 704 satırlık ikinci
+    # tur eklendiğinde makro F1 0.7908'den 0.7327'ye düştü — model değişmedi,
+    # yalnızca payda bozuldu.
+    #
+    # Referans tur = en çok etikete sahip olan. İkinci tur daima daha küçük
+    # bir alt kümedir (kılavuz §4: ilk 15 kayıt), bu yüzden seçim kararlıdır.
+    referans_tur = _referans_annotator(session)
+
+    sorgu = (
+        select(GoldAnnotation, Bank.code)
+        .join(Campaign, Campaign.id == GoldAnnotation.campaign_id)
+        .join(Bank, Bank.id == Campaign.bank_id)
     )
+    if referans_tur is not None:
+        sorgu = sorgu.where(GoldAnnotation.annotator == referans_tur)
+
+    etiketler = list(session.execute(sorgu))
     if not etiketler:
         return sonuc
 

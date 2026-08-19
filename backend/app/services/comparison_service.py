@@ -17,11 +17,17 @@ from sqlalchemy.orm import Session
 
 from app.core.vocab import RATE_TYPES
 from app.db.models.bank import Bank
+from app.db.models.campaign import Campaign
+from app.db.models.campaign_category import CampaignCategory
+from app.db.models.campaign_metric import CampaignMetric
 from app.db.models.product import Product, ProductRate
 from app.db.models.source_document import SourceDocument
 from app.schemas.compare import (
+    CAMPAIGN_CRITERIA,
     CRITERIA,
+    CampaignRankingResponse,
     ProductRankingResponse,
+    RankedCampaign,
     RankedProduct,
     RankingWeights,
 )
@@ -273,5 +279,134 @@ def rank_products(
             f"{len(sirali)} ürün sıralandı, {len(veri_yok)} ürün ölçütün alanı boş "
             f"olduğu için sıralamaya alınmadı. Oranlar bankaların kendi yayımladığı "
             f"tablolardan okundu; her satırın kanıt metni ve kaynak sayfası yanıttadır."
+        ),
+    )
+
+
+# ── Kampanya sıralama (§5.7) ──────────────────────────────
+
+_KAMPANYA_OLCUT_ADI: dict[str, str] = {
+    "en_yuksek_odul": "en yüksek ödül miktarı",
+    "en_dusuk_kar_payi": "en düşük kâr payı oranı",
+    "en_uzun_vade": "en uzun vade",
+    "en_yuksek_taksit": "en yüksek taksit sayısı",
+    "en_yuksek_iade_orani": "en yüksek nakit iade oranı",
+    "en_yuksek_indirim": "en yüksek indirim oranı",
+}
+
+
+def rank_campaigns(
+    session: Session,
+    *,
+    criterion: str,
+    bank_codes: list[str] | None = None,
+    product_type: str | None = None,
+    only_active: bool = True,
+    limit: int = 20,
+) -> CampaignRankingResponse:
+    """Kampanyaları tek bir açık ölçüte göre sıralar (§5.7).
+
+    ⚠️ Ödül tutarı ÜRÜNDE DEĞİL KAMPANYADADIR: bir bankanın "Taşıt
+    Finansmanı" ürününün ödülü olmaz, o ürünü konu alan kampanyanın olur.
+    Bu yüzden "En Yüksek Ödül Miktarı" ölçütü ürün sıralamasında değil
+    burada karşılanır.
+
+    ⚠️ Ölçütün alanı boş olan kampanya SIRALANMAZ; `without_data` grubunda
+    nedeniyle döner. NULL'u sıfır saymak "ödülsüz kampanya" ile "ödülü
+    yayımlanmamış kampanya"yı aynı kefeye koyar.
+
+    Args:
+        session: Veritabanı oturumu.
+        criterion: `CAMPAIGN_CRITERIA` içinden bir ölçüt.
+        bank_codes: Yalnızca bu banka kodları.
+        product_type: Kampanya türü süzgeci (`campaign_categories`).
+        only_active: Yalnızca yürürlükteki kampanyalar.
+        limit: Döndürülecek sıralı satır sayısı.
+
+    Returns:
+        Sıralı liste ve sıralanamayan "veri yok" grubu.
+
+    Raises:
+        RankingError: Ölçüt tanımsızsa.
+
+    """
+    if criterion not in CAMPAIGN_CRITERIA:
+        raise RankingError(
+            f"Geçersiz criterion: {criterion!r}. Geçerli değerler: {', '.join(CAMPAIGN_CRITERIA)}"
+        )
+    alan, azalan = CAMPAIGN_CRITERIA[criterion]
+
+    stmt = (
+        select(Campaign, CampaignMetric, Bank)
+        .join(Bank, Bank.id == Campaign.bank_id)
+        .outerjoin(CampaignMetric, CampaignMetric.campaign_id == Campaign.id)
+        .where(Campaign.parent_campaign_id.is_(None))
+    )
+    if only_active:
+        stmt = stmt.where(Campaign.status == "active")
+    if bank_codes:
+        stmt = stmt.where(Bank.code.in_(bank_codes))
+    if product_type:
+        stmt = stmt.where(
+            Campaign.id.in_(
+                select(CampaignCategory.campaign_id).where(
+                    CampaignCategory.axis == "product_type",
+                    CampaignCategory.value == product_type,
+                )
+            )
+        )
+
+    satirlar: list[RankedCampaign] = []
+    for kampanya, olcum, banka in session.execute(stmt).all():
+        satirlar.append(
+            RankedCampaign(
+                campaign_id=kampanya.id,
+                title=kampanya.title,
+                bank_code=banka.code,
+                bank_name=banka.name,
+                status=kampanya.status,
+                reward_amount_try=getattr(olcum, "reward_amount_try", None),
+                reward_type=getattr(olcum, "reward_type", None),
+                profit_rate_pct=getattr(olcum, "profit_rate_pct", None),
+                term_months_max=getattr(olcum, "term_months_max", None),
+                installment_count=getattr(olcum, "installment_count", None),
+                cashback_pct=getattr(olcum, "cashback_pct", None),
+                discount_pct=getattr(olcum, "discount_pct", None),
+                min_spend_try=getattr(olcum, "min_spend_try", None),
+                has_no_fee=getattr(olcum, "has_no_fee", None),
+                end_date=kampanya.end_date,
+                source_url=kampanya.source_url,
+            )
+        )
+
+    sirali = [s for s in satirlar if getattr(s, alan) is not None]
+    veri_yok = [s for s in satirlar if getattr(s, alan) is None]
+    for s in veri_yok:
+        s.missing_reason = f"{alan} bu kampanyanın metninden çıkarılamadı"
+    sirali.sort(key=lambda s: Decimal(str(getattr(s, alan))), reverse=azalan)
+
+    for i, s in enumerate(sirali, start=1):
+        s.rank = i
+    sirali = sirali[:limit]
+
+    kazanan = sirali[0] if sirali else None
+    gerekce = (
+        f"{kazanan.bank_name} — {_KAMPANYA_OLCUT_ADI[criterion]}: {getattr(kazanan, alan)}"
+        if kazanan
+        else None
+    )
+
+    return CampaignRankingResponse(
+        criterion=criterion,
+        sort_field=alan,
+        descending=azalan,
+        winner=kazanan,
+        winner_reason=gerekce,
+        ranked=sirali,
+        without_data=veri_yok[:limit],
+        note=(
+            f"{len(sirali)} kampanya sıralandı, {len(veri_yok)} kampanyada ölçütün "
+            f"alanı metinden çıkarılamadı. Değerler kampanya metinlerinden "
+            f"kanıtla çıkarılmıştır."
         ),
     )

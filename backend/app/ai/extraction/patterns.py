@@ -34,7 +34,10 @@ _PAYI = r"[pP]ay[ıiİI]"
 # bölümü doğrudan bu karakterden kaynaklanıyor.
 _KESME = r"['’‘ʼ´`]"
 
-_TL = r"(?:TL|₺)"
+# ⚠️ Şartname §5.6 "500 TL, 500₺ ve 500 Türk Lirası aynı değer olarak
+# algılanmalıdır" diyor. Para birimi UZUN ADIYLA da yazılabilir; yalnızca
+# kısaltma arandığında "500 Türk Lirası" sessizce kaçıyordu.
+_TL = r"(?:TL|TL\.|₺|[Tt][üuÜU]rk\s*[Ll]iras[ıiİI])"
 
 # ⚠️ SADAKAT BİRİMİ ÖDÜL ADINDAN AYRI YAZILIYOR. "750 TL Bankkart Lira"
 # ifadesinde tutar ile ödül adı arasında MARKA KELİMESİ var; ödül adını
@@ -50,11 +53,36 @@ _SADAKAT = r"(?:Bankkart\s*Lira|Paraf\s*?Para|World\s*?Puan|Mil|Puan)"
 # metindeki herhangi bir tutar herhangi bir ödüle bağlanır.
 _VARAN = rf"(?:{_KESME}?\s*[yn]?[ae]\s*(?:varan|kadar)\s*)?"
 
+# ⚠️ Şartname §5.6: "%2,05, % 2.05 ve 2.05 % aynı değer olarak
+# yorumlanmalıdır." Yüzde işareti sayının SONUNA da yazılabiliyor; yalnızca
+# önde arandığında "2.05 %" hiç okunmuyordu.
+_YUZDE_SAYI = r"(?:%\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*%)"
+
+# ⚠️ Şartname §5.2 farklı ifade biçimlerini örnekliyor: "özel oranlı
+# finansman", "avantajlı kâr payı fırsatı", "düşük maliyetli finansman".
+# Bu ifadelerde oran, "kâr payı" kelimesinden UZAKTA duruyor:
+#     "Özel oranlı finansman imkânı %1,89 ile sunulmaktadır."
+# Kalıp "kâr payı" bitişikliği aradığı için %1,89 kaçıyordu.
+_ORAN_BAGLAMI = (
+    r"(?:[öo]zel\s*oranl[ıi]"
+    r"|avantajl[ıi]\s*(?:oran|k[âa]r\s*pay[ıi])"
+    r"|kampanyal[ıi]\s*oran"
+    r"|d[üu][şs][üu]k\s*maliyetli"
+    r"|indirimli\s*oran)"
+)
+
 # ── Kâr payı oranı ────────────────────────────────────────
-# "%2,05 kâr payı" · "kâr payı oranı %2,05" · "%2,05 oranlı"
+# "%2,05 kâr payı" · "kâr payı oranı %2,05" · "%2,05 oranlı" · "2.05 %"
+# · "özel oranlı finansman ... %1,89"
 PROFIT_RATE: Final[re.Pattern[str]] = re.compile(
-    rf"(?:{_KAR}\s*{_PAYI}(?:\s*oran[ıiİI])?\s*[:\-]?\s*%\s*\d+(?:[.,]\d+)?"
-    rf"|%\s*\d+(?:[.,]\d+)?\s*(?:oran[lı]|{_KAR}\s*{_PAYI}))",
+    rf"(?:{_KAR}\s*{_PAYI}(?:\s*oran[ıiİI])?\s*[:\-]?\s*{_YUZDE_SAYI}"
+    rf"|{_YUZDE_SAYI}\s*(?:oran[lı]|{_KAR}\s*{_PAYI})"
+    # ⚠️ Bağlam ile oran arasına en fazla İKİ kelime girebilir. Sınır
+    # gevşetilirse cümledeki herhangi bir yüzde orana bağlanır ve indirim
+    # ya da iade oranları kâr payı sanılır — `profit_rate_pct` kesinliği
+    # 0.48'e kadar düşüyordu.
+    rf"|{_ORAN_BAGLAMI}(?:\s+\S+){{0,2}}\s+{_YUZDE_SAYI}"
+    rf")",
     re.IGNORECASE,
 )
 

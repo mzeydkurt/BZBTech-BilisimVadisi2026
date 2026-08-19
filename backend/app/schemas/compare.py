@@ -13,6 +13,7 @@ savunulamaz.
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from typing import Final
 
@@ -28,6 +29,20 @@ CRITERIA: Final[dict[str, tuple[str, bool, str | None]]] = {
     "en_yuksek_paylasim_orani": ("investor_share_pct", True, "profit_sharing_ratio"),
     "en_uzun_vade": ("term_months", True, None),
     "en_avantajli": ("__agirlikli__", True, None),
+}
+
+# ⚠️ ÖDÜL ÜRÜNDE DEĞİL KAMPANYADA. Şartname §5.7 "En Yüksek Ödül Miktarı"nı
+# karşılaştırma ölçütleri arasında sayıyor ama ödül tutarı `product_rates`'te
+# YOKTUR — bir bankanın "Taşıt Finansmanı" ürününün ödülü olmaz, o ürünü
+# konu alan KAMPANYANIN ödülü olur. Bu yüzden ölçüt kampanya sıralamasına
+# aittir ve ayrı bir uçla (`/campaigns/compare`) sunulur.
+CAMPAIGN_CRITERIA: Final[dict[str, tuple[str, bool]]] = {
+    "en_yuksek_odul": ("reward_amount_try", True),
+    "en_dusuk_kar_payi": ("profit_rate_pct", False),
+    "en_uzun_vade": ("term_months_max", True),
+    "en_yuksek_taksit": ("installment_count", True),
+    "en_yuksek_iade_orani": ("cashback_pct", True),
+    "en_yuksek_indirim": ("discount_pct", True),
 }
 
 
@@ -106,4 +121,50 @@ class ProductRankingResponse(BaseModel):
     without_data: list[RankedProduct] = Field(
         default_factory=list, description="Ölçütün alanı boş olduğu için sıralanamayanlar"
     )
+    note: str
+
+
+class CampaignRankingRequest(BaseModel):
+    """Kampanya sıralama isteği (§5.7)."""
+
+    criterion: str = Field(description=f"Ölçüt: {', '.join(CAMPAIGN_CRITERIA)}")
+    bank_codes: list[str] | None = Field(default=None, description="Yalnızca bu bankalar")
+    product_type: str | None = Field(default=None, description="Kampanya türü süzgeci")
+    only_active: bool = Field(default=True, description="Yalnızca yürürlükteki kampanyalar")
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class RankedCampaign(BaseModel):
+    """Sıralanmış tek kampanya satırı."""
+
+    rank: int | None = Field(default=None, description="Sıra; veri yoksa None")
+    campaign_id: int
+    title: str
+    bank_code: str
+    bank_name: str
+    status: str
+    reward_amount_try: Decimal | None = None
+    reward_type: str | None = None
+    profit_rate_pct: Decimal | None = None
+    term_months_max: int | None = None
+    installment_count: int | None = None
+    cashback_pct: Decimal | None = None
+    discount_pct: Decimal | None = None
+    min_spend_try: Decimal | None = None
+    has_no_fee: bool | None = None
+    end_date: date | None = None
+    source_url: str | None = None
+    missing_reason: str | None = Field(default=None, description="Veri yok grubundaysa nedeni")
+
+
+class CampaignRankingResponse(BaseModel):
+    """Kampanya sıralama yanıtı."""
+
+    criterion: str
+    sort_field: str
+    descending: bool
+    winner: RankedCampaign | None = None
+    winner_reason: str | None = None
+    ranked: list[RankedCampaign]
+    without_data: list[RankedCampaign] = Field(default_factory=list)
     note: str

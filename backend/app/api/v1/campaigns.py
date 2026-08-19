@@ -5,12 +5,13 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, HTTPException, Path, Query
 
 from app.api.deps import DbSession
 from app.db.models import Campaign
 from app.schemas.campaign import CampaignCategoryOut, CampaignDetail, CampaignListItem
 from app.schemas.common import Page
+from app.schemas.compare import CampaignRankingRequest, CampaignRankingResponse
 from app.services.campaign_service import (
     DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
@@ -18,6 +19,7 @@ from app.services.campaign_service import (
     get_campaign,
     list_campaigns,
 )
+from app.services.comparison_service import RankingError, rank_campaigns
 
 router = APIRouter(prefix="/campaigns", tags=["kampanyalar"])
 
@@ -101,6 +103,29 @@ def read_campaigns(
     campaigns, total = list_campaigns(session, filters)
     items = [_to_list_item(campaign) for campaign in campaigns]
     return Page.create(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.post("/compare", response_model=CampaignRankingResponse, summary="Kampanya sıralama")
+def compare_campaigns(req: CampaignRankingRequest, session: DbSession) -> CampaignRankingResponse:
+    """Kampanyaları tek bir açık ölçüte göre sıralar (şartname §5.7).
+
+    ⚠️ Yol `/{campaign_id}`'DEN ÖNCE tanımlıdır; sonra gelirse "compare"
+    bir kampanya kimliği sanılır ve 422 döner.
+
+    ⚠️ "En Yüksek Ödül Miktarı" ölçütü burada karşılanır, ürün sıralamasında
+    değil: ödül tutarı üründe değil KAMPANYADA bulunur.
+    """
+    try:
+        return rank_campaigns(
+            session,
+            criterion=req.criterion,
+            bank_codes=req.bank_codes,
+            product_type=req.product_type,
+            only_active=req.only_active,
+            limit=req.limit,
+        )
+    except RankingError as hata:
+        raise HTTPException(status_code=422, detail=str(hata)) from hata
 
 
 @router.get("/{campaign_id}", response_model=CampaignDetail, summary="Kampanya detayı")

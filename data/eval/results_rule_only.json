@@ -1,13 +1,13 @@
 {
   "mode": "rule_only",
-  "gold_campaigns": 75,
-  "gold_annotations": 1650,
-  "micro_f1": 0.8176,
-  "macro_f1": 0.7908,
-  "hallucination_rate": 0.1599,
+  "gold_campaigns": 76,
+  "gold_annotations": 1656,
+  "micro_f1": 0.8195,
+  "macro_f1": 0.7914,
+  "hallucination_rate": 0.1582,
   "correct_silence_rate": 0.9196,
   "overall": {
-    "tp": 473,
+    "tp": 479,
     "fp": 90,
     "fn": 121,
     "tn": 1029
@@ -74,7 +74,7 @@
       "tn": 68
     },
     "min_spend_try": {
-      "tp": 25,
+      "tp": 26,
       "fp": 3,
       "fn": 4,
       "tn": 43
@@ -86,13 +86,13 @@
       "tn": 65
     },
     "reward_amount_try": {
-      "tp": 30,
+      "tp": 31,
       "fp": 2,
       "fn": 2,
       "tn": 41
     },
     "reward_type": {
-      "tp": 57,
+      "tp": 58,
       "fp": 10,
       "fn": 11,
       "tn": 4
@@ -110,19 +110,19 @@
       "tn": 64
     },
     "loyalty_points": {
-      "tp": 22,
+      "tp": 23,
       "fp": 1,
       "fn": 0,
       "tn": 52
     },
     "start_date": {
-      "tp": 58,
+      "tp": 59,
       "fp": 0,
       "fn": 1,
       "tn": 16
     },
     "end_date": {
-      "tp": 71,
+      "tp": 72,
       "fp": 0,
       "fn": 1,
       "tn": 3
@@ -154,7 +154,7 @@
       "tn": 399
     },
     "assisted": {
-      "tp": 283,
+      "tp": 289,
       "fp": 42,
       "fn": 70,
       "tn": 630
@@ -162,7 +162,7 @@
   },
   "by_bank": {
     "ziraat_katilim": {
-      "tp": 209,
+      "tp": 215,
       "fp": 13,
       "fn": 21,
       "tn": 380
