@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from sqlalchemy import func, select
 
 from app.db.models.bank import Bank

@@ -162,7 +162,9 @@ def test_oran_tablosu_olmayan_sayfada_ltv_uretilmez() -> None:
 def test_vehicle_limit_matrices_parsing() -> None:
     html = """
     <table>
-        <tr><th>Kasko/Satış Değeri</th><th>Finansman Tutarının Taşıt Tutarına Oranı</th><th>Vade Üst Sınırı (Ay)</th></tr>
+        <tr><th>Kasko/Satış Değeri</th>
+            <th>Finansman Tutarının Taşıt Tutarına Oranı</th>
+            <th>Vade Üst Sınırı (Ay)</th></tr>
         <tr><td>0 - 400.000 TL</td><td>%70</td><td>48</td></tr>
         <tr><td>400.001 - 800.000 TL</td><td>%50</td><td>36</td></tr>
         <tr><td>2.000.001 TL ve üzeri</td><td>%0</td><td>Kullandırılmayacaktır.</td></tr>
@@ -178,3 +180,151 @@ def test_vehicle_limit_matrices_parsing() -> None:
     assert limits[2].asset_value_min == Decimal("2000001")
     assert limits[2].financing_ratio_pct == Decimal("0")
     assert limits[2].term_months_max is None
+
+
+# ── Stopaj satırı ayıklama ─────────────────────────────────
+#
+# ⚠️ HTML Ziraat Katılım'ın CANLI paylaşım tablosundan alınmıştır: banka,
+# bölüşüm satırlarının hemen altına vade bazlı stopaj oranını da koyuyor.
+
+STOPAJ_HTML = """
+<table>
+  <caption>Kar Paylasim Oranlari</caption>
+  <tr><th>Tutar</th><th>1 Aylık</th><th>3 Aylık</th></tr>
+  <tr><td>10.000-24.999</td><td>30/70</td><td>30/70</td></tr>
+  <tr><td>Stopaj Oranı</td><td>25%</td><td>25%</td></tr>
+</table>
+"""
+
+
+def test_stopaj_satiri_paylasim_orani_sanilmaz() -> None:
+    """⚠️ Stopaj bir VERGİ oranıdır, katılımcı payı değildir.
+
+    Satır dizilimi bölüşüm satırlarıyla birebir aynı; ayıklanmazsa "%25"
+    `investor_share_pct=25` diye yazılır ve gerçekte katılımcıya %70 veren
+    banka karşılaştırmada en kötü sıraya düşer. Ölçüldü: canlı veride 17
+    satır bu şekilde kirlenmişti.
+    """
+    satirlar = [r for t in parse_rate_tables(STOPAJ_HTML) for r in t.rows]
+
+    assert satirlar, "bölüşüm satırı da düşmemeli"
+    assert all("stopaj" not in (r.evidence_text or "").casefold() for r in satirlar)
+    assert all(r.investor_share_pct != Decimal("25") for r in satirlar)
+
+
+def test_stopaj_ayiklamasi_gercek_paylasim_satirini_korur() -> None:
+    """Ayıklama fazla geniş olmamalı: 30/70 satırı yerinde kalır."""
+    satirlar = [r for t in parse_rate_tables(STOPAJ_HTML) for r in t.rows]
+
+    paylar = {r.investor_share_pct for r in satirlar}
+    assert Decimal("30") in paylar
+
+
+# ── Ek teşvik ve boş hesaplayıcı satırı ────────────────────
+
+ILAVE_GETIRI_HTML = """
+<table>
+  <tr><th>Vade Süresi</th><th>İlave Getiri Oranları</th></tr>
+  <tr><td>3 Ay</td><td>%1</td></tr>
+  <tr><td>12 Ay</td><td>%3</td></tr>
+</table>
+"""
+
+
+def test_ilave_getiri_tablosu_katilma_getirisi_sayilmaz() -> None:
+    """⚠️ Yuvam hesabında devlet TABAN getirinin ÜSTÜNE %1-3 katkı veriyor.
+
+    Bu tablo `participation_yield` sanılırsa Emlak ve Kuveyt Türk "yıllık %1
+    getiri veriyor" gibi görünür ve Türkiye Finans'ın %31'i karşısında
+    listenin dibine düşer. Ölçüldü: canlı veride 6 satır böyle kirlenmişti.
+    """
+    assert parse_rate_tables(ILAVE_GETIRI_HTML) == []
+
+
+BOS_HESAPLAYICI_HTML = """
+<table>
+  <caption>Katılma Hesabı Kar Payı Oranları</caption>
+  <tr><th>Tutar Bandı</th><th>Vade</th><th>Net Oran (Yıllık)</th></tr>
+  <tr><td>0,00 TL</td><td>12</td><td>%0</td></tr>
+  <tr><td>250-10.000.000 TL</td><td>12</td><td>%31,22</td></tr>
+</table>
+"""
+
+
+def test_sifir_getirili_satir_yazilmaz() -> None:
+    """⚠️ "%0" hesaplayıcının BOŞ BAŞLANGIÇ durumudur, bankanın teklifi değil.
+
+    Kuveyt Türk sayfayı tutar girilmeden bu satırla sunuyor. Yazılırsa banka
+    "%0 getiri veriyor" diye sıralanır.
+    """
+    satirlar = [r for t in parse_rate_tables(BOS_HESAPLAYICI_HTML) for r in t.rows]
+
+    getiriler = [r for r in satirlar if r.rate_type == "participation_yield"]
+    assert all(r.profit_rate_pct and r.profit_rate_pct > 0 for r in getiriler)
+
+
+def test_sifir_bastirmasi_gercek_getiriyi_korur() -> None:
+    """Bastırma fazla geniş olmamalı: %31,22 satırı yerinde kalır."""
+    satirlar = [r for t in parse_rate_tables(BOS_HESAPLAYICI_HTML) for r in t.rows]
+
+    assert any(r.profit_rate_pct == Decimal("31.22") for r in satirlar)
+
+
+# ── Çok boyutlu varyant ────────────────────────────────────
+
+COK_BOYUTLU_HTML = """
+<h3>Sigortalı Taşıt Finansmanı (Taşıt Kredisi)* 0 km</h3>
+<table>
+  <tr><th>Vade</th><th>Kâr Oranı</th><th>Tahsis Ücreti</th></tr>
+  <tr><td>12</td><td>3,63%</td><td>0,50%</td></tr>
+</table>
+<h3>Sigortalı Taşıt Finansmanı (Taşıt Kredisi)* 2. El</h3>
+<table>
+  <tr><th>Vade</th><th>Kâr Oranı</th><th>Tahsis Ücreti</th></tr>
+  <tr><td>12</td><td>3,95%</td><td>0,50%</td></tr>
+</table>
+<h3>Sigortasız Taşıt Finansmanı (Taşıt Kredisi)* 0 km</h3>
+<table>
+  <tr><th>Vade</th><th>Kâr Oranı</th><th>Tahsis Ücreti</th></tr>
+  <tr><td>12</td><td>4,23%</td><td>0,50%</td></tr>
+</table>
+"""
+
+
+def test_varyant_iki_boyutu_birden_tasir() -> None:
+    """⚠️ Varyant TEK BOYUTLU DEĞİLDİR: {sigorta} × {araç durumu}.
+
+    Yalnızca ilk eşleşen işaret alınırsa "0 km" ile "2. El" tabloları aynı
+    anahtarı paylaşır, `band_key` çakışır ve satırlardan biri sessizce düşer.
+    Düşen taraf 2. el, yani oranı YÜKSEK olan — banka olduğundan ucuz görünür.
+    Ölçüldü: Türkiye Finans taşıtta 28 satırın 14'ü bu yüzden kayboluyordu.
+    """
+    anahtarlar = [t.variant_key for t in parse_rate_tables(COK_BOYUTLU_HTML)]
+
+    assert anahtarlar == [
+        "sifir_arac+sigortali",
+        "ikinci_el_arac+sigortali",
+        "sifir_arac+sigortasiz",
+    ]
+
+
+def test_ayni_boyuttan_iki_anahtar_secilmez() -> None:
+    """ "Sigortalı" ile "Sigortasız" aynı anahtarda birleşemez."""
+    for anahtar in (t.variant_key or "" for t in parse_rate_tables(COK_BOYUTLU_HTML)):
+        assert not ("sigortali" in anahtar and "sigortasiz" in anahtar)
+
+
+def test_varyant_ayrimi_oranlari_karistirmaz() -> None:
+    """Her varyant kendi oranını korumalı."""
+    esleme = {t.variant_key: t.rows[0].profit_rate_pct for t in parse_rate_tables(COK_BOYUTLU_HTML)}
+
+    assert esleme["sifir_arac+sigortali"] == Decimal("3.63")
+    assert esleme["ikinci_el_arac+sigortali"] == Decimal("3.95")
+    assert esleme["sifir_arac+sigortasiz"] == Decimal("4.23")
+
+
+def test_tek_boyutlu_varyant_bozulmaz(read_fixture) -> None:  # type: ignore[no-untyped-def]
+    """Araç durumu yazmayan tabloda anahtar sade kalır."""
+    tablolar = parse_rate_tables(read_fixture(FIXTURE))
+
+    assert [t.variant_key for t in tablolar] == ["sigortali", "sigortasiz"]

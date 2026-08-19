@@ -1,7 +1,7 @@
 """Katılma hesabı oran tabloları ayrıştırma testleri (SPRINT 2.5 KAPI F2A)."""
 
 from decimal import Decimal
-from app.core.normalization.rate import parse_profit_sharing_ratio
+
 from app.processing.rate_tables import parse_rate_tables
 
 
@@ -88,7 +88,8 @@ class TestParticipationAccountTables:
         <html><body>
         <h3>Türk Lirası Kar Paylaşım Oranları</h3>
         <table>
-            <tr><th>Minimum Bakiye</th><th>Maksimum Bakiye</th><th>1 Günlük</th><th>31 Günlük</th><th>3 Aylık</th></tr>
+            <tr><th>Minimum Bakiye</th><th>Maksimum Bakiye</th>
+                <th>1 Günlük</th><th>31 Günlük</th><th>3 Aylık</th></tr>
             <tr><td>250</td><td>24.999</td><td>75</td><td>85</td><td>86</td></tr>
         </table>
         </body></html>

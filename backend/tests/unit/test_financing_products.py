@@ -1,7 +1,6 @@
 """Finansman ürünleri ve varyant ağacı testleri (SPRINT 2.5 KAPI F4)."""
 
 from app.scrapers.banks.dunya_katilim import DunyaKatilimScraper
-from app.scrapers.banks.vakif_katilim import VakifKatilimScraper
 from app.scrapers.banks.ziraat_katilim import ZiraatKatilimScraper
 from app.scrapers.soft404 import is_soft_404
 

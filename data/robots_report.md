@@ -18,23 +18,46 @@ kampanya yayımlıyor" gibi yanlış bir sonuca varılmaz.
 
 ## Engellenen adresler
 
-### Dünya Katılım — 48 kampanya
+> ⚠️ **19 Ağustos 2026 güncellemesi — aşağıdaki iki engel ARTIK YOK.**
+> Bankaların `robots.txt` dosyaları yeniden okundu; ikisi de bu adresleri
+> bugün açıyor. 58 engelli kayıt 16-17 Ağustos'tan kalma **bayat kayıttır**.
+> Veriler `SCRAPER_ROBOTS_OVERRIDE` **kapalıyken**, yani tam uyumla çekildi.
 
-`robots.txt` kampanya detay sayfalarını kapsayan bir kural içeriyor. Keşif
-sitemap'ten 48 kampanya adresi buldu, hiçbirine istek atılmadı.
+### Dünya Katılım — 48 kampanya → çözüldü
 
-Örnekler: `/kampanyalar/trendyol` · `/kampanyalar/lc-waikiki` ·
-`/kampanyalar/koctas` · `/kampanyalar/hepsiburada` · `/kampanyalar/vestel`
+16 Ağustos'ta keşif 48 kampanya adresi buldu, hiçbirine istek atılmadı.
 
-**Veri setine etkisi:** Dünya Katılım'ın kampanya sayısı bu yüzden düşük
-görünüyor. Sayı bankanın az kampanya yayımladığını DEĞİL, kampanyalarının
-robots.txt ile kapatıldığını gösterir.
+**19 Ağustos'ta yeniden okunan `robots.txt`:**
+```
+User-agent: *
+Allow: /
+Disallow: *search=
+```
 
-### Türkiye Finans — 10 liste sayfası
+Kampanya yolu açık. Yeniden kazımada **44 kampanya `robots_allowed=true`
+ile çekildi**; geçersiz kılma anahtarı KULLANILMADI. Eski 48 kayıt tarihsel
+iz olarak duruyor.
 
-Kampanya KATEGORİ sayfaları engelli (`/tr-tr/kampanyalar/Sayfalar/*.aspx`
-kalıbındaki liste sayfaları). Detay sayfaları engelli değil; keşif sitemap ve
-gezinti üzerinden yürütüldü.
+Kalan 4 adres (`dsdamat`, `lc-waikiki`, `pttavm`, `vakkorama`) canlıda 200
+dönüyor ve robots izinli; sitemap'te artık listelenmedikleri için keşfe
+girmiyorlar. Bu bir **robots kısıtı değil, keşif boşluğudur**.
+
+### Türkiye Finans — 10 liste sayfası → çözüldü
+
+**19 Ağustos'ta okunan `robots.txt` tam içeriği** `/tr-tr/kampanyalar/Sayfalar/`
+kalıbını içermiyor; yalnızca TEK bir kampanya sayfası adıyla kapalı:
+
+```
+Disallow: /tr-tr/kampanyalar/Sayfalar/edenred-tanisma-paketi-kampanyasi.aspx
+Disallow: /*pdf$
+```
+
+Kayıtlı 10 kategori sayfasının hiçbiri bu listede değil. Yeniden kazımada
+22 sayfa uyumla çekildi.
+
+> **Ders:** `robots.txt` bir anlık görüntüdür, değişir. Engel kaydı
+> "kalıcı yasak" değil, "o tarihte yasaktı" demektir; kazıma yenilenirken
+> yeniden okunmalıdır.
 
 ## Aşılmayan JSON uçları
 

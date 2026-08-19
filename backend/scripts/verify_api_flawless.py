@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from decimal import Decimal
+
 from fastapi.testclient import TestClient
 
 from app.main import app
