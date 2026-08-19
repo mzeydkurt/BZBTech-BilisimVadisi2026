@@ -2,15 +2,15 @@
   "mode": "rule_only",
   "gold_campaigns": 76,
   "gold_annotations": 1656,
-  "micro_f1": 0.8167,
-  "macro_f1": 0.7787,
-  "hallucination_rate": 0.164,
-  "correct_silence_rate": 0.916,
+  "micro_f1": 0.8089,
+  "macro_f1": 0.7728,
+  "hallucination_rate": 0.1713,
+  "correct_silence_rate": 0.9127,
   "overall": {
-    "tp": 479,
-    "fp": 94,
-    "fn": 121,
-    "tn": 1025
+    "tp": 474,
+    "fp": 98,
+    "fn": 126,
+    "tn": 1024
   },
   "by_field": {
     "profit_rate_pct": {
@@ -86,15 +86,15 @@
       "tn": 63
     },
     "reward_amount_try": {
-      "tp": 31,
-      "fp": 2,
-      "fn": 2,
-      "tn": 41
+      "tp": 30,
+      "fp": 3,
+      "fn": 3,
+      "tn": 40
     },
     "reward_type": {
-      "tp": 58,
-      "fp": 10,
-      "fn": 11,
+      "tp": 56,
+      "fp": 12,
+      "fn": 13,
       "tn": 4
     },
     "cashback_pct": {
@@ -110,9 +110,9 @@
       "tn": 64
     },
     "loyalty_points": {
-      "tp": 23,
+      "tp": 22,
       "fp": 1,
-      "fn": 0,
+      "fn": 1,
       "tn": 52
     },
     "start_date": {
@@ -122,9 +122,9 @@
       "tn": 16
     },
     "end_date": {
-      "tp": 72,
-      "fp": 0,
-      "fn": 1,
+      "tp": 71,
+      "fp": 1,
+      "fn": 2,
       "tn": 3
     },
     "target_customer": {
@@ -148,24 +148,24 @@
   },
   "by_method": {
     "blind": {
-      "tp": 190,
-      "fp": 48,
-      "fn": 51,
-      "tn": 399
+      "tp": 188,
+      "fp": 50,
+      "fn": 53,
+      "tn": 398
     },
     "assisted": {
-      "tp": 289,
-      "fp": 46,
-      "fn": 70,
+      "tp": 286,
+      "fp": 48,
+      "fn": 73,
       "tn": 626
     }
   },
   "by_bank": {
     "ziraat_katilim": {
-      "tp": 215,
-      "fp": 13,
-      "fn": 21,
-      "tn": 380
+      "tp": 211,
+      "fp": 16,
+      "fn": 25,
+      "tn": 379
     },
     "emlak_katilim": {
       "tp": 48,
@@ -204,9 +204,9 @@
       "tn": 94
     },
     "tom_bank": {
-      "tp": 27,
-      "fp": 4,
-      "fn": 15,
+      "tp": 26,
+      "fp": 5,
+      "fn": 16,
       "tn": 68
     }
   }
