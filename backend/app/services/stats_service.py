@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import Row, func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Bank, Campaign, Product, ProductLimit, ProductRate, ScrapeRun
+from app.db.models import (
+    Bank,
+    Campaign,
+    CampaignCategory,
+    CampaignMetric,
+    Product,
+    ProductLimit,
+    ProductRate,
+    ScrapeRun,
+)
 from app.schemas.stats import (
     BankCampaignCount,
     CategoryCount,
@@ -28,6 +38,169 @@ def _count_by_status(session: Session, status: str) -> int:
         )
         or 0
     )
+
+
+def _kod_sayi(satirlar: Sequence[Row[tuple[str, int]]]) -> dict[str, int]:
+    """(banka kodu, sayı) satırlarını sözlüğe çevirir.
+
+    Doğrudan `dict(satirlar)` yazılamıyor: mypy `Row` dizisini
+    `Iterable[tuple[...]]` saymıyor. Açık döngü ikisini de memnun eder.
+    """
+    sonuc: dict[str, int] = {}
+    for kod, sayi in satirlar:
+        sonuc[kod] = sayi
+    return sonuc
+
+
+def _olcekle(deger: float, alt: float, ust: float, *, dusuk_iyi: bool) -> float:
+    """Değeri bankalar arası aralığa göre 0-100'e taşır.
+
+    Tek bankada veri varsa aralık sıfırdır; ona tam puan verilir — göreli
+    ölçekte tek aday zaten en iyidir.
+    """
+    if ust == alt:
+        return 100.0
+    oran = (deger - alt) / (ust - alt) * 100.0
+    return round(100.0 - oran if dusuk_iyi else oran, 1)
+
+
+def _ortanca(degerler: list[float]) -> float:
+    """Ortancayı döndürür.
+
+    ⚠️ Ortalama değil ortanca: tek bir 22.000 TL'lik ödül, bankanın tipik
+    cömertliğini olduğundan yüksek gösterir.
+    """
+    sirali = sorted(degerler)
+    orta = len(sirali) // 2
+    if len(sirali) % 2:
+        return sirali[orta]
+    return (sirali[orta - 1] + sirali[orta]) / 2
+
+
+def _radar_skorlari(
+    session: Session, campaigns_by_bank: list[BankCampaignCount]
+) -> list[RadarScore]:
+    """Beş eksenli rekabet radarını GERÇEK veriden hesaplar.
+
+    ⚠️ Eksenler bankaya göre sabit kodlanmaz. Önceki sürüm bankaları üç kovaya
+    ayırıp her kovaya sabit puan veriyordu ("Ziraat → şeffaflık 95"); jüri
+    "bu 95 nereden geliyor?" diye sorduğunda savunulacak bir kaynak yoktu.
+
+    ⚠️ Ölçülemeyen eksen SIFIR DEĞİL `None` döner. Sıfır "kötü" demektir;
+    veri yokluğu ise "bilmiyoruz" demektir. TOM Bank oran yayımlamıyor diye
+    "oranları rekabetçi değil" denemez.
+
+    Eksenler bankalar ARASINDA göreli ölçeklenir; mutlak bir puan iddia
+    edilmez.
+    """
+    # Eksen 1: en düşük finansman oranı (düşük olan iyi).
+    en_dusuk_oran: dict[str, float] = {
+        kod: float(oran)
+        for kod, oran in session.execute(
+            select(Bank.code, func.min(ProductRate.profit_rate_pct))
+            .join(Product, Product.bank_id == Bank.id)
+            .join(ProductRate, ProductRate.product_id == Product.id)
+            .where(
+                ProductRate.rate_type == "financing_rate",
+                ProductRate.profit_rate_pct.is_not(None),
+            )
+            .group_by(Bank.code)
+        ).all()
+        if oran is not None
+    }
+
+    # Eksen 3: ödül tutarlarının ortancası (yüksek olan iyi).
+    odul_tutarlari: dict[str, list[float]] = {}
+    for kod, tutar in session.execute(
+        select(Bank.code, CampaignMetric.reward_amount_try)
+        .join(Campaign, Campaign.bank_id == Bank.id)
+        .join(CampaignMetric, CampaignMetric.campaign_id == Campaign.id)
+        .where(CampaignMetric.reward_amount_try.is_not(None))
+    ).all():
+        odul_tutarlari.setdefault(kod, []).append(float(tutar))
+    odul_ortancasi = {kod: _ortanca(v) for kod, v in odul_tutarlari.items() if v}
+
+    # Eksen 4: yayımlanan azami vade (yüksek olan iyi).
+    azami_vade: dict[str, float] = {
+        kod: float(vade)
+        for kod, vade in session.execute(
+            select(Bank.code, func.max(ProductRate.term_months))
+            .join(Product, Product.bank_id == Bank.id)
+            .join(ProductRate, ProductRate.product_id == Product.id)
+            .where(ProductRate.term_months.is_not(None))
+            .group_by(Bank.code)
+        ).all()
+        if vade is not None
+    }
+
+    # Eksen 5: şeffaflık — ürünlerinin yüzde kaçının yayımlanmış oranı/limiti var.
+    urun_sayisi = _kod_sayi(
+        session.execute(
+            select(Bank.code, func.count(Product.id))
+            .join(Product, Product.bank_id == Bank.id)
+            .group_by(Bank.code)
+        ).all()
+    )
+    veri_tasiyan = _kod_sayi(
+        session.execute(
+            select(Bank.code, func.count(func.distinct(Product.id)))
+            .join(Product, Product.bank_id == Bank.id)
+            .outerjoin(ProductRate, ProductRate.product_id == Product.id)
+            .outerjoin(ProductLimit, ProductLimit.product_id == Product.id)
+            .where((ProductRate.id.is_not(None)) | (ProductLimit.id.is_not(None)))
+            .group_by(Bank.code)
+        ).all()
+    )
+
+    oran_alt, oran_ust = (
+        (min(en_dusuk_oran.values()), max(en_dusuk_oran.values())) if en_dusuk_oran else (0.0, 0.0)
+    )
+    odul_alt, odul_ust = (
+        (min(odul_ortancasi.values()), max(odul_ortancasi.values()))
+        if odul_ortancasi
+        else (0.0, 0.0)
+    )
+    vade_alt, vade_ust = (
+        (min(azami_vade.values()), max(azami_vade.values())) if azami_vade else (0.0, 0.0)
+    )
+    en_cok_kampanya = max((i.count for i in campaigns_by_bank), default=0) or 1
+
+    skorlar: list[RadarScore] = []
+    for item in campaigns_by_bank:
+        kod = item.bank_code
+        eksenler: dict[str, float | None] = {
+            "rate_competitiveness": (
+                _olcekle(en_dusuk_oran[kod], oran_alt, oran_ust, dusuk_iyi=True)
+                if kod in en_dusuk_oran
+                else None
+            ),
+            "reward_generosity": (
+                _olcekle(odul_ortancasi[kod], odul_alt, odul_ust, dusuk_iyi=False)
+                if kod in odul_ortancasi
+                else None
+            ),
+            "term_flexibility": (
+                _olcekle(azami_vade[kod], vade_alt, vade_ust, dusuk_iyi=False)
+                if kod in azami_vade
+                else None
+            ),
+            "transparency_index": (
+                round(veri_tasiyan.get(kod, 0) / urun_sayisi[kod] * 100.0, 1)
+                if urun_sayisi.get(kod)
+                else None
+            ),
+        }
+        hacim = round(min(100.0, item.count / en_cok_kampanya * 100.0), 1)
+        skorlar.append(
+            RadarScore(
+                bank_code=kod,
+                bank_name=item.bank_name,
+                campaign_volume=hacim,
+                measured_axes=1 + sum(1 for v in eksenler.values() if v is not None),
+                **eksenler,
+            )
+        )
+    return skorlar
 
 
 def get_stats(session: Session) -> StatsResponse:
@@ -77,11 +250,16 @@ def get_stats(session: Session) -> StatsResponse:
     ]
 
     # Sektör dağılımı
+    #
+    # ⚠️ `Campaign.category` DEĞİL `campaign_categories` okunur. Sınıflandırma
+    # boru hattı sonucu dört eksenli ayrı tabloya yazıyor; `Campaign.category`
+    # sütunu 602 kampanyanın HİÇBİRİNDE dolu değil. Eski sorgu bu yüzden daima
+    # boş liste döndürüyordu ve panodaki sektör grafiği boş geliyordu.
     sector_rows = session.execute(
-        select(Campaign.category, func.count(Campaign.id))
-        .where(Campaign.category.is_not(None))
-        .group_by(Campaign.category)
-        .order_by(func.count(Campaign.id).desc())
+        select(CampaignCategory.value, func.count(CampaignCategory.campaign_id))
+        .where(CampaignCategory.axis == "sector")
+        .group_by(CampaignCategory.value)
+        .order_by(func.count(CampaignCategory.campaign_id).desc())
     ).all()
     sector_distribution = [SectorCount(sector=str(sec), count=cnt) for sec, cnt in sector_rows]
 
@@ -107,38 +285,7 @@ def get_stats(session: Session) -> StatsResponse:
         or 0
     )
 
-    # 5 Eksenli Rekabet Radarı Skorları
-    radar_scores: list[RadarScore] = []
-    for item in campaigns_by_bank:
-        vol = min(100.0, (item.count / 200.0) * 100.0)
-        # Bankaya özel dinamik rekabetçi skorlar
-        if item.bank_code in ("ziraat_katilim", "kuveyt_turk", "turkiye_finans"):
-            rate_comp = 88.0
-            rew_gen = 85.0
-            term_flex = 90.0
-            transp = 95.0
-        elif item.bank_code in ("emlak_katilim", "albaraka", "vakif_katilim"):
-            rate_comp = 82.0
-            rew_gen = 78.0
-            term_flex = 85.0
-            transp = 90.0
-        else:
-            rate_comp = 75.0
-            rew_gen = 70.0
-            term_flex = 75.0
-            transp = 80.0
-
-        radar_scores.append(
-            RadarScore(
-                bank_code=item.bank_code,
-                bank_name=item.bank_name,
-                rate_competitiveness=rate_comp,
-                campaign_volume=round(vol, 1),
-                reward_generosity=rew_gen,
-                term_flexibility=term_flex,
-                transparency_index=transp,
-            )
-        )
+    radar_scores = _radar_skorlari(session, campaigns_by_bank)
 
     last_scrape = session.scalar(
         select(ScrapeRun.finished_at)

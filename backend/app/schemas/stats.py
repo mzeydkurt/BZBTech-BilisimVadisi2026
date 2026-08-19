@@ -31,14 +31,33 @@ class RadarScore(BaseModel):
 
     bank_code: str
     bank_name: str
-    rate_competitiveness: float = Field(
-        ge=0, le=100, description="Kâr Payı Oranı Rekabetçiliği (0-100)"
+    rate_competitiveness: float | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description="Kâr payı oranı rekabetçiliği; en düşük finansman oranından. Oran yoksa null",
     )
-    campaign_volume: float = Field(ge=0, le=100, description="Kampanya Hacmi (0-100)")
-    reward_generosity: float = Field(ge=0, le=100, description="Ödül & İade Cömertliği (0-100)")
-    term_flexibility: float = Field(ge=0, le=100, description="Vade Esnekliği (0-100)")
-    transparency_index: float = Field(
-        ge=0, le=100, description="Veri Şeffaflığı ve Güven İndeksi (0-100)"
+    campaign_volume: float = Field(ge=0, le=100, description="Kampanya hacmi (0-100)")
+    reward_generosity: float | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description="Ödül cömertliği; ödül tutarlarının ortancasından. Ölçüm yoksa null",
+    )
+    term_flexibility: float | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description="Vade esnekliği; yayımlanan azami vadeden. Vade yoksa null",
+    )
+    transparency_index: float | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description="Ürünlerinin yüzde kaçının yayımlanmış oranı/limiti var. Ürün yoksa null",
+    )
+    measured_axes: int = Field(
+        ge=0, le=5, description="Kaç eksenin gerçek ölçümü var (null olmayan eksen sayısı)"
     )
 
 
