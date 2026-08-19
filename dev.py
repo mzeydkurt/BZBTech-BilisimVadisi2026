@@ -481,6 +481,116 @@ def bicimle() -> int:
     )
 
 
+# ── Boru hattı ────────────────────────────────────────────
+#
+# ⚠️ ADIM SIRASI KEYFİ DEĞİL, BAĞIMLILIK ZİNCİRİDİR. Her adım bir
+# öncekinin çıktısını okur:
+#
+#     kazı → ham HTML + clean_text
+#       └─ ön işleme → clean_text tazelenir (ayrıştırıcı değiştiyse)
+#            └─ çıkarım → alanlar (clean_text'ten)
+#                 └─ sınıflandırma → kategoriler (clean_text + alanlar)
+#                      └─ kart üretimi → varlık kartları (kategoriler)
+#                           └─ değerlendirme → F1 (çıkarım vs gold)
+#
+# Sıra bozulursa hata VERMEZ, sessizce eski veriyle çalışır: kalıp
+# düzeltildikten sonra `cikarim` çalıştırılmazsa `degerlendir` bir gün
+# önceki çıkarımı ölçer ve düzeltmenin etkisi hiç görünmez. Ölçüldü:
+# 19 Ağustos'ta kalıplar düzeltildi, çıkarım 18 Ağustos'tan kalmıştı;
+# yapılan iyileştirmeler F1'e yansımıyordu.
+
+_HAT_ADIMLARI: dict[str, tuple[str, bool]] = {
+    # ad: (açıklama, ağa çıkar mı)
+    "scrape": ("Kampanya sayfalarını çeker", True),
+    "urun-kazi": ("Ürün/oran/limit sayfalarını çeker", True),
+    "yeniden-isle": ("Temiz metni arşivden tazeler", False),
+    "cikarim": ("Metinlerden alanları çıkarır", False),
+    "siniflandir": ("Dört eksende sınıflandırır", False),
+    "kart-uret": ("Varlık kartlarını üretir", False),
+    "urun-dogrula": ("Ürün/oran kapsamasını denetler", False),
+    "degerlendir": ("Gold set'e karşı F1 ölçer", False),
+}
+
+
+def boru_hatti() -> int:
+    """Veri hattını uçtan uca çalıştırır.
+
+    Günlük kullanımda tek komut yeterlidir; alt adımlar tek tek de
+    çağrılabilir (hepsi `python dev.py <adım>` olarak durmaya devam eder).
+
+        python dev.py boru-hatti              # tam hat (AĞA ÇIKAR)
+        python dev.py boru-hatti --agsiz      # yalnızca yeniden işleme
+        python dev.py boru-hatti --kuru       # ne çalışacağını yaz, çalıştırma
+        python dev.py boru-hatti --banka albaraka
+
+    ⚠️ `--agsiz` KAZIMA ADIMLARINI ATLAR. Ayrıştırıcı ya da kalıp kodu
+    değiştiğinde doğru seçenek budur: ham HTML arşivi (`data/raw_html`) hiç
+    silinmediği için tüm veri bankalara yeni istek atmadan yeniden üretilir.
+    Bankaya istek atmak yalnızca sayfaların KENDİSİ değiştiyse gerekir.
+    """
+    ekler = _ek_argumanlar()
+    agsiz = "--agsiz" in ekler
+    kuru = "--kuru" in ekler
+    banka = ""
+    if "--banka" in ekler:
+        yer = ekler.index("--banka")
+        if yer + 1 < len(ekler):
+            banka = ekler[yer + 1]
+
+    secilen = [
+        (ad, aciklama, agli)
+        for ad, (aciklama, agli) in _HAT_ADIMLARI.items()
+        if not (agsiz and agli)
+    ]
+
+    print("\n\033[1mBORU HATTI\033[0m")
+    for sira, (ad, aciklama, agli) in enumerate(secilen, start=1):
+        isaret = "\033[33mAĞ\033[0m" if agli else "  "
+        print(f"  {sira}. {isaret} {ad:16} {aciklama}")
+    if banka:
+        print(f"\n  banka süzgeci: {banka}")
+    if kuru:
+        print("\n\033[36mKURU ÇALIŞMA — hiçbir adım yürütülmedi.\033[0m")
+        return 0
+
+    # ⚠️ Banka süzgeci YALNIZCA kazıma adımlarına geçer. `cikarim` ve
+    # `degerlendir` tüm veri kümesi üzerinde çalışır; süzgeç geçirilirse
+    # F1 tek bankanın alt kümesinde ölçülür ve rapor yanıltıcı olur.
+    suzgecli = {"scrape", "urun-kazi"}
+
+    for sira, (ad, _, _) in enumerate(secilen, start=1):
+        print(f"\n\033[1m[{sira}/{len(secilen)}] {ad}\033[0m")
+        modul, varsayilan = _HAT_MODULLERI[ad]
+        argumanlar = list(varsayilan)
+        if ad in suzgecli:
+            argumanlar += ["--banka", banka] if banka else ["--tumu"]
+        kod = _calistir([_python(), "-m", modul, *argumanlar], cwd=BACKEND)
+        if kod != 0:
+            print(f"\n\033[31mHat '{ad}' adımında durdu (çıkış {kod}).\033[0m")
+            print("Sonraki adımlar bu adımın çıktısını okuyacaktı; yürütülmedi.")
+            return kod
+
+    print("\n\033[32mBoru hattı tamamlandı.\033[0m")
+    return 0
+
+
+# Adım adı → (modül, zorunlu varsayılan argümanlar).
+#
+# ⚠️ `cikarim` KİP SEÇMEDEN ÇALIŞMAZ. Üretim kipi `--sadece-kural`:
+# `local` sağlayıcı Sprint 3B'de bağlanacak, o zamana kadar `--tumu`
+# MockProvider'ı devreye sokar ve ölçümü sahte veriyle kirletir.
+_HAT_MODULLERI: dict[str, tuple[str, list[str]]] = {
+    "scrape": ("app.scrapers.run", []),
+    "urun-kazi": ("scripts.scrape_products", []),
+    "yeniden-isle": ("scripts.reprocess_clean_text", []),
+    "cikarim": ("scripts.extract", ["--sadece-kural"]),
+    "siniflandir": ("scripts.categorize", []),
+    "kart-uret": ("scripts.build_cards", []),
+    "urun-dogrula": ("scripts.verify_products", []),
+    "degerlendir": ("scripts.evaluate", []),
+}
+
+
 def derle_web() -> int:
     """Arayüzü derler; backend bu çıktıyı "/" altından sunar."""
     return _calistir([_npm(), "run", "build"], cwd=FRONTEND)
@@ -530,6 +640,7 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "test": (test, "Testleri kapsam raporuyla çalıştırır"),
     "lint": (lint, "ruff + mypy + tsc denetimi"),
     "bicimle": (bicimle, "Kodu biçimlendirir"),
+    "boru-hatti": (boru_hatti, "Veri hattını uçtan uca çalıştırır (tek komut)"),
     "derle-web": (derle_web, "Arayüzü üretim için derler"),
 }
 

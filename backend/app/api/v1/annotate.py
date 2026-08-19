@@ -148,11 +148,6 @@ def read_next(
     ⚠️ SIRA KORUNUR: örneklemin ilk `BLIND_COUNT` kaydı kördür. Sıra
     atlanırsa kör alt küme eksik kalır ve yanlılık ölçümü yapılamaz.
 
-    ⚠️ `annotator` VERİLİRSE atlama yalnızca O ETİKETLEYİCİNİN kayıtlarına
-    bakar. Öz-tutarlılık turu bunu gerektirir: `Zeyd-tur2` adıyla gelen kişi
-    örneklemin BAŞINDAN başlamalıdır. Parametre olmadan "etiketlenmiş" ölçütü
-    herkesi kapsıyordu ve ikinci tur ilk kayda hiç ulaşamıyor, 76. kayda
-    atlıyordu — kılavuzun (§4) tarif ettiği tur pratikte yapılamıyordu.
     """
     sorgu = select(GoldAnnotation.campaign_id).distinct()
     if annotator:
@@ -297,12 +292,7 @@ def _build(
 ) -> CampaignForAnnotation:
     """Kampanyayı etiketleme bağlamıyla birleştirir.
 
-    ⚠️ `existing` YALNIZCA verilen etiketleyicinin kayıtlarını taşır. Aksi
-    hâlde ikinci tur (öz-tutarlılık) körlüğünü kaybeder: arayüzün "düzeltme
-    akışı" formu BİRİNCİ TURUN cevaplarıyla doldurur, etiketleyici kendi
-    verdiği kararı görüp onaylar ve uyum sahte biçimde %100 çıkar. Ölçüldü:
-    Zeyd2 turunda 704 alanın 704'ü birebir aynıydı — bağımsız yargı değil,
-    kopyaydı.
+    ⚠️ `existing` YALNIZCA verilen etiketleyicinin kayıtlarını taşır.
     """
     satir = session.execute(
         select(Campaign, Bank, SourceDocument.clean_text)

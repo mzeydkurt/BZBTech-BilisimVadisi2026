@@ -2,15 +2,15 @@
   "mode": "rule_only",
   "gold_campaigns": 76,
   "gold_annotations": 1656,
-  "micro_f1": 0.8195,
-  "macro_f1": 0.7914,
-  "hallucination_rate": 0.1582,
-  "correct_silence_rate": 0.9196,
+  "micro_f1": 0.8167,
+  "macro_f1": 0.7787,
+  "hallucination_rate": 0.164,
+  "correct_silence_rate": 0.916,
   "overall": {
     "tp": 479,
-    "fp": 90,
+    "fp": 94,
     "fn": 121,
-    "tn": 1029
+    "tn": 1025
   },
   "by_field": {
     "profit_rate_pct": {
@@ -69,9 +69,9 @@
     },
     "financing_amount_max": {
       "tp": 5,
-      "fp": 2,
+      "fp": 4,
       "fn": 0,
-      "tn": 68
+      "tn": 66
     },
     "min_spend_try": {
       "tp": 26,
@@ -81,9 +81,9 @@
     },
     "max_spend_try": {
       "tp": 6,
-      "fp": 3,
+      "fp": 5,
       "fn": 1,
-      "tn": 65
+      "tn": 63
     },
     "reward_amount_try": {
       "tp": 31,
@@ -155,9 +155,9 @@
     },
     "assisted": {
       "tp": 289,
-      "fp": 42,
+      "fp": 46,
       "fn": 70,
-      "tn": 630
+      "tn": 626
     }
   },
   "by_bank": {
@@ -169,9 +169,9 @@
     },
     "emlak_katilim": {
       "tp": 48,
-      "fp": 10,
+      "fp": 12,
       "fn": 16,
-      "tn": 112
+      "tn": 110
     },
     "vakif_katilim": {
       "tp": 39,
@@ -199,9 +199,9 @@
     },
     "dunya_katilim": {
       "tp": 21,
-      "fp": 11,
+      "fp": 13,
       "fn": 13,
-      "tn": 96
+      "tn": 94
     },
     "tom_bank": {
       "tp": 27,

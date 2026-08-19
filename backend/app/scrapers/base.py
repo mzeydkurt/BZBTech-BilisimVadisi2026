@@ -243,6 +243,7 @@ class BaseScraper(ABC):
             product_external_key,
             rates_from_payment_plan,
             rates_from_tables,
+            split_rate_variants,
         )
 
         title = extract_title(html, ignore_headings=self.brand_headings)
@@ -278,7 +279,10 @@ class BaseScraper(ABC):
             **limitler,  # type: ignore[arg-type]
         )
 
-        urunler: list[RawProduct] = [ana]
+        # ⚠️ Oran tablosu varyantları AYRI ÜRÜN olur. Aksi hâlde sigortalı
+        # (%3,67) ve sigortasız (%4,27) oran aynı ürünün altında yan yana
+        # durur ve katalogda hangisinin hangi koşula ait olduğu kaybolur.
+        urunler: list[RawProduct] = split_rate_variants(ana)
         for aday in variant_candidates(form):
             urunler.append(
                 RawProduct(

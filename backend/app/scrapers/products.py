@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError
+from app.core.vocab import VARIANT_VOCAB
 from app.db.base import utc_now
 from app.db.models import Bank, Product, ProductLimit, ProductRate, ScrapeRun, SourceDocument
 from app.logging_config import get_logger
@@ -245,7 +246,7 @@ class ProductRunner:
         kumeler: list[frozenset[str]] = []
         for _, _, raws in sayfalar:
             etiketler = frozenset(
-                (r.variant_label or "").casefold() for r in raws if r.parent_external_key
+                (r.variant_label or "").casefold() for r in raws if _dropdown_varyanti(r)
             )
             if etiketler:
                 kumeler.append(etiketler)
@@ -297,12 +298,12 @@ class ProductRunner:
             # dönüşüm uygulanmazsa üyelik denetimi hiç tutmaz ve eleme
             # sessizce devre dışı kalır (24 sahte varyant geri gelmişti).
             etiketler = frozenset(
-                (r.variant_label or "").casefold() for r in raws if r.parent_external_key
+                (r.variant_label or "").casefold() for r in raws if _dropdown_varyanti(r)
             )
             if etiketler not in site_geneli:
                 continue
-            atilan = [r for r in raws if r.parent_external_key]
-            raws[:] = [r for r in raws if r.parent_external_key is None]
+            atilan = [r for r in raws if _dropdown_varyanti(r)]
+            raws[:] = [r for r in raws if not _dropdown_varyanti(r)]
             logger.info(
                 "site_geneli_secici_elendi",
                 banka=bank_code,
@@ -977,3 +978,113 @@ def _sifirsiz(deger: object) -> object:
     yer tutucusudur ("Ödenecek Toplam Tutar 0 TL").
     """
     return None if deger is not None and deger == 0 else deger
+
+
+def _dropdown_varyanti(raw: RawProduct) -> bool:
+    """Varyant bir HESAPLAYICI DROPDOWN'ından mı geldi?
+
+    ⚠️ Site geneli seçici elemesi YALNIZCA dropdown varyantlarına uygulanır.
+    Oran tablosundan gelen varyant (`separate_page`) o sayfanın KENDİ
+    verisidir; birden çok sayfada aynı adla görünmesi ("Sigortalı" /
+    "Sigortasız" hem taşıtta hem konutta var) onu sahte yapmaz.
+
+    Ölçüldü: ayrım yapılmadığında Türkiye Finans'ın konut ve ihtiyaç
+    finansmanı oranlarının tamamı — 54 satır — sessizce siliniyordu; ana
+    ürün bölünmede boşaltılmış, alt ürünler ise "site geneli" diye atılmıştı.
+    """
+    return bool(raw.parent_external_key) and raw.variant_source == "dropdown_option"
+
+
+def split_rate_variants(ana: RawProduct) -> list[RawProduct]:
+    """Oran tablosu varyantlarını AYRI ÜRÜN satırlarına böler.
+
+    ⚠️ Varyant, ORAN SATIRINDA taşınıyordu ama ÜRÜN satırında değil. Türkiye
+    Finans taşıt sayfasında dört tablo var — {Sigortalı, Sigortasız} ×
+    {0 km, 2. El} — ve dördünün oranı tek "Taşıt Finansmanı" ürününe
+    yığılıyordu. Ürün kataloğunda tek satır görünüyor, hangi oranın hangi
+    koşula ait olduğu kaybolıyordu; sigortasız oran (%4,27) ile sigortalı
+    oran (%3,67) aynı ürünün altında yan yana duruyordu.
+
+    ⚠️ TEK VARYANT BÖLÜNMEZ. Bir sayfada yalnızca bir varyant varsa alt ürün
+    üretmek katalogda anlamsız bir kırılım yaratır; oranlar ana üründe kalır.
+
+    ⚠️ Varyantsız oranlar ANA ÜRÜNDE kalır. Tablodan gelmeyen (ödeme planından
+    türetilmiş) satırların varyantı yoktur; alt ürüne taşınırlarsa hangi
+    koşula ait oldukları hakkında sahip olmadığımız bir bilgi iddia edilmiş
+    olur.
+
+    Args:
+        ana: Sayfanın ana ürünü; oranları `rates` alanında.
+
+    Returns:
+        Ana ürün ve (varsa) varyant alt ürünleri. Bölünme gerekmiyorsa
+        yalnızca ana ürün.
+
+    """
+    varyantli = [o for o in ana.rates if o.variant]
+    varyantlar = sorted({str(o.variant) for o in varyantli})
+    if len(varyantlar) < 2:
+        return [ana]
+
+    ana.rates = [o for o in ana.rates if not o.variant]
+
+    cocuklar: list[RawProduct] = []
+    for anahtar in varyantlar:
+        oranlar = [o for o in varyantli if o.variant == anahtar]
+        etiket = _varyant_etiketi(anahtar)
+        cocuklar.append(
+            RawProduct(
+                external_key=product_external_key(ana.external_key.split("#", 1)[0], anahtar),
+                name=f"{ana.name} — {etiket}",
+                source_url=ana.source_url,
+                product_type=ana.product_type,
+                segment=ana.segment,
+                parent_external_key=ana.external_key,
+                variant_key=anahtar,
+                variant_label=etiket,
+                # ⚠️ Bileşik varyant (`sifir_arac+sigortali`) İKİ boyuta
+                # yayılır; tek bir `variant_dimension` yazmak yanlış olur.
+                variant_dimension=_tek_boyut(anahtar),
+                variant_source="separate_page",
+                collateral_type=ana.collateral_type,
+                limits_source=ana.limits_source,
+                non_binding_notice=ana.non_binding_notice,
+                rates=oranlar,
+            )
+        )
+    return [ana, *cocuklar]
+
+
+# Kanonik anahtar → kullanıcıya gösterilecek ad. Katalogda "sifir arac"
+# yazmak, veriyi doğru ama sunumu özensiz yapar.
+_VARYANT_ADLARI: dict[str, str] = {
+    "sifir_arac": "Sıfır Araç",
+    "ikinci_el_arac": "2. El Araç",
+    "ticari_arac": "Ticari Araç",
+    "elektrikli_arac": "Elektrikli Araç",
+    "hibrit_arac": "Hibrit Araç",
+    "sifir_konut": "Sıfır Konut",
+    "ikinci_el_konut": "İkinci El Konut",
+    "kentsel_donusum": "Kentsel Dönüşüm",
+    "sigortali": "Sigortalı",
+    "sigortasiz": "Sigortasız",
+    "enerji_a": "Enerji Sınıfı A",
+    "enerji_b": "Enerji Sınıfı B",
+    "enerji_diger": "Enerji Sınıfı Diğer",
+}
+
+
+def _varyant_etiketi(variant_key: str) -> str:
+    """Kanonik anahtarı okunur ada çevirir; bileşik anahtarı ayırır."""
+    parcalar = [_VARYANT_ADLARI.get(p, p.replace("_", " ")) for p in variant_key.split("+")]
+    return " · ".join(parcalar)
+
+
+def _tek_boyut(variant_key: str) -> str | None:
+    """Varyant anahtarı TEK boyuta aitse o boyutu döndürür, değilse None."""
+    if "+" in variant_key:
+        return None
+    for boyut, anahtarlar in VARIANT_VOCAB.items():
+        if variant_key in anahtarlar:
+            return boyut
+    return None

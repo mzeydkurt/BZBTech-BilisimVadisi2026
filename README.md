@@ -201,12 +201,43 @@ hangi ifadenin o kategoriyi doğurduğu insan yargısıdır.
 > ayrı sayar. Tek bir "kanıtlı etiket" sayısı verilseydi rapor, sahip
 > olmadığımız bir titizliği iddia ederdi.
 
-**Öz-tutarlılık (kılavuz §4).** İlk 15 kaydı etiketledikten sonra durun ve
-**ertesi gün** aynı 15'i yeniden etiketleyin: arayüzdeki "Etiketleyen"
-kutusuna farklı bir ad yazmanız yeterli (ör. `Zeyd-tur2`). Kör kayıtlarda
-ön-doldurma yapılmadığı için ikinci tur gerçekten kördür. Uyum oranı
-`gold-durum` çıktısında görünür; **≥ %85** beklenir. Altındaysa sorun
-etiketleyicide değil KILAVUZDADIR — tereddüt edilen nokta kurala çevrilir.
+
+
+### Boru hattı — günlük kullanımda tek komut
+
+Sekiz adımın tamamı sırayla:
+
+```bash
+python dev.py boru-hatti           # tam hat (AĞA ÇIKAR)
+python dev.py boru-hatti --agsiz   # yalnızca yeniden işleme (ağa çıkmaz)
+python dev.py boru-hatti --kuru    # ne çalışacağını yazar, çalıştırmaz
+python dev.py boru-hatti --banka albaraka
+```
+
+| # | Adım | Ağ |
+|---|---|---|
+| 1 | `scrape` — kampanya sayfaları | ✓ |
+| 2 | `urun-kazi` — ürün/oran/limit sayfaları | ✓ |
+| 3 | `yeniden-isle` — temiz metni arşivden tazeler | — |
+| 4 | `cikarim` — alanları çıkarır | — |
+| 5 | `siniflandir` — dört eksende sınıflandırır | — |
+| 6 | `kart-uret` — varlık kartları | — |
+| 7 | `urun-dogrula` — kapsama denetimi | — |
+| 8 | `degerlendir` — gold set'e karşı F1 | — |
+
+Adımların hepsi tek tek de çağrılabilir; boru hattı onları değiştirmez,
+doğru sırayla çalıştırır.
+
+> ⚠️ **Sıra bağımlılık zinciridir, tercih değil.** Her adım bir öncekinin
+> çıktısını okur. Bozulursa hata VERMEZ — sessizce eski veriyle çalışır.
+> Ölçüldü: 19 Ağustos'ta kalıplar düzeltildi ama `cikarim` çalıştırılmadı;
+> `degerlendir` bir gün önceki çıkarımı ölçtü ve yapılan iyileştirmeler
+> F1'e hiç yansımadı.
+
+> ⚠️ **Ayrıştırıcı ya da kalıp kodu değiştiyse `--agsiz` yeterlidir.** Ham
+> HTML arşivi hiç silinmediği için tüm veri bankalara yeni istek atmadan
+> yeniden üretilir. Bankaya istek atmak yalnızca sayfaların KENDİSİ
+> değiştiyse gereklidir.
 
 ### Veri yenileme zinciri
 

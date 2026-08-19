@@ -257,15 +257,7 @@ def evaluate(session: Session, *, mode: str = "rule_only") -> EvaluationResult:
 
     sonuc = EvaluationResult(mode=mode)
 
-    # ⚠️ YALNIZCA REFERANS TUR ÖLÇÜME GİRER. Öz-tutarlılık için yapılan
-    # ikinci tur (`Zeyd2` gibi) AYNI alanları tekrar etiketler; süzülmezse
-    # o kampanyalar puanlamaya İKİ KEZ girer ve makro F1 iki kez etiketlenmiş
-    # kampanyaların alan dağılımına doğru kayar. Ölçüldü: 704 satırlık ikinci
-    # tur eklendiğinde makro F1 0.7908'den 0.7327'ye düştü — model değişmedi,
-    # yalnızca payda bozuldu.
-    #
-    # Referans tur = en çok etikete sahip olan. İkinci tur daima daha küçük
-    # bir alt kümedir (kılavuz §4: ilk 15 kayıt), bu yüzden seçim kararlıdır.
+
     referans_tur = _referans_annotator(session)
 
     sorgu = (
