@@ -29,6 +29,7 @@ from collections import Counter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.vocab import OTO_KANIT_NOTU
 from app.db.models.campaign import Campaign
 from app.db.models.gold_annotation import GoldAnnotation
 from app.db.models.source_document import SourceDocument
@@ -54,11 +55,17 @@ BAGLAM_KALIPLARI: dict[str, str] = {
     "cashback_pct": r"%",
     "discount_pct": r"%",
     "profit_rate_pct": r"%",
-    "profit_share_rate_pct": r"%",
+    # ⚠️ Bölüşüm oranı "%2" diye YAZILMIYOR: "98/2 paylaşım oranlı" deniyor.
+    # Yalnızca "%" arandığında bu satırlar kanıtsız kalıyordu.
+    "profit_share_rate_pct": r"%|/\s?\d|paylas|paylaş|bolus|bölüş",
     "installment_count": r"taksit",
-    "term_months_min": r"ay\b|vade",
-    "term_months_max": r"ay\b|vade",
-    "loyalty_points": r"puan|mil|Mil|Puan|lira",
+    # ⚠️ "6 taksite kadar" bir VADE ifadesidir; banka "6 ay" demiyor.
+    "term_months_min": r"ay\b|vade|taksit",
+    "term_months_max": r"ay\b|vade|taksit",
+    # ⚠️ Bankalar "puan" demiyor, MARKA ADI kullanıyor: "ParafPara",
+    # "Bankkart Lira", "WorldPuan". Yalnızca "puan|mil" arandığında bu
+    # satırlar kanıtsız kalıyordu.
+    "loyalty_points": r"puan|mil|lira|parafpara|paraf para|bankkart|world|maximum",
 }
 
 AY_ADLARI: tuple[str, ...] = (
@@ -82,10 +89,6 @@ _PENCERE = 45
 
 # Bu uzunluğun altındaki kanıt bağlam taşımaz, yazılmaz.
 _ASGARI_KANIT = 12
-
-# İşareti: bu kanıt insan tarafından seçilmedi.
-OTO_KANIT_NOTU = "oto-kanit"
-
 
 def _sayi_yazimlari(deger: str) -> list[str]:
     """Sayısal değerin metinde geçebileceği yazımlarını üretir.
@@ -112,12 +115,25 @@ def _tarih_yazimlari(deger: str) -> list[str]:
         return []
 
     yil, ay, gun = eslesme.groups()
+    # ⚠️ Bankalar başındaki sıfırı ATIYOR: "1.01.2027", "9 Haziran 2026".
+    # Yalnızca sıfır dolgulu biçim arandığında bu tarihler bulunamıyordu.
+    g_kisa, ay_kisa = str(int(gun)), str(int(ay))
     return [
         f"{gun}.{ay}.{yil}",
+        f"{g_kisa}.{ay}.{yil}",
+        f"{g_kisa}.{ay_kisa}.{yil}",
         f"{gun}-{ay}-{yil}",
+        f"{g_kisa}-{ay}-{yil}",
         f"{gun}/{ay}/{yil}",
-        f"{int(gun)} {AY_ADLARI[int(ay)]} {yil}",
+        f"{g_kisa}/{ay}/{yil}",
+        f"{g_kisa} {AY_ADLARI[int(ay)]} {yil}",
         f"{gun} {AY_ADLARI[int(ay)]} {yil}",
+        # ⚠️ Aralık yazımında YIL YALNIZCA İKİNCİ tarihte olur:
+        # "Kampanya, 17 Ağustos - 17 Eylül 2026 tarihleri arasında".
+        # Başlangıç tarihi yılsız kaldığı için yıllı biçimlerin hiçbiri
+        # tutmuyordu. Yıllı yazımlar önce denenir; bu yalnızca son çare.
+        f"{g_kisa} {AY_ADLARI[int(ay)]}",
+        f"{gun} {AY_ADLARI[int(ay)]}",
     ]
 
 
@@ -158,12 +174,17 @@ def kanit_bul(field_name: str, gold_value: str, clean_text: str) -> str | None:
         return None
 
     for yazim in _sayi_yazimlari(gold_value):
-        # Sayı bir başka sayının parçası olmamalı: "75" ile "175" karışmasın.
-        desen = r"(?<![\d.,])" + re.escape(yazim) + r"(?![\d.,])"
+        # ⚠️ Sayı bir başka sayının PARÇASI olmamalı ("75" ile "175 TL"
+        # karışmasın) ama ardından gelen NOKTALAMA eşleşmeyi bozmamalı.
+        # Önceki sürüm `(?![\d.,])` kullanıyordu; "%10, toplam 500 TL"
+        # ifadesindeki virgülü ondalık ayracı sanıp satırı reddediyordu.
+        desen = (
+            r"(?<!\d)(?<!\d[.,])" + re.escape(yazim) + r"(?!\d)(?![.,]\d)"
+        )
         for eslesme in re.finditer(desen, clean_text):
             bas = max(0, eslesme.start() - _PENCERE)
             son = min(len(clean_text), eslesme.end() + _PENCERE)
-            if re.search(kalip, clean_text[bas:son]):
+            if re.search(kalip, clean_text[bas:son], re.IGNORECASE):
                 return _pencere_kirp(clean_text, bas, son)
     return None
 

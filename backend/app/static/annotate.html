@@ -298,6 +298,16 @@ function doldur(veri) {
   window.scrollTo(0, 0);
 }
 
+/** Sıradaki kayıt adresi.
+ *
+ * ⚠️ Etiketleyen adı sorguya eklenir. Eklenmezse "etiketlenmiş" ölçütü TÜM
+ * etiketleyicileri kapsar ve öz-tutarlılık turu (`Zeyd-tur2`) örneklemin
+ * başına dönemez; ilk turun bittiği yerden devam eder. */
+function siradakiAdresi() {
+  const ad = $("#etiketleyen").value.trim();
+  return ad ? `${API}/next?annotator=${encodeURIComponent(ad)}` : `${API}/next`;
+}
+
 async function yukle(url) {
   durum("yükleniyor…");
   const yanit = await fetch(url);
@@ -359,7 +369,7 @@ async function kaydet() {
 $("#kaydet").addEventListener("click", kaydet);
 $("#sonraki").addEventListener("click", async () => {
   if (kampanya) gecmis.push(kampanya.campaign_id);
-  await yukle(`${API}/next`);
+  await yukle(siradakiAdresi());
 });
 $("#onceki").addEventListener("click", async () => {
   const id = gecmis.pop();
@@ -376,7 +386,7 @@ document.addEventListener("keydown", (e) => {
   $("#etiketleyen").value = localStorage.getItem("etiketleyen") || "";
   await alanlariYukle();
   await ilerlemeYukle();
-  await yukle(`${API}/next`);
+  await yukle(siradakiAdresi());
 })();
 </script>
 </body>

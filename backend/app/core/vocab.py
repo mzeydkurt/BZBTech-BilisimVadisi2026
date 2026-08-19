@@ -277,6 +277,12 @@ EXTRACTION_RUN_STATUSES: Final[tuple[str, ...]] = (
 # ona meyleder ve model kendi cevabına karşı ölçülmüş olur.
 ANNOTATION_METHODS: Final[tuple[str, ...]] = ("blind", "assisted")
 
+# `gold_annotations.note` işareti: kanıt METİNDEN BETİKLE bağlandı, insan
+# seçmedi (`dev.py kanit-bagla`). `gold-durum` raporu bu işareti taşıyan
+# kanıtları insan seçimlerinden AYRI sayar; tek bir "kanıtlı etiket" sayısı
+# verilseydi rapor, sahip olmadığımız bir titizliği iddia ederdi.
+OTO_KANIT_NOTU: Final[str] = "oto-kanit"
+
 # Kart ve gömme üretilebilen varlık türleri.
 ENTITY_TYPES: Final[tuple[str, ...]] = (
     "campaign",

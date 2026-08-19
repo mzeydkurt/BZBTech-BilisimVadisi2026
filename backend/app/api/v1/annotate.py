@@ -21,7 +21,7 @@ from app.ai.extraction import extract_rule_based
 from app.ai.fields import EXTRACTABLE_FIELDS, options_for, unit_of
 from app.api.deps import DbSession
 from app.core.normalization.date_tr import parse_date_tr
-from app.core.vocab import ANNOTATION_METHODS
+from app.core.vocab import ANNOTATION_METHODS, OTO_KANIT_NOTU
 from app.db.models import Bank, Campaign, GoldAnnotation, SourceDocument
 from app.schemas.annotate import (
     AnnotatedField,
@@ -138,13 +138,26 @@ def read_progress(session: DbSession) -> ProgressOut:
 def read_next(
     session: DbSession,
     method: str | None = Query(default=None, description=f"Filtre: {ANNOTATION_METHODS}"),
+    annotator: str | None = Query(
+        default=None,
+        description="Bu etiketleyicinin henüz etiketlemediği ilk kayıt. Öz-tutarlılık turu için.",
+    ),
 ) -> CampaignForAnnotation:
     """Örneklemde henüz etiketlenmemiş ilk kampanyayı döndürür.
 
     ⚠️ SIRA KORUNUR: örneklemin ilk `BLIND_COUNT` kaydı kördür. Sıra
     atlanırsa kör alt küme eksik kalır ve yanlılık ölçümü yapılamaz.
+
+    ⚠️ `annotator` VERİLİRSE atlama yalnızca O ETİKETLEYİCİNİN kayıtlarına
+    bakar. Öz-tutarlılık turu bunu gerektirir: `Zeyd-tur2` adıyla gelen kişi
+    örneklemin BAŞINDAN başlamalıdır. Parametre olmadan "etiketlenmiş" ölçütü
+    herkesi kapsıyordu ve ikinci tur ilk kayda hiç ulaşamıyor, 76. kayda
+    atlıyordu — kılavuzun (§4) tarif ettiği tur pratikte yapılamıyordu.
     """
-    etiketli = set(session.scalars(select(GoldAnnotation.campaign_id).distinct()))
+    sorgu = select(GoldAnnotation.campaign_id).distinct()
+    if annotator:
+        sorgu = sorgu.where(GoldAnnotation.annotator == annotator)
+    etiketli = set(session.scalars(sorgu))
 
     for kayit in load_sample(SAMPLE_PATH):
         if method and kayit.get("method") != method:
@@ -253,12 +266,19 @@ def save_annotations(
             session.add(kayit)
 
         birim = alan.unit or unit_of(alan_adi)
+        # ⚠️ `oto-kanit` işareti, kanıtın betikle bağlandığını (insan
+        # doğrulaması OLMADIĞINI) söyler. Kanıt DEĞİŞMEDİYSE işaret korunur;
+        # yoksa kampanyayı yeniden kaydetmek işareti sessizce siler ve
+        # `gold-durum` raporu otomatik bağlamayı insan seçimi sayar.
+        kanit_degisti = (kayit.evidence_text or "") != (alan.evidence or "")
+        oto_isaretli = (kayit.note or "") == OTO_KANIT_NOTU
+
         kayit.gold_value = _normalize_gold(alan.value, birim)
         kayit.unit = birim
         kayit.evidence_text = alan.evidence
         kayit.method = payload.method
         kayit.is_difficult = payload.is_difficult
-        kayit.note = payload.note
+        kayit.note = OTO_KANIT_NOTU if (oto_isaretli and not kanit_degisti) else payload.note
         kaydedilen.append(kayit)
 
     session.commit()

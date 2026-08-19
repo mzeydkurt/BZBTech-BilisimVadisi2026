@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Campaign, GoldAnnotation, SourceDocument
-from scripts.anchor_gold_evidence import OTO_KANIT_NOTU
+from app.core.vocab import OTO_KANIT_NOTU
 from app.db.session import SessionLocal
 from app.logging_config import configure_logging
 from app.services.gold_service import (
