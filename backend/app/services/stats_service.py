@@ -8,7 +8,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Bank, Campaign, Product, ProductLimit, ProductRate, ScrapeRun
-from app.schemas.stats import BankCampaignCount, CategoryCount, RadarScore, SectorCount, StatsResponse
+from app.schemas.stats import (
+    BankCampaignCount,
+    CategoryCount,
+    RadarScore,
+    SectorCount,
+    StatsResponse,
+)
 from app.services.campaign_service import ISTANBUL_TZ
 
 
@@ -77,9 +83,7 @@ def get_stats(session: Session) -> StatsResponse:
         .group_by(Campaign.category)
         .order_by(func.count(Campaign.id).desc())
     ).all()
-    sector_distribution = [
-        SectorCount(sector=str(sec), count=cnt) for sec, cnt in sector_rows
-    ]
+    sector_distribution = [SectorCount(sector=str(sec), count=cnt) for sec, cnt in sector_rows]
 
     # Yapısal ürün, oran ve limit toplamları
     products_total = session.scalar(select(func.count()).select_from(Product)) or 0

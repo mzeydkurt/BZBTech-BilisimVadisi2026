@@ -26,7 +26,7 @@ def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse:
     for term_obj in forbidden_terms:
         if term_obj.term.casefold() in q_clean:
             warning_msg = (
-                f"⚠️ Katılım bankacılığı ilkeleri gereği '{term_obj.term}' terimi yerine "
+                f"Katılım bankacılığı ilkeleri gereği '{term_obj.term}' terimi yerine "
                 f"'{term_obj.conventional_equivalent}' terimi kullanılmalıdır. "
                 "Sonuçlar katılım finans esaslarına göre filtrelenmiştir."
             )
@@ -76,9 +76,15 @@ def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse:
         )
 
     if results:
-        answer = f"Sorgunuz için katılım bankalarından {len(results)} adet ilgili kampanya ve finansman seçeneği bulundu."
+        answer = (
+            f"Sorgunuz için katılım bankalarından {len(results)} adet ilgili "
+            "kampanya ve finansman seçeneği bulundu."
+        )
     else:
-        answer = "Aradığınız kriterlere uygun sonuç bulunamadı. Lütfen farklı anahtar kelimelerle deneyiniz."
+        answer = (
+            "Aradığınız kriterlere uygun sonuç bulunamadı. "
+            "Lütfen farklı anahtar kelimelerle deneyiniz."
+        )
 
     return ChatResponse(
         query=req.query,

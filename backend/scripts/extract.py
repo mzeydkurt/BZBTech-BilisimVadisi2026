@@ -21,8 +21,8 @@ import sys
 from pathlib import Path
 
 from app.ai.pipeline import run_extraction
-from app.ai.validation import Conflict
 from app.ai.providers import get_provider
+from app.ai.validation import Conflict
 from app.config import get_settings
 from app.db.session import SessionLocal
 from app.logging_config import configure_logging
@@ -117,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"LLM atlanan      : {ozet.llm_skipped} kampanya")
 
     # ── KAPI A7 — guard raporu ────────────────────────────
-    print(f"\nHalüsinasyon guard'ı")
+    print("\nHalüsinasyon guard'ı")
     print(f"  Reddedilen alan  : {ozet.fields_rejected}")
     print(f"  Mantık ihlali    : {ozet.logic_violations}")
     for katman, sayi in sorted((ozet.rejected_by_layer or {}).items(), key=lambda p: -p[1]):

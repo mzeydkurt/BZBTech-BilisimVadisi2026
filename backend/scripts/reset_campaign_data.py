@@ -40,7 +40,6 @@ from app.db.models import (
 )
 from app.db.session import SessionLocal
 from app.logging_config import configure_logging, get_logger
-
 from scripts.verify_export import cozumle_dizin
 
 logger = get_logger(__name__)

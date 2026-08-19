@@ -40,6 +40,7 @@ def _rapor(sonuc: ProductRunResult) -> None:
         f" yeni ürün={sonuc.products_new:3}"
         f" güncel={sonuc.products_updated:3}"
         f" yeni oran={sonuc.rates_new:4}"
+        f" yeni limit={sonuc.limits_new:4}"
         f" hata={sonuc.errors_count}"
     )
     for hata in sonuc.errors[:5]:

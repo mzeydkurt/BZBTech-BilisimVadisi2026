@@ -18,7 +18,6 @@ yapılır, istekler arasında bekleme uygulanır ve kimliğimiz gizlenmez.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import time
 from dataclasses import dataclass, field
@@ -26,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import get_settings
-from app.logging_config import get_logger, configure_logging
+from app.logging_config import configure_logging, get_logger
 from app.scrapers.browser import (
     NETWORK_IDLE_MS,
     browser_page,
@@ -169,7 +168,7 @@ def _hedefi_incele(hedef: Hedef) -> HedefSonucu:
             kayit_sayisi: int | None = None
             try:
                 alanlar, kayit_sayisi = _govdeyi_ozetle(response.json())
-            except Exception:  # noqa: BLE001  gövde JSON değilse özet atlanır
+            except Exception:
                 pass
             yakalanan.append(
                 YakalananIstek(
@@ -181,7 +180,7 @@ def _hedefi_incele(hedef: Hedef) -> HedefSonucu:
                     kayit_sayisi=kayit_sayisi,
                 )
             )
-        except Exception as exc:  # noqa: BLE001  dinleyici hatası keşfi durdurmaz
+        except Exception as exc:
             logger.warning("yanit_dinleyici_hatasi", url=hedef.url, hata=str(exc))
 
     try:
@@ -232,7 +231,7 @@ def _tikla(page: Any, locator: Any) -> bool:
             return False
         locator.click(timeout=5_000)
         page.wait_for_timeout(NETWORK_IDLE_MS)
-    except Exception:  # noqa: BLE001  düğme yoksa ya da tıklanamıyorsa keşif sürer
+    except Exception:
         return False
     return True
 

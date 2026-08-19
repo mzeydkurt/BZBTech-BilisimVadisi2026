@@ -9,7 +9,7 @@ from app.services.campaign_service import (
     today_tr,
 )
 from app.services.chat_service import process_chat_query
-from app.services.comparison_service import compare_campaigns
+from app.services.comparison_service import rank_products
 from app.services.simulator_service import (
     calculate_financing_simulation,
     calculate_participation_yield,
@@ -22,7 +22,6 @@ __all__ = [
     "calculate_financing_simulation",
     "calculate_participation_yield",
     "check_bddk_limits",
-    "compare_campaigns",
     "compute_status",
     "get_bank",
     "get_campaign",
@@ -30,5 +29,6 @@ __all__ = [
     "list_banks",
     "list_campaigns",
     "process_chat_query",
+    "rank_products",
     "today_tr",
 ]

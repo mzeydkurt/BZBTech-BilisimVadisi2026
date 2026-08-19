@@ -206,7 +206,7 @@ def _hedefi_envanterle(hedef: Hedef) -> EnvanterSonucu:
                     "status": response.status,
                 }
             )
-        except Exception as exc:  # noqa: BLE001  dinleyici hatası envanteri durdurmaz
+        except Exception as exc:
             logger.warning("yanit_dinleyici_hatasi", url=hedef.url, hata=str(exc))
 
     try:
@@ -265,7 +265,7 @@ def _mekanizmayi_dene(page: Any, form: CalculatorForm) -> int:
                 page.fill(f"[name='{ad}'], #{ad}", str(orta), timeout=5_000)
             else:
                 continue
-        except Exception:  # noqa: BLE001  alan doldurulamadıysa sıradakine geçilir
+        except Exception:
             continue
 
         yapilan += 1
