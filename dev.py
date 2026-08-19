@@ -212,14 +212,6 @@ def scrape_deneme() -> int:
     )
 
 
-def urun_kazi_deneme() -> int:
-    """Ürün kazımasını veritabanına yazmadan dener (ağa çıkar)."""
-    return _calistir(
-        [_python(), "-m", "scripts.scrape_products", "--dry-run", *_ek_argumanlar()],
-        cwd=BACKEND,
-    )
-
-
 def urun_dogrula() -> int:
     """Ürün ve oran kapsamasını doğrular ve rapor üretir."""
     return _calistir([_python(), "-m", "scripts.verify_products"], cwd=BACKEND)

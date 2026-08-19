@@ -147,8 +147,18 @@ python dev.py scrape                    # 10 bankadan kampanya verisi
 python dev.py scrape --banka ziraat_katilim
 python dev.py scrape-deneme             # veritabanına yazmadan dene
 python dev.py urun-kazi                 # ürün/finansman limit, varyant ve oranları
-python dev.py urun-kazi-deneme
+python dev.py urun-kazi-deneme          # veritabanına yazmadan dene
 ```
+
+Kazımadan sonra kapsama denetlenir (ağa çıkmaz):
+
+```bash
+python dev.py urun-dogrula              # banka × oran türü kapsaması, rapor üretir
+```
+
+Rapor `docs/urun_dogrulama_raporu.md` dosyasına yazılır: banka başına ürün,
+oran ve limit sayısı ile `rate_type` dağılımı. Üç oran türünden birinin sıfır
+kalması ayrıştırıcıda bir kopukluk olduğunu gösterir.
 
 Hesaplayıcılar **sorgulanmaz**: yalnızca form nitelikleri okunur (dropdown
 seçenekleri = ürün varyantları, tutar sınırları, izinli vadeler). Bankaya ek
