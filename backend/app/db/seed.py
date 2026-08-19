@@ -330,7 +330,10 @@ GLOSSARY_SEED: list[dict[str, Any]] = [
         "term": "Murabaha",
         "conventional_equivalent": "ticari alım-satım finansmanı",
         "category": "yontem",
-        "definition": "Bankanın peşin satın aldığı malı, kâr koyarak müşteriye vadeli satması esasına dayanan finansman yöntemi.",
+        "definition": (
+            "Bankanın peşin satın aldığı malı, kâr koyarak müşteriye vadeli satması esasına "
+            "dayanan finansman yöntemi."
+        ),
         "aliases": ["murabaha", "peşin alım vadeli satış"],
         "is_forbidden_conventional": False,
     },
@@ -338,7 +341,10 @@ GLOSSARY_SEED: list[dict[str, Any]] = [
         "term": "Mudarabe",
         "conventional_equivalent": "emek-sermaye ortaklığı",
         "category": "yontem",
-        "definition": "Bir tarafın sermaye, diğer tarafın emek koyarak oluşturduğu kâr-zarar ortaklığı modeli.",
+        "definition": (
+            "Bir tarafın sermaye, diğer tarafın emek koyarak oluşturduğu kâr-zarar ortaklığı "
+            "modeli."
+        ),
         "aliases": ["mudarabe", "emek sermaye ortaklığı"],
         "is_forbidden_conventional": False,
     },
@@ -346,7 +352,10 @@ GLOSSARY_SEED: list[dict[str, Any]] = [
         "term": "Müşareke",
         "conventional_equivalent": "sermaye ortaklığı",
         "category": "yontem",
-        "definition": "Tarafların sermaye koyarak kâr ve zarara oranları nispetinde ortak olduğu finansman yöntemi.",
+        "definition": (
+            "Tarafların sermaye koyarak kâr ve zarara oranları nispetinde ortak olduğu finansman "
+            "yöntemi."
+        ),
         "aliases": ["musareke", "müşareke", "sermaye ortaklığı"],
         "is_forbidden_conventional": False,
     },
@@ -354,7 +363,10 @@ GLOSSARY_SEED: list[dict[str, Any]] = [
         "term": "İcare",
         "conventional_equivalent": "finansal kiralama / leasing",
         "category": "yontem",
-        "definition": "Bir varlığın kullanım hakkının belirli bir süre ve kira bedeli karşılığında devredilmesi esasına dayanan yöntem.",
+        "definition": (
+            "Bir varlığın kullanım hakkının belirli bir süre ve kira bedeli karşılığında "
+            "devredilmesi esasına dayanan yöntem."
+        ),
         "aliases": ["icare", "kiralama finansmanı"],
         "is_forbidden_conventional": False,
     },
@@ -362,7 +374,10 @@ GLOSSARY_SEED: list[dict[str, Any]] = [
         "term": "Selem",
         "conventional_equivalent": "ön ödemeli sipariş finansmanı",
         "category": "yontem",
-        "definition": "Bedeli peşin ödenip teslimatı ileri bir tarihte yapılan standart malların finansman yöntemi.",
+        "definition": (
+            "Bedeli peşin ödenip teslimatı ileri bir tarihte yapılan standart malların finansman "
+            "yöntemi."
+        ),
         "aliases": ["selem"],
         "is_forbidden_conventional": False,
     },
@@ -370,7 +385,9 @@ GLOSSARY_SEED: list[dict[str, Any]] = [
         "term": "İstisna",
         "conventional_equivalent": "eser/imalat finansmanı",
         "category": "yontem",
-        "definition": "Sipariş üzerine imal edilecek veya inşa edilecek eser ve malların finansmanı yöntemi.",
+        "definition": (
+            "Sipariş üzerine imal edilecek veya inşa edilecek eser ve malların finansmanı yöntemi."
+        ),
         "aliases": ["istisna", "imalat finansmanı"],
         "is_forbidden_conventional": False,
     },
@@ -378,7 +395,10 @@ GLOSSARY_SEED: list[dict[str, Any]] = [
         "term": "Sukuk",
         "conventional_equivalent": "tahvil/bono",
         "category": "yatirim",
-        "definition": "Sermaye piyasalarında faizsiz prensiplere uygun olarak ihraç edilen kira sertifikası veya varlığa dayalı menkul kıymet.",
+        "definition": (
+            "Sermaye piyasalarında faizsiz prensiplere uygun olarak ihraç edilen kira sertifikası "
+            "veya varlığa dayalı menkul kıymet."
+        ),
         "aliases": ["sukuk", "kira sertifikası"],
         "is_forbidden_conventional": False,
     },
@@ -386,7 +406,10 @@ GLOSSARY_SEED: list[dict[str, Any]] = [
         "term": "Tekafül",
         "conventional_equivalent": "sigorta",
         "category": "sigorta",
-        "definition": "Katılımcıların karşılıklı yardımlaşma ve dayanışma esasına dayalı olarak oluşturduğu faizsiz sigortacılık sistemi.",
+        "definition": (
+            "Katılımcıların karşılıklı yardımlaşma ve dayanışma esasına dayalı olarak oluşturduğu "
+            "faizsiz sigortacılık sistemi."
+        ),
         "aliases": ["tekaful", "tekafül", "katılım sigortacılığı"],
         "is_forbidden_conventional": False,
     },
@@ -394,7 +417,10 @@ GLOSSARY_SEED: list[dict[str, Any]] = [
         "term": "Karz-ı Hasen",
         "conventional_equivalent": "faizsiz karşılıksız borç",
         "category": "urun",
-        "definition": "Hiçbir kâr payı veya vade farkı eklenmeksizin yalnızca anaparanın geri ödenmesi esasına dayanan borçlandırma.",
+        "definition": (
+            "Hiçbir kâr payı veya vade farkı eklenmeksizin yalnızca anaparanın geri ödenmesi "
+            "esasına dayanan borçlandırma."
+        ),
         "aliases": ["karz i hasen", "karzı hasen", "faizsiz borç"],
         "is_forbidden_conventional": False,
     },
@@ -402,7 +428,10 @@ GLOSSARY_SEED: list[dict[str, Any]] = [
         "term": "LTV (Kredi / Teminat Oranı)",
         "conventional_equivalent": "kredi/değer oranı",
         "category": "limit",
-        "definition": "Finansman tutarının gayrimenkul veya taşıtın ekspertiz/fatura değerine azami oranı (Loan-to-Value).",
+        "definition": (
+            "Finansman tutarının gayrimenkul veya taşıtın ekspertiz/fatura değerine azami oranı "
+            "(Loan-to-Value)."
+        ),
         "aliases": ["ltv", "kredi değer oranı", "teminat oranı"],
         "is_forbidden_conventional": False,
     },

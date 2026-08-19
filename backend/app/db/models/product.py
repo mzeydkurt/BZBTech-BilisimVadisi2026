@@ -229,8 +229,7 @@ class ProductRate(Base):
         # ama bazı bankalar masrafı ayırıp "89.1/10.9" yazıyor; tam eşitlik
         # ZORLANMAZ, yalnızca üst sınır denetlenir.
         CheckConstraint(
-            "investor_share_pct IS NULL OR (investor_share_pct >= 0 "
-            "AND investor_share_pct <= 100)",
+            "investor_share_pct IS NULL OR (investor_share_pct >= 0 AND investor_share_pct <= 100)",
             name="investor_share_range_valid",
         ),
         CheckConstraint(

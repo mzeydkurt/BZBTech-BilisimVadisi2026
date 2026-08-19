@@ -25,6 +25,7 @@ oranla karışır — "en düşük kâr payı" karşılaştırması yanlış ç�
 
 from __future__ import annotations
 
+import contextlib
 import re
 from dataclasses import dataclass
 from decimal import Decimal
@@ -34,8 +35,165 @@ from bs4 import BeautifulSoup, Tag
 
 from app.core.normalization.money import parse_money
 from app.core.normalization.rate import parse_profit_sharing_ratio, parse_rate
+from app.core.vocab import VARIANT_VOCAB
 from app.core.normalization.term import parse_term_months
 from app.core.normalization.text import ascii_fold_tr, lower_tr, normalize_text
+
+# ⚠️ Stopaj satırı `product_rates`'e YAZILMAZ (SPRINT2.5 §516). Banka, paylaşım
+# tablosunun altına vade bazlı stopaj oranını da koyuyor: "Stopaj Oranı | 1
+# Aylık | %25". Satır dizilimi paylaşım satırlarıyla birebir aynı olduğu için
+# ayıklanmazsa "%25" katılımcı payı sanılır ve banka, gerçekte %70 pay veriyorken
+# karşılaştırmada %25 ile en kötü sıraya düşer. Stopaj bir vergi oranıdır,
+# bölüşüm oranı değildir; `docs/stopaj_oranlari.md`'ye ayrı toplanır.
+_STOPAJ_SATIRI = ("stopaj", "vergi orani", "vergi oranı", "gelir vergisi", "kesinti orani")
+
+
+def _stopaj_satiri_mi(row_label: str) -> bool:
+    """Satır etiketi stopaj/vergi oranı taşıyorsa True döner."""
+    etiket = row_label.casefold()
+    return any(k in etiket for k in _STOPAJ_SATIRI)
+
+
+# ⚠️ "İlave Getiri Oranları" tablosu katılma hesabının GETİRİSİ DEĞİLDİR.
+# Yuvam (kur korumalı TL) hesabında devlet, taban getirinin ÜSTÜNE vadeye göre
+# %1/%2/%3 ek katkı veriyor. Bu tablo `participation_yield` sanılırsa Emlak ve
+# Kuveyt Türk "yıllık %1 getiri veriyor" gibi görünür ve Türkiye Finans'ın
+# %31'i karşısında listenin en dibine düşer. Ölçüldü: 6 satır bu şekilde
+# kirlenmişti.
+_ILAVE_GETIRI = ("ilave getiri", "ek getiri", "ilave kar payi", "devlet katkisi")
+
+
+def _ilave_getiri_tablosu_mu(*basliklar: str) -> bool:
+    """Başlıklardan biri ek teşvik tablosunu işaret ediyorsa True döner."""
+    for baslik in basliklar:
+        katlanmis = ascii_fold_tr(lower_tr(baslik or ""))
+        if any(k in katlanmis for k in _ILAVE_GETIRI):
+            return True
+    return False
+
+
+# ⚠️ Katılma hesabı getirisi SIFIR olamaz. Kuveyt Türk'ün hesaplayıcısı
+# tutar girilmeden "0,00 TL | Net Oran (Yıllık) | %0" satırını sayfada
+# hazır bulunduruyor; bu, hesaplayıcının BOŞ BAŞLANGIÇ DURUMUDUR, bankanın
+# teklifi değildir. Yazılırsa banka "%0 getiri veriyor" diye sıralanır.
+# Ölçüldü: 6 satır bu şekilde kirlenmişti.
+def _gecerli_getiri(rate_type: str, oran: Decimal | None) -> bool:
+    """Getiri satırının anlamlı bir orana sahip olup olmadığını söyler."""
+    if rate_type != "participation_yield":
+        return True
+    return oran is not None and oran > 0
+
+
+# ⚠️ Taşıt/konut LİMİT MATRİSİ oran tablosu DEĞİLDİR. Başlığı
+# "Nihai Fatura / Kasko Değeri | Maksimum Oran | Azami Vade (Ay)" olan tablo
+# BDDK'nın kredi/değer oranını (%70, %50, %30, %20) verir; bu bir kâr payı
+# oranı değil, kullandırılabilecek azami tutarın yüzdesidir. "oran" kolonu
+# `profit_rate_pct`'e eşlendiği için aylık %70 kâr payı gibi yazılıyordu —
+# 500.000 TL / 36 ay simülasyonunda taksit 250.000 TL çıkıyordu. Bu tablolar
+# `parse_vehicle_limit_matrices()` ile `product_limits`'e alınır.
+# Ölçüldü: 72 satır bu şekilde kirlenmişti.
+# Varlık DEĞERİ kolonu: yalnızca limit matrislerinde bulunur. Kâr payı
+# tablosunda tutar bandı "bakiye" ya da "tutar" diye geçer, "kasko değeri" diye
+# değil.
+_VARLIK_DEGERI_BASLIKLARI = ("kasko", "fatura degeri", "satis degeri", "ekspertiz")
+
+# Azami vade kolonu tek başına yetmez: kentsel dönüşüm tablosunda gerçek kâr
+# payı oranının (%3,47) yanında "Azami Finansman Tutarı" kolonu da var ve o
+# tablo elenirse gerçek oran da kaybolur. Bu yüzden vade/oran işaretleri ancak
+# BİRLİKTE göründüklerinde limit matrisi sayılır.
+_LIMIT_VADE_BASLIKLARI = ("azami vade", "vade ust siniri", "maksimum vade")
+_LIMIT_ORAN_BASLIKLARI = ("maksimum oran", "azami oran", "tasit tutarina orani")
+
+
+def _limit_matrisi_mi(basliklar: list[str]) -> bool:
+    """Tablo bir tutar/vade limit matrisi ise True döner."""
+    katlanmis = [ascii_fold_tr(lower_tr(b or "")) for b in basliklar]
+
+    def _var(isaretler: tuple[str, ...]) -> bool:
+        return any(i in k for k in katlanmis for i in isaretler)
+
+    if _var(_VARLIK_DEGERI_BASLIKLARI):
+        return True
+    return _var(_LIMIT_VADE_BASLIKLARI) and _var(_LIMIT_ORAN_BASLIKLARI)
+
+
+# ⚠️ Kıymetli maden hesabında tutar bandı GRAM cinsindendir ("50 gr.",
+# "5,000 gr."), TL değil. Para birimi TRY yazılırsa altın hesabının %0,04'lük
+# getirisi TL karşılaştırmasına girer ve gerçek TL getirilerini (%31) yenerek
+# listenin başına oturur.
+_GRAM_ISARETLERI = (" gr", "gram", "gr.")
+
+
+def _gram_bandi_mi(ham: str) -> bool:
+    """Tutar bandı gram cinsinden yazılmışsa True döner."""
+    katlanmis = ascii_fold_tr(lower_tr(ham or ""))
+    return any(katlanmis.rstrip().endswith(i.strip()) or i in katlanmis for i in _GRAM_ISARETLERI)
+
+
+# ⚠️ Bir sayfa AYNI tabloyu her para birimi için tekrarlayabilir ve para
+# birimini tablonun içinde DEĞİL, üstteki sekme çubuğunda ("TL USD EUR YAU
+# YAG") gösterebilir. Türkiye Finans'ın kâr payı sayfası böyle: beş sekmenin
+# beşi de "Katılma Hesabı | 1 Ay (%) | ..." başlığını taşıyor. Sekme
+# okunmazsa USD'nin %0,60'ı TL getirisi sanılır ve TL'nin gerçek %31'ini
+# yenerek karşılaştırmanın başına oturur.
+_PARA_SEKME_ETIKETLERI: Final[dict[str, str]] = {
+    "tl": "TRY",
+    "try": "TRY",
+    "usd": "USD",
+    "dolar": "USD",
+    "eur": "EUR",
+    "euro": "EUR",
+    "yau": "XAU",
+    "xau": "XAU",
+    "altin": "XAU",
+    "yag": "XAG",
+    "xag": "XAG",
+    "gumus": "XAG",
+}
+
+
+def _sekme_para_birimleri(metin: str) -> list[str]:
+    """Sekme çubuğu metnini para birimi listesine çevirir; değilse boş liste."""
+    parcalar = [p for p in re.split(r"[\s|/,]+", ascii_fold_tr(lower_tr(metin or ""))) if p]
+    if not 2 <= len(parcalar) <= 8:
+        return []
+    kodlar = [_PARA_SEKME_ETIKETLERI.get(p) for p in parcalar]
+    if any(k is None for k in kodlar):
+        return []
+    return [k for k in kodlar if k]
+
+
+def _tablo_para_birimi(table: Tag) -> str | None:
+    """Tabloyu içeren sekmeden para birimini okur; sekme yoksa None."""
+    dugum: Tag | None = table
+    for _ in range(8):
+        if dugum is None:
+            return None
+        ebeveyn = dugum.parent
+        if not isinstance(ebeveyn, Tag):
+            return None
+
+        onceki = ebeveyn.find_previous_sibling()
+        if isinstance(onceki, Tag):
+            kodlar = _sekme_para_birimleri(onceki.get_text(" ", strip=True))
+            if kodlar:
+                kardesler = [k for k in ebeveyn.find_all(recursive=False) if isinstance(k, Tag)]
+                if dugum in kardesler:
+                    sira = kardesler.index(dugum)
+                    if sira < len(kodlar):
+                        return kodlar[sira]
+        dugum = ebeveyn
+    return None
+
+
+# Yalnızca finansman tablolarında bulunan kolonlar; katılma hesabında tahsis
+# ücreti ya da toplam maliyet yoktur.
+_MALIYET_ALANLARI: Final[tuple[str, ...]] = (
+    "allocation_fee_pct",
+    "monthly_cost_pct",
+    "annual_cost_pct",
+)
+
 
 # Kolon başlığı → alan adı. Eşleştirme katlanmış metinle yapılır.
 # ⚠️ SIRA ÖNEMLİ: profit_sharing_ratio (kar paylasim) önceliklidir; "oran" kelimesi
@@ -82,7 +240,20 @@ VARIANT_MARKERS: Final[tuple[tuple[str, str], ...]] = (
     ("ikinci el konut", "ikinci_el_konut"),
     ("sifir arac", "sifir_arac"),
     ("ikinci el arac", "ikinci_el_arac"),
+    # ⚠️ Bankalar araç durumunu "sıfır araç" diye YAZMIYOR. Türkiye Finans
+    # "0 km" ve "2. El" kullanıyor; bu iki ifade eklenmeden dört tablodan
+    # ikisi ayırt edilemiyordu.
+    ("0 km", "sifir_arac"),
+    ("sifir km", "sifir_arac"),
+    ("2. el", "ikinci_el_arac"),
+    ("2.el", "ikinci_el_arac"),
 )
+
+# Anahtar → boyut. Aynı boyuttan iki anahtar seçilmesini engeller
+# ("sigortalı" ile "sigortasız" bir arada olamaz).
+_VARIANT_BOYUTU: Final[dict[str, str]] = {
+    anahtar: boyut for boyut, anahtarlar in VARIANT_VOCAB.items() for anahtar in anahtarlar
+}
 
 # Başlık aramasında tablodan geriye kaç metin düğümü taranacak.
 _HEADING_LOOKBACK: Final[int] = 12
@@ -202,7 +373,10 @@ class LtvMatrix:
 
 @dataclass(frozen=True)
 class VehicleLimitRow:
-    """Taşıt limit matrisinin tek bir satırı: (taşıt değeri bandı) → (azami finansman oranı × azami vade)."""
+    """Taşıt limit matrisinin tek satırı.
+
+    (taşıt değeri bandı) → (azami finansman oranı × azami vade)
+    """
 
     asset_value_min: Decimal | None = None
     asset_value_max: Decimal | None = None
@@ -316,17 +490,35 @@ def _table_caption(table: Tag) -> str | None:
 def _variant_from_caption(caption: str | None) -> tuple[str | None, str | None]:
     """Başlıktan varyant anahtarını çıkarır.
 
+    ⚠️ Varyant TEK BOYUTLU DEĞİLDİR. Türkiye Finans taşıt sayfasında dört
+    tablo var: {Sigortalı, Sigortasız} × {0 km, 2. El}. Yalnızca ilk eşleşen
+    işaret döndürülürse iki tablo aynı `variant_key`'i alır, `band_key`
+    çakışır ve 28 oran satırının 14'ü sessizce düşer — üstelik düşen satırlar
+    2. el araçlarınki, yani oranı YÜKSEK olanlar. Karşılaştırma bankayı
+    olduğundan ucuz gösterir.
+
+    Her BOYUTTAN en fazla bir anahtar alınır (ilk eşleşen kazanır) ve
+    anahtarlar boyut adına göre sıralanıp `+` ile birleştirilir.
+
     Returns:
         (kanonik_anahtar, ham_etiket); bulunamazsa (None, None).
+
     """
     if not caption:
         return None, None
 
     katlanmis = _fold(caption)
+    secilen: dict[str, str] = {}
     for isaret, anahtar in VARIANT_MARKERS:
-        if isaret in katlanmis:
-            return anahtar, caption
-    return None, None
+        if isaret not in katlanmis:
+            continue
+        boyut = _VARIANT_BOYUTU.get(anahtar, anahtar)
+        secilen.setdefault(boyut, anahtar)
+
+    if not secilen:
+        return None, None
+
+    return "+".join(secilen[b] for b in sorted(secilen)), caption
 
 
 def _term_months(raw: str) -> int | None:
@@ -345,9 +537,25 @@ def _term_months(raw: str) -> int | None:
     return ust if ust is not None else alt
 
 
-def _parse_row(cells: list[str], columns: dict[int, str], caption: str | None = None) -> RateRow | None:
-    """Veri satırını `RateRow`'a çevirir; veri yoksa None."""
+def _parse_row(
+    cells: list[str],
+    columns: dict[int, str],
+    caption: str | None = None,
+    sekme_para: str | None = None,
+) -> RateRow | None:
+    """Veri satırını `RateRow`'a çevirir; veri yoksa None.
+
+    Args:
+        cells: Satırın hücreleri.
+        columns: Kolon indeksi → alan adı eşlemesi.
+        caption: Tablonun başlığı; varyant ve oran türü buradan okunur.
+        sekme_para: Tabloyu içeren sekmenin para birimi. Satırda ya da
+            başlıkta para birimi yoksa bu kullanılır.
+
+    """
     degerler: dict[str, object] = {}
+    if sekme_para:
+        degerler["currency"] = sekme_para
 
     for indeks, alan in columns.items():
         if indeks >= len(cells):
@@ -371,6 +579,8 @@ def _parse_row(cells: list[str], columns: dict[int, str], caption: str | None = 
                 degerler["amount_min"] = alt
             if ust is not None:
                 degerler["amount_max"] = ust
+            if _gram_bandi_mi(ham):
+                degerler["currency"] = "XAU"
         elif alan == "currency":
             katlanmis = _fold(ham)
             if "usd" in katlanmis or "dolar" in katlanmis:
@@ -396,8 +606,17 @@ def _parse_row(cells: list[str], columns: dict[int, str], caption: str | None = 
         else:
             degerler[alan] = parse_rate(ham)
 
-    # Başlık veya kolonlarda "kar paylasim" veya "bölüşüm" geçiyorsa rate_type 'profit_sharing_ratio' yapılır
+    # ⚠️ Tahsis ücreti / toplam maliyet kolonu varsa tablo FİNANSMANDIR.
+    # Katılma hesabında tahsis ücreti alınmaz; müşteri parayı yatırır, ücret
+    # ödemez. Türkiye Finans finansman tablosunun başlığına da "Kâr Payı
+    # Oranları" yazdığı için başlığa bakan kural bu tabloyu katılma hesabı
+    # getirisi sanıyordu: %4,20'lik AYLIK finansman maliyeti, YILLIK getiri
+    # olarak karşılaştırmaya giriyordu. Ölçüldü: 11 satır böyle kirlenmişti.
+    finansman_isareti = any(degerler.get(a) is not None for a in _MALIYET_ALANLARI)
+
     rate_type = str(degerler.get("rate_type", ""))
+    if finansman_isareti and rate_type != "profit_sharing_ratio":
+        rate_type = "financing_rate"
     if not rate_type:
         caption_fold = _fold(caption or "")
         if "kar paylasim" in caption_fold or "paylasim" in caption_fold:
@@ -409,6 +628,9 @@ def _parse_row(cells: list[str], columns: dict[int, str], caption: str | None = 
 
     dolu = [d for d in degerler.values() if d is not None]
     if len(dolu) < _MIN_FILLED_CELLS:
+        return None
+
+    if not _gecerli_getiri(rate_type, degerler.get("profit_rate_pct")):  # type: ignore[arg-type]
         return None
 
     return RateRow(
@@ -622,7 +844,10 @@ def parse_ltv_matrices(html: str | None) -> list[LtvMatrix]:
 
 
 def parse_vehicle_limit_matrices(html: str | None) -> list[VehicleLimitRow]:
-    """Sayfadaki taşıt finansmanı limit matrislerini (Fatura Değeri × Finansman Oranı × Azami Vade) ayrıştırır."""
+    """Sayfadaki taşıt finansmanı limit matrislerini ayrıştırır.
+
+    Matris: Fatura/Kasko Değeri × Finansman Oranı × Azami Vade.
+    """
     if not html:
         return []
 
@@ -633,7 +858,9 @@ def parse_vehicle_limit_matrices(html: str | None) -> list[VehicleLimitRow]:
         rows = table.find_all("tr")
         if len(rows) < 2:
             continue
-        h_cells = [normalize_text(c.get_text(" ", strip=True)) for c in rows[0].find_all(["th", "td"])]
+        h_cells = [
+            normalize_text(c.get_text(" ", strip=True)) for c in rows[0].find_all(["th", "td"])
+        ]
         h_fold = _fold(" ".join(h_cells))
         if not (
             ("fatura" in h_fold or "kasko" in h_fold or "arac" in h_fold or "tasit" in h_fold)
@@ -654,9 +881,11 @@ def parse_vehicle_limit_matrices(html: str | None) -> list[VehicleLimitRow]:
             elif "oran" in hf or "%" in hf:
                 if col_ratio is None:
                     col_ratio = idx
-            elif any(w in hf for w in ("fatura", "kasko", "deger", "arac", "tasit")):
-                if col_value is None:
-                    col_value = idx
+            elif (
+                any(w in hf for w in ("fatura", "kasko", "deger", "arac", "tasit"))
+                and col_value is None
+            ):
+                col_value = idx
 
         if col_value is None and len(h_cells) >= 3:
             col_value = 0
@@ -699,7 +928,7 @@ def _parse_matrix_amount_band(text: str) -> tuple[Decimal | None, Decimal | None
         if a_val is not None and u_val is not None:
             return min(a_val, u_val), max(a_val, u_val)
         return a_val, u_val
-    elif len(parcalar) == 1:
+    if len(parcalar) == 1:
         t_val, _ = parse_money(parcalar[0])
         return t_val, None
     return None, None
@@ -750,7 +979,8 @@ def _parse_matrix_rate_table(table: Tag, caption: str | None = None) -> RateTabl
     col_terms = [_parse_matrix_term_header(x) for x in h_cells]
     table_caption = caption or _table_caption(table) or ""
 
-    curr = "TRY"
+    # Sekmeli sayfada para birimi tablonun İÇİNDE yazmaz; önce sekme okunur.
+    curr = _tablo_para_birimi(table) or "TRY"
     cap_fold = _fold(table_caption + " " + " ".join(h_cells))
     if "dolar" in cap_fold or "usd" in cap_fold:
         curr = "USD"
@@ -763,10 +993,17 @@ def _parse_matrix_rate_table(table: Tag, caption: str | None = None) -> RateTabl
 
     parsed_rows: list[RateRow] = []
     for r in rows[h_idx + 1 :]:
-        cells = [normalize_text(cell.get_text(" ", strip=True)) for cell in r.find_all(["th", "td"])]
+        cells = [
+            normalize_text(cell.get_text(" ", strip=True)) for cell in r.find_all(["th", "td"])
+        ]
         if not cells:
             continue
         row_label = cells[0]
+        if _stopaj_satiri_mi(row_label):
+            continue
+        # Tutar bandı gram cinsindense satır kıymetli maden hesabına aittir;
+        # tablo başlığı TL dese bile para birimi satır bazında düzeltilir.
+        satir_para = "XAU" if _gram_bandi_mi(row_label) else curr
         alt, ust = _parse_matrix_amount_band(row_label)
         for c_i, cell_val in enumerate(cells[1:], start=1):
             if c_i >= len(col_terms):
@@ -791,15 +1028,16 @@ def _parse_matrix_rate_table(table: Tag, caption: str | None = None) -> RateTabl
             else:
                 pr = parse_rate(cell_val)
                 if pr is None and re.match(r"^\d+(?:[.,]\d+)?$", cell_val):
-                    try:
+                    with contextlib.suppress(Exception):
                         pr = Decimal(cell_val.replace(",", "."))
-                    except Exception:
-                        pass
                 if pr is not None:
                     profit = pr
                     rate_type = "participation_yield"
                 else:
                     continue
+
+            if not _gecerli_getiri(rate_type, profit):
+                continue
 
             label_str = str(term_info.get("term_label", ""))
             parsed_rows.append(
@@ -814,7 +1052,7 @@ def _parse_matrix_rate_table(table: Tag, caption: str | None = None) -> RateTabl
                     bank_share_pct=bnk,
                     amount_min=alt,
                     amount_max=ust,
-                    currency=curr,
+                    currency=satir_para,
                     evidence_text=f"{row_label} | {label_str} | {cell_val}",
                 )
             )
@@ -855,12 +1093,27 @@ def parse_rate_tables(html: str | None) -> list[RateTable]:
 
         # 1. Öncelik: Standart dikey tablo eşleme
         basliklar = _cells(satirlar[0])
+
+        # Ek teşvik tablosu hesabın getirisi değildir; oran tablosu sayılmaz.
+        if _ilave_getiri_tablosu_mu(caption or "", *basliklar):
+            continue
+
+        # Limit matrisi ayrı boru hattına aittir (`product_limits`).
+        if _limit_matrisi_mi(basliklar):
+            continue
+
+        # Sekmeli sayfalarda para birimi tablonun içinde değil, üstteki
+        # sekme çubuğunda yazılıdır.
+        sekme_para = _tablo_para_birimi(table)
+
         kolonlar = _map_columns(basliklar)
 
         if "profit_rate_pct" in kolonlar.values() or "profit_sharing_ratio" in kolonlar.values():
             veri: list[RateRow] = []
             for satir in satirlar[1:]:
-                ayristirilan = _parse_row(_cells(satir), kolonlar, caption=caption)
+                ayristirilan = _parse_row(
+                    _cells(satir), kolonlar, caption=caption, sekme_para=sekme_para
+                )
                 if ayristirilan is not None:
                     veri.append(ayristirilan)
 

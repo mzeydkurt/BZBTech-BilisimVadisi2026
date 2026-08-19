@@ -2,108 +2,143 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import selectinload
 
+from app.api.deps import DbSession
+from app.core.vocab import RATE_TYPES
 from app.db.models.bank import Bank
-from app.db.models.product import Product, ProductLimit, ProductRate
-from app.db.session import get_db
-from app.schemas.compare import ComparisonRequest, ComparisonResponse, ComparisonWeights
-from app.services.comparison_service import compare_campaigns
+from app.db.models.product import Product
+from app.schemas.compare import ProductRankingRequest, ProductRankingResponse
+from app.schemas.product import ProductDetailOut, ProductOut
+from app.services.comparison_service import RankingError, rank_products
 
 router = APIRouter(prefix="/products", tags=["products"])
 
 
-@router.get("")
+def _urun_cikti(urun: Product, rate_type: str | None = None) -> ProductOut:
+    """ORM ürününü listeleme şemasına çevirir, oranları isteğe göre süzer."""
+    cikti = ProductOut.model_validate(urun)
+    cikti.bank_code = urun.bank.code if urun.bank else None
+    cikti.bank_name = urun.bank.name if urun.bank else None
+    if rate_type:
+        cikti.rates = [o for o in cikti.rates if o.rate_type == rate_type]
+    return cikti
+
+
+@router.get("", response_model=list[ProductOut])
 def list_products(
+    db: DbSession,
     bank_code: Annotated[str | None, Query(description="Banka kodu süzgeci")] = None,
     product_type: Annotated[str | None, Query(description="Ürün türü süzgeci")] = None,
-    rate_type: Annotated[str | None, Query(description="Oran türü: financing_rate, profit_sharing_ratio, participation_yield")] = None,
+    rate_type: Annotated[
+        str | None,
+        Query(description="Oran türü: financing_rate | participation_yield | profit_sharing_ratio"),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-    db: Session = Depends(get_db),
-) -> list[dict[str, Any]]:
-    """Ürünleri oranları ve limitleriyle listeler."""
+) -> list[ProductOut]:
+    """Ürünleri oranları ve limitleriyle listeler.
+
+    `rate_type` verilirse yalnızca o türden oranı OLAN ürünler döner; oranlar
+    da o türe süzülür. Süzgeç uygulanmazsa üç tür bir arada gelir — bu liste
+    görünümü içindir, karşılaştırma için değil.
+    """
+    if rate_type and rate_type not in RATE_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Geçersiz rate_type: {rate_type!r}. Geçerli değerler: {', '.join(RATE_TYPES)}",
+        )
+
     stmt = (
         select(Product)
-        .options(selectinload(Product.rates), selectinload(Product.limits))
+        .options(
+            selectinload(Product.rates),
+            selectinload(Product.limits),
+            selectinload(Product.bank),
+        )
         .order_by(Product.name)
     )
 
     if bank_code:
         banka = db.scalar(select(Bank).where(Bank.code == bank_code))
-        if banka:
-            stmt = stmt.where(Product.bank_id == banka.id)
+        if banka is None:
+            raise HTTPException(status_code=404, detail=f"Banka bulunamadı: {bank_code}")
+        stmt = stmt.where(Product.bank_id == banka.id)
 
     if product_type:
         stmt = stmt.where(Product.product_type == product_type)
 
+    if rate_type:
+        # Süzgeç SQL tarafında uygulanır; aksi hâlde `limit` oranı olmayan
+        # ürünlerle dolar ve sayfa beklenenden az sonuç döndürür.
+        from app.db.models.product import ProductRate
+
+        stmt = stmt.where(Product.rates.any(ProductRate.rate_type == rate_type))
+
     urunler = list(db.scalars(stmt.limit(limit)))
-
-    sonuclar = []
-    for u in urunler:
-        oranlar = []
-        for r in u.rates:
-            if rate_type and r.rate_type != rate_type:
-                continue
-            oranlar.append({
-                "id": r.id,
-                "rate_type": r.rate_type,
-                "profit_rate_pct": float(r.profit_rate_pct) if r.profit_rate_pct is not None else None,
-                "investor_share_pct": float(r.investor_share_pct) if r.investor_share_pct is not None else None,
-                "bank_share_pct": float(r.bank_share_pct) if r.bank_share_pct is not None else None,
-                "term_months": r.term_months,
-                "term_label": r.term_label,
-                "currency": r.currency,
-                "evidence_text": r.evidence_text,
-            })
-
-        if rate_type and not oranlar:
-            continue
-
-        limitler = []
-        for l in u.limits:
-            limitler.append({
-                "id": l.id,
-                "asset_value_min": float(l.asset_value_min) if l.asset_value_min is not None else None,
-                "asset_value_max": float(l.asset_value_max) if l.asset_value_max is not None else None,
-                "financing_ratio_pct": float(l.financing_ratio_pct) if l.financing_ratio_pct is not None else None,
-                "term_months_max": l.term_months_max,
-                "energy_class": l.energy_class,
-                "evidence_text": l.evidence_text,
-            })
-
-        sonuclar.append({
-            "id": u.id,
-            "external_key": u.external_key,
-            "name": u.name,
-            "product_type": u.product_type,
-            "rates": oranlar,
-            "limits": limitler,
-        })
-
-    return sonuclar
+    return [_urun_cikti(u, rate_type) for u in urunler]
 
 
-@router.post("/compare", response_model=ComparisonResponse)
-def compare_products(
-    req: ComparisonRequest, db: Session = Depends(get_db)
-) -> ComparisonResponse:
-    """Seçilen kampanya veya ürünleri normalize alanlar üzerinden karşılaştırır."""
-    return compare_campaigns(db, req.campaign_ids, req.weights)
+@router.post("/compare", response_model=ProductRankingResponse)
+def compare_products(req: ProductRankingRequest, db: DbSession) -> ProductRankingResponse:
+    """Ürünleri tek bir açık ölçüte göre sıralar.
 
+    ⚠️ Uç adı `/compare`: SPRINT2.5 §8.2 ve §10'da sözleşme olarak
+    dondurulmuş, Sprint 4 arayüz promptu da bu adla çağırıyor. Servis
+    fonksiyonu §8.3 gereği `rank_products` adını taşır.
 
-@router.get("/compare", response_model=ComparisonResponse)
-def compare_products_get(
-    ids: Annotated[str, Query(description="Virgülle ayrılmış kampanya kimlikleri (örn: 1,2,3)")],
-    db: Session = Depends(get_db),
-) -> ComparisonResponse:
-    """GET parametreleri ile ürün ve finansman karşılaştırması yapar."""
+    ⚠️ `rate_type` ZORUNLUDUR ve şemada varsayılanı yoktur: finansman
+    maliyeti ile katılma getirisi aynı sıralamaya giremez.
+    """
     try:
-        c_ids = [int(i.strip()) for i in ids.split(",") if i.strip()]
-    except ValueError:
-        c_ids = []
-    return compare_campaigns(db, c_ids, ComparisonWeights())
+        return rank_products(
+            db,
+            rate_type=req.rate_type,
+            criterion=req.criterion,
+            product_type=req.product_type,
+            bank_codes=req.bank_codes,
+            term_months=req.term_months,
+            term_days=req.term_days,
+            currency=req.currency,
+            amount_try=req.amount_try,
+            weights=req.weights,
+            limit=req.limit,
+        )
+    except RankingError as hata:
+        raise HTTPException(status_code=422, detail=str(hata)) from hata
 
+
+@router.get("/{product_id}", response_model=ProductDetailOut)
+def get_product(product_id: int, db: DbSession) -> ProductDetailOut:
+    """Tek ürünün tüm oranlarını, limitlerini, varyantlarını ve kaynağını verir.
+
+    Kaynak URL yanıtın parçasıdır: arayüzde gösterilen her oranın bankanın
+    hangi sayfasından okunduğu izlenebilir olmalıdır (KAPI F5 §8.2).
+    """
+    urun = db.scalar(
+        select(Product)
+        .options(
+            selectinload(Product.rates),
+            selectinload(Product.limits),
+            selectinload(Product.bank),
+            selectinload(Product.source_document),
+            selectinload(Product.variants).selectinload(Product.rates),
+            selectinload(Product.variants).selectinload(Product.limits),
+            selectinload(Product.variants).selectinload(Product.bank),
+        )
+        .where(Product.id == product_id)
+    )
+    if urun is None:
+        raise HTTPException(status_code=404, detail=f"Ürün bulunamadı: {product_id}")
+
+    cikti = ProductDetailOut.model_validate(urun)
+    cikti.bank_code = urun.bank.code if urun.bank else None
+    cikti.bank_name = urun.bank.name if urun.bank else None
+    if urun.source_document is not None:
+        cikti.source_url = urun.source_document.url
+        cikti.source_fetched_at = urun.source_document.fetched_at.isoformat()
+    cikti.variants = [_urun_cikti(v) for v in urun.variants]
+    return cikti

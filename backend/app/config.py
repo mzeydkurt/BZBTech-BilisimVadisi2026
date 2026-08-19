@@ -49,6 +49,18 @@ class Settings(BaseSettings):
     scraper_timeout_seconds: float = 30.0
     scraper_max_retries: int = 3
     scraper_respect_robots: bool = True
+
+    # ⚠️ robots.txt İZİN DENETİMİNİ devre dışı bırakır. Yalnızca site
+    # sahibinden AÇIK İZİN alındığında açılır; TEKNOFEST şartname madde 15
+    # (Etik Kurallar) uyum belgelemesini puanlıyor ve `data/robots_report.md`
+    # jüriye sunulan bir çıktı. Proje sahibi 19 Ağustos 2026'da bankalardan
+    # izin alındığını bildirerek bu anahtarın açılmasını talep etti.
+    #
+    # Anahtar açıkken de:
+    #   - crawl-delay UYGULANMAYA DEVAM EDER (bkz. `Fetcher._throttle`),
+    #   - kayıt `robots_allowed=False` olarak işaretlenir; hangi adresin
+    #     yasağa rağmen çekildiği izlenebilir kalır ve rapor doğruluğunu korur.
+    scraper_robots_override: bool = False
     raw_html_dir: str = "./data/raw_html"
 
     # Bu yıldan önce BİTMİŞ kampanya veritabanına yazılmaz (ham HTML arşivlenir).

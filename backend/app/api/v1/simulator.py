@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from fastapi import APIRouter
 
-from app.db.session import get_db
+from app.api.deps import DbSession
 from app.schemas.simulator import (
     BDDKLimitCheckRequest,
     BDDKLimitCheckResponse,
@@ -25,7 +24,8 @@ router = APIRouter(prefix="/simulator", tags=["simulator"])
 
 @router.post("/financing", response_model=FinancingSimulationResponse)
 def simulate_financing(
-    req: FinancingSimulationRequest, db: Session = Depends(get_db)
+    req: FinancingSimulationRequest,
+    db: DbSession,
 ) -> FinancingSimulationResponse:
     """Finansman taksit ve geri ödeme simülasyonu yapar."""
     return calculate_financing_simulation(db, req)
@@ -33,7 +33,8 @@ def simulate_financing(
 
 @router.post("/yield", response_model=ParticipationYieldResponse)
 def simulate_yield(
-    req: ParticipationYieldRequest, db: Session = Depends(get_db)
+    req: ParticipationYieldRequest,
+    db: DbSession,
 ) -> ParticipationYieldResponse:
     """Katılma hesabı kâr paylaşımı brüt/net getirisini hesaplar."""
     return calculate_participation_yield(db, req)

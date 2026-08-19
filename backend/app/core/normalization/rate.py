@@ -182,9 +182,13 @@ def parse_profit_sharing_ratio(text: str | None) -> tuple[Decimal | None, Decima
     if m:
         inv = parse_decimal_tr(m.group(1))
         bnk = parse_decimal_tr(m.group(2))
-        if inv is not None and bnk is not None:
-            if Decimal("0") <= inv <= Decimal("100") and Decimal("0") <= bnk <= Decimal("100"):
-                return inv, bnk
+        if (
+            inv is not None
+            and bnk is not None
+            and Decimal("0") <= inv <= Decimal("100")
+            and Decimal("0") <= bnk <= Decimal("100")
+        ):
+            return inv, bnk
 
     # Çıplak tek yüzde (ör. %90) varsa: investor=90, bank=10
     rate = parse_rate(lowered)
