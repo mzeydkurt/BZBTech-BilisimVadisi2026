@@ -161,7 +161,10 @@ class Fetcher:
         host = httpx.URL(url).host
         delay = self._settings.scraper_request_delay_seconds
 
-        robots_delay = self._robots.crawl_delay(url) if self._respect_robots else None
+        # ⚠️ Gecikme, izin denetimi kapalıyken de uygulanır. Yasağı geçmek
+        # siteyi yormak için bir gerekçe değildir; ayrıca hızlı istek IP
+        # engeline yol açar ve yarışma ortasında tüm kazımayı durdurur.
+        robots_delay = self._robots.crawl_delay(url)
         if robots_delay is not None and robots_delay > delay:
             # Sitenin talep ettiği süre daha uzunsa ona uyulur.
             delay = robots_delay
@@ -256,9 +259,13 @@ class Fetcher:
         """Çekim mantığı; kayıt tutma `fetch()` içinde yapılır."""
         self._guard_airgap()
 
-        if self._respect_robots and not self._robots.is_allowed(url):
-            logger.info("robots_nedeniyle_atlandi", url=url, banka=self._bank_code)
-            return FetchResult(url=url, robots_allowed=False, error="robots.txt engelledi")
+        robots_izinli = self._robots.is_allowed(url)
+        if self._respect_robots and not robots_izinli:
+            if not self._settings.scraper_robots_override:
+                logger.info("robots_nedeniyle_atlandi", url=url, banka=self._bank_code)
+                return FetchResult(url=url, robots_allowed=False, error="robots.txt engelledi")
+            # Açık izin beyanıyla geçiliyor; kayıt yine de işaretlenir.
+            logger.warning("robots_yasagi_acik_izinle_gecildi", url=url, banka=self._bank_code)
 
         self._throttle(url)
 
@@ -300,7 +307,7 @@ class Fetcher:
             content_type=content_type,
             raw_html_path=archive_path,
             raw_html_sha256=archive_hash,
-            robots_allowed=True,
+            robots_allowed=robots_izinli,
             is_soft_404=soft_404,
             error=None if response.status_code < 400 else f"HTTP {response.status_code}",
         )

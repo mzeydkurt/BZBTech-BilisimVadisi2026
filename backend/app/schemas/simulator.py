@@ -1,9 +1,32 @@
-"""Finansman simülatörü ve BDDK denetçisi Pydantic şemaları."""
+"""Finansman simülatörü ve BDDK denetçisi Pydantic şemaları.
+
+⚠️ Tüm para ve oran alanları `Decimal`. `float` kullanılmaz (CLAUDE.md).
+
+⚠️ Verisi olmayan banka teklif listesine GİRMEZ. `banks_without_data`
+alanı hangi bankanın neden dışarıda kaldığını taşır. "Veri olmayan yerde
+veri uydurmak yerine mevcut olanı karşılaştırırız" (SPRINT2.5).
+"""
 
 from __future__ import annotations
 
 from decimal import Decimal
+
 from pydantic import BaseModel, Field
+
+
+class MissingDataBank(BaseModel):
+    """Teklif üretilemeyen banka ve nedeni.
+
+    Boş bırakmak yerine açıkça bildirilir: kullanıcı 10 bankadan 4'ünün
+    listede olmadığını görmeli, eksikliği başarı sanmamalıdır.
+    """
+
+    bank_code: str
+    bank_name: str
+    reason: str = Field(description="Neden teklif üretilemediği")
+
+
+# ── Finansman simülasyonu ─────────────────────────────────
 
 
 class FinancingSimulationRequest(BaseModel):
@@ -11,76 +34,129 @@ class FinancingSimulationRequest(BaseModel):
 
     amount_try: Decimal = Field(gt=0, description="Finansman tutarı (TL)")
     term_months: int = Field(gt=0, le=120, description="Vade (Ay)")
-    product_type: str = Field(default="tasit_finansmani", description="Ürün türü: tasit_finansmani, konut_finansmani, ihtiyac_finansmani")
+    product_type: str = Field(
+        default="tasit_finansmani",
+        description="Ürün türü: tasit_finansmani, konut_finansmani, ihtiyac_finansmani",
+    )
 
 
 class BankFinancingOffer(BaseModel):
-    """Tek bir bankanın finansman teklifi simülasyon çıktısı."""
+    """Tek bir bankanın finansman teklifi.
+
+    ⚠️ `rate_term_months` oranın hangi vade için yayımlandığını söyler.
+    İstenen vadeyle aynı değilse `is_exact_term_match` False olur ve teklif
+    yaklaşıktır — arayüz bunu işaretlemelidir.
+    """
 
     bank_code: str
     bank_name: str
-    profit_rate_pct: float = Field(description="Aylık Kâr Payı Oranı (%)")
-    monthly_payment_try: float = Field(description="Aylık Taksit Tutarı (TL)")
-    total_profit_try: float = Field(description="Toplam Ödenecek Kâr Payı (TL)")
-    total_payment_try: float = Field(description="Toplam Geri Ödeme Tutarı (TL)")
-    is_best_offer: bool = Field(default=False, description="En avantajlı teklif mi?")
+    product_id: int
+    product_name: str
+    profit_rate_pct: Decimal = Field(description="Aylık kâr payı oranı (%)")
+    rate_term_months: int | None = Field(default=None, description="Oranın yayımlandığı vade")
+    is_exact_term_match: bool = Field(description="Oran tam istenen vadeye mi ait?")
+    monthly_payment_try: Decimal
+    total_profit_try: Decimal
+    total_payment_try: Decimal
+    is_best_offer: bool = False
+    source_url: str | None = None
+    evidence_text: str | None = Field(default=None, description="Oranın okunduğu tablo satırı")
 
 
 class FinancingSimulationResponse(BaseModel):
     """Finansman simülasyon yanıtı."""
 
-    amount_try: float
+    amount_try: Decimal
     term_months: int
     product_type: str
     best_bank_code: str | None = None
     offers: list[BankFinancingOffer]
+    banks_without_data: list[MissingDataBank] = Field(default_factory=list)
+    method_note: str = Field(description="Hesabın nasıl yapıldığı")
+
+
+# ── Katılma hesabı getirisi ───────────────────────────────
 
 
 class ParticipationYieldRequest(BaseModel):
-    """Katılma hesabı kâr paylaşım getiri simülasyon isteği."""
+    """Katılma hesabı getiri simülasyon isteği."""
 
-    deposit_try: Decimal = Field(gt=0, description="Yatırım Tutarı (TL)")
-    term_days: int = Field(gt=0, description="Vade Gün Sayısı (31, 91, 183, 365 gün)")
-    currency: str = Field(default="TRY", description="Para Birimi (TRY, USD, EUR)")
+    deposit_try: Decimal = Field(gt=0, description="Yatırım tutarı")
+    term_days: int = Field(gt=0, le=3650, description="Vade gün sayısı")
+    currency: str = Field(default="TRY", description="Para birimi: TRY, USD, EUR, XAU, XAG")
 
 
 class BankYieldOffer(BaseModel):
-    """Tek bir bankanın katılma hesabı getiri teklifi."""
+    """Tek bir bankanın katılma hesabı getiri teklifi.
+
+    ⚠️ `annual_yield_gross_pct` bankanın KENDİ yayımladığı gerçekleşmiş
+    getiridir; katılımcı payı bu orana ZATEN dahildir. Ayrıca
+    `investor_share_pct` ile çarpılmaz — çarpılırsa payı iki kez düşülür.
+    `investor_share_pct` yalnızca bilgi amaçlı gösterilir.
+    """
 
     bank_code: str
     bank_name: str
-    investor_share_pct: float = Field(description="Müşteri Kâr Paylaşım Oranı (%)")
-    bank_share_pct: float = Field(description="Banka Kâr Paylaşım Oranı (%)")
-    annual_yield_gross_pct: float = Field(description="Tahmini Yıllık Brüt Getiri Oranı (%)")
-    estimated_gross_profit_try: float = Field(description="Tahmini Brüt Kâr (TL)")
-    estimated_net_profit_try: float = Field(description="Tahmini Net Kâr (TL)")
-    is_best_yield: bool = Field(default=False)
+    product_id: int
+    product_name: str
+    annual_yield_gross_pct: Decimal = Field(
+        description="Bankanın yayımladığı yıllık brüt getiri (%)"
+    )
+    rate_term_label: str | None = None
+    is_exact_term_match: bool
+    investor_share_pct: Decimal | None = Field(
+        default=None, description="Bilgi amaçlı: katılımcı payı"
+    )
+    bank_share_pct: Decimal | None = None
+    gross_profit_try: Decimal
+    withholding_pct: Decimal = Field(description="Uygulanan stopaj oranı (%)")
+    withholding_try: Decimal
+    net_profit_try: Decimal
+    is_best_yield: bool = False
+    source_url: str | None = None
+    evidence_text: str | None = None
 
 
 class ParticipationYieldResponse(BaseModel):
     """Katılma hesabı simülasyon yanıtı."""
 
-    deposit_try: float
+    deposit_try: Decimal
     term_days: int
     currency: str
     best_yield_bank_code: str | None = None
     offers: list[BankYieldOffer]
+    banks_without_data: list[MissingDataBank] = Field(default_factory=list)
+    withholding_note: str = Field(description="Uygulanan stopaj oranı ve mevzuat dayanağı")
+    method_note: str
+
+
+# ── BDDK limit denetimi ───────────────────────────────────
 
 
 class BDDKLimitCheckRequest(BaseModel):
-    """BDDK Taşıt/Konut LTV limit denetim isteği."""
+    """BDDK taşıt/konut azami finansman denetim isteği."""
 
-    asset_type: str = Field(description="Varlık Türü: tasit veya konut")
-    asset_value_try: Decimal = Field(gt=0, description="Araç kasko/fatura değeri veya Konut ekspertiz değeri")
-    energy_class: str | None = Field(default="A", description="Konut Enerji Sınıfı (A, B, C)")
+    asset_type: str = Field(description="Varlık türü: tasit veya konut")
+    asset_value_try: Decimal = Field(
+        gt=0, description="Kasko/fatura değeri veya konut ekspertiz değeri"
+    )
+    energy_class: str | None = Field(
+        default=None,
+        description="Konut enerji sınıfı (A, B, C veya diğer). Konut için zorunludur.",
+    )
 
 
 class BDDKLimitCheckResponse(BaseModel):
-    """BDDK Mevzuat Üst Sınır Denetim Yanıtı."""
+    """BDDK mevzuat üst sınır denetim yanıtı."""
 
     asset_type: str
-    asset_value_try: float
-    max_financing_ratio_pct: float = Field(description="BDDK İzin Verilen Azami Finansman Oranı (%)")
-    max_financing_amount_try: float = Field(description="BDDK İzin Verilen Azami Finansman Tutarı (TL)")
-    max_allowed_term_months: int = Field(description="BDDK İzin Verilen Azami Vade (Ay)")
-    legal_reference: str = Field(description="Mevzuat Dayanağı / BDDK Karar No")
+    asset_value_try: Decimal
+    energy_class: str | None = None
+    value_band_label: str = Field(description="Uygulanan değer bandı")
+    max_financing_ratio_pct: Decimal
+    max_financing_amount_try: Decimal
+    max_allowed_term_months: int | None = Field(
+        default=None, description="Azami vade (ay); sınır yoksa None"
+    )
+    is_financing_allowed: bool = Field(description="Bu değerde finansman kullandırılabilir mi?")
+    legal_reference: str

@@ -4,7 +4,12 @@ from app.schemas.bank import BankBase, BankDetail, BankSummary
 from app.schemas.campaign import CampaignDetail, CampaignListItem, SourceDocumentSummary
 from app.schemas.chat import ChatRequest, ChatResponse, ChatResultItem
 from app.schemas.common import ErrorDetail, ErrorResponse, HealthResponse, Page
-from app.schemas.compare import ComparisonItem, ComparisonRequest, ComparisonResponse, ComparisonWeights
+from app.schemas.compare import (
+    ProductRankingRequest,
+    ProductRankingResponse,
+    RankedProduct,
+    RankingWeights,
+)
 from app.schemas.simulator import (
     BDDKLimitCheckRequest,
     BDDKLimitCheckResponse,
@@ -13,7 +18,13 @@ from app.schemas.simulator import (
     ParticipationYieldRequest,
     ParticipationYieldResponse,
 )
-from app.schemas.stats import BankCampaignCount, CategoryCount, RadarScore, SectorCount, StatsResponse
+from app.schemas.stats import (
+    BankCampaignCount,
+    CategoryCount,
+    RadarScore,
+    SectorCount,
+    StatsResponse,
+)
 
 __all__ = [
     "BDDKLimitCheckRequest",
@@ -28,10 +39,6 @@ __all__ = [
     "ChatRequest",
     "ChatResponse",
     "ChatResultItem",
-    "ComparisonItem",
-    "ComparisonRequest",
-    "ComparisonResponse",
-    "ComparisonWeights",
     "ErrorDetail",
     "ErrorResponse",
     "FinancingSimulationRequest",
@@ -40,7 +47,11 @@ __all__ = [
     "Page",
     "ParticipationYieldRequest",
     "ParticipationYieldResponse",
+    "ProductRankingRequest",
+    "ProductRankingResponse",
     "RadarScore",
+    "RankedProduct",
+    "RankingWeights",
     "SectorCount",
     "SourceDocumentSummary",
     "StatsResponse",

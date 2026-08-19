@@ -8,7 +8,10 @@ from pydantic import BaseModel, Field
 class ChatRequest(BaseModel):
     """Sohbet ve arama isteği."""
 
-    query: str = Field(min_length=2, description="Doğal dil sorusu (Örn: 'En düşük konut finansmanı oranı hangi bankada?')")
+    query: str = Field(
+        min_length=2,
+        description="Doğal dil sorusu (Örn: 'En düşük konut finansmanı oranı hangi bankada?')",
+    )
     bank_code: str | None = Field(default=None, description="Banka süzgeci")
 
 
@@ -32,6 +35,8 @@ class ChatResponse(BaseModel):
     answer_text: str
     forbidden_terms_warning: str | None = Field(
         default=None,
-        description="Yasaklı konvansiyonel terim uyarısı (Örn: 'faiz' yerine 'kâr payı' kullanılır)",
+        description=(
+            "Yasaklı konvansiyonel terim uyarısı (örn. 'faiz' yerine 'kâr payı' kullanılır)"
+        ),
     )
     results: list[ChatResultItem] = Field(default_factory=list)

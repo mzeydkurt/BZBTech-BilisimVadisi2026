@@ -31,11 +31,15 @@ class RadarScore(BaseModel):
 
     bank_code: str
     bank_name: str
-    rate_competitiveness: float = Field(ge=0, le=100, description="Kâr Payı Oranı Rekabetçiliği (0-100)")
+    rate_competitiveness: float = Field(
+        ge=0, le=100, description="Kâr Payı Oranı Rekabetçiliği (0-100)"
+    )
     campaign_volume: float = Field(ge=0, le=100, description="Kampanya Hacmi (0-100)")
     reward_generosity: float = Field(ge=0, le=100, description="Ödül & İade Cömertliği (0-100)")
     term_flexibility: float = Field(ge=0, le=100, description="Vade Esnekliği (0-100)")
-    transparency_index: float = Field(ge=0, le=100, description="Veri Şeffaflığı ve Güven İndeksi (0-100)")
+    transparency_index: float = Field(
+        ge=0, le=100, description="Veri Şeffaflığı ve Güven İndeksi (0-100)"
+    )
 
 
 class SectorCount(BaseModel):
@@ -61,7 +65,9 @@ class StatsResponse(BaseModel):
     rates_total: int = Field(default=0, description="Yapısal oran satırı sayısı")
     limits_total: int = Field(default=0, description="Yapısal limit satırı sayısı")
     ai_coverage_pct: float = Field(default=0.0, description="AI/Kural çıkarım kapsama oranı (%)")
-    green_campaigns_count: int = Field(default=0, description="Yeşil / Sürdürülebilir finansman kampanya sayısı")
+    green_campaigns_count: int = Field(
+        default=0, description="Yeşil / Sürdürülebilir finansman kampanya sayısı"
+    )
     campaigns_by_bank: list[BankCampaignCount]
     campaigns_by_category: list[CategoryCount]
     sector_distribution: list[SectorCount] = Field(default_factory=list)

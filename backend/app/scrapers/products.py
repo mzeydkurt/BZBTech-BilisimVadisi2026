@@ -661,6 +661,7 @@ class ProductRunner:
                     fetched_at=document.fetched_at,
                 )
             )
+            result.limits_new += 1
 
         session.flush()
 
@@ -710,6 +711,7 @@ class ProductRunner:
             yeni_urun=result.products_new,
             guncellenen_urun=result.products_updated,
             yeni_oran=result.rates_new,
+            yeni_limit=result.limits_new,
             hata=result.errors_count,
         )
         if dry_run or run_row is None:
@@ -818,11 +820,6 @@ def limits_from_ltv_matrices(html: str | None) -> list[RawProductLimit]:
             )
         )
     return bulunan
-
-
-def rates_from_ltv_matrices(html: str | None) -> list[RawProductRate]:
-    """Eski uyumluluk kancası. Oransız LTV satırları artık product_limits'e gidiyor."""
-    return []
 
 
 def rates_from_tables(

@@ -38,6 +38,7 @@ from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
+from app.config import get_settings
 from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
@@ -283,10 +284,16 @@ class AlbarakaScraper(BaseScraper):
         robots.txt ile yasaklanmış kalıplar burada da elenir: yasağa uymak
         yalnızca `Fetcher`'ın işi değil, keşfin de o adresleri hiç
         önermemesi gerekir.
+
+        ⚠️ `scraper_robots_override` açıkken bu eleme yapılmaz. Aksi hâlde
+        anahtar açılsa bile bu adresler keşfe hiç girmediği için etkisiz
+        kalır; izin denetimi tek noktadan yönetilmelidir.
         """
         if not is_same_site(url, BASE_URL):
             return False
-        if any(isaret in url for isaret in ROBOTS_BLOCKED_MARKERS):
+        if not get_settings().scraper_robots_override and any(
+            isaret in url for isaret in ROBOTS_BLOCKED_MARKERS
+        ):
             return False
 
         path = urlsplit(url).path.rstrip("/")
