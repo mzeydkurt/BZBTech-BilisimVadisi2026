@@ -190,11 +190,16 @@ def _oz_tutarlilik(session: Session) -> None:
     ⚠️ ∅ == ∅ UYUM SAYILIR. "Bu alan metinde yok" da bir karardır; iki turda
     da aynı kararın verilmesi tutarlılıktır.
     """
-    turlar: dict[str, dict[tuple[str, str], str | None]] = defaultdict(dict)
+    turlar: dict[str, dict[tuple[str, str], tuple[str | None, str | None]]] = defaultdict(
+        dict
+    )
     for etiket in session.scalars(select(GoldAnnotation)):
         if etiket.campaign_key is None:
             continue
-        turlar[etiket.annotator][(etiket.campaign_key, etiket.field_name)] = etiket.gold_value
+        turlar[etiket.annotator][(etiket.campaign_key, etiket.field_name)] = (
+            etiket.gold_value,
+            etiket.evidence_text,
+        )
 
     print("\nÖz-tutarlılık (§4.5 / kılavuz §4)")
 
@@ -215,7 +220,23 @@ def _oz_tutarlilik(session: Session) -> None:
             print(f"  {ad1} ↔ {ad2}: ortak etiket yok")
             continue
 
-        uyan = sum(1 for k in ortak if (tur1[k] or None) == (tur2[k] or None))
+        # ⚠️ KANIT METNİ de birebir aynıysa bu bağımsız bir tur DEĞİLDİR.
+        # Kanıt fareyle elle seçilir; yüzlerce seçimin aynı karakterde
+        # başlayıp bitmesi mümkün değil. Bu imza, arayüzün formu birinci
+        # turun cevaplarıyla ön-doldurduğunu gösterir — ölçülen şey uyum
+        # değil, kopyadır. Sayı yayımlanırsa jüri karşısında savunulamaz.
+        kanit_ayni = sum(1 for k in ortak if (tur1[k][1] or "") == (tur2[k][1] or ""))
+        if len(ortak) >= 20 and kanit_ayni == len(ortak):
+            print(f"  ✗ {ad1} ↔ {ad2}: ÖLÇÜLEMEDİ — ikinci tur kör değil")
+            print(
+                f"     {len(ortak)} alanın {len(ortak)}'ünde KANIT METNİ de birebir aynı."
+            )
+            print("     Arayüz formu birinci turun cevaplarıyla doldurmuş; bu bir")
+            print("     kopya, bağımsız yargı değil. Süzgeç düzeltildi — turu")
+            print("     tekrarlamak için önce bu turun kayıtlarını sil.")
+            continue
+
+        uyan = sum(1 for k in ortak if (tur1[k][0] or None) == (tur2[k][0] or None))
         oran = uyan / len(ortak)
         isaret = "✓" if oran >= TUTARLILIK_ESIGI else "✗"
         print(
@@ -229,7 +250,7 @@ def _oz_tutarlilik(session: Session) -> None:
         # Uyuşmayan alanlar kılavuzun neresinin belirsiz olduğunu gösterir.
         uyusmaz: dict[str, int] = defaultdict(int)
         for k in ortak:
-            if (tur1[k] or None) != (tur2[k] or None):
+            if (tur1[k][0] or None) != (tur2[k][0] or None):
                 uyusmaz[k[1]] += 1
         if uyusmaz:
             enler = sorted(uyusmaz.items(), key=lambda x: -x[1])[:5]

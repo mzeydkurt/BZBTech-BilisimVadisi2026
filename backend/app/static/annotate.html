@@ -282,7 +282,6 @@ function doldur(veri) {
       satir.querySelector(".kanit").textContent = kayit.evidence_text || "";
       isaretle(satir);
     }
-    if (kayit.note) $("#not").value = kayit.note;
   }
 
   // ⚠️ Ön-doldurma YALNIZCA assisted kipte uygulanır; kör kipte asla.
@@ -304,8 +303,19 @@ function doldur(veri) {
  * etiketleyicileri kapsar ve öz-tutarlılık turu (`Zeyd-tur2`) örneklemin
  * başına dönemez; ilk turun bittiği yerden devam eder. */
 function siradakiAdresi() {
+  return `${API}/next${adSorgusu()}`;
+}
+
+/** Etiketleyen adını sorgu dizesine çevirir.
+ *
+ * ⚠️ Ad gönderilmezse sunucu TÜM etiketleyicilerin kayıtlarını geri yükler
+ * ve form birinci turun cevaplarıyla dolar. Öz-tutarlılık turu o anda
+ * körlüğünü kaybeder: etiketleyici kendi kararını görüp onaylar, uyum sahte
+ * biçimde %100 çıkar. Ölçüldü: 704 alanın 704'ü hem değer hem KANIT
+ * METNİ olarak birebir aynıydı — elle seçimle imkânsız. */
+function adSorgusu() {
   const ad = $("#etiketleyen").value.trim();
-  return ad ? `${API}/next?annotator=${encodeURIComponent(ad)}` : `${API}/next`;
+  return ad ? `?annotator=${encodeURIComponent(ad)}` : "";
 }
 
 async function yukle(url) {
@@ -373,7 +383,7 @@ $("#sonraki").addEventListener("click", async () => {
 });
 $("#onceki").addEventListener("click", async () => {
   const id = gecmis.pop();
-  if (id) await yukle(`${API}/${id}`);
+  if (id) await yukle(`${API}/${id}${adSorgusu()}`);
 });
 
 document.addEventListener("keydown", (e) => {

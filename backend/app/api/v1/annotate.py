@@ -165,15 +165,22 @@ def read_next(
         cid = _resolve_id(session, kayit)
         if cid is None or cid in etiketli:
             continue
-        return _build(session, cid)
+        return _build(session, cid, annotator=annotator)
 
     raise HTTPException(status.HTTP_404_NOT_FOUND, "Etiketlenecek kampanya kalmadı")
 
 
 @router.get("/{campaign_id}", response_model=CampaignForAnnotation, summary="Kampanya detayı")
-def read_campaign(session: DbSession, campaign_id: int) -> CampaignForAnnotation:
+def read_campaign(
+    session: DbSession,
+    campaign_id: int,
+    annotator: str | None = Query(
+        default=None,
+        description="Yalnızca bu etiketleyicinin kayıtları geri yüklenir (öz-tutarlılık turu).",
+    ),
+) -> CampaignForAnnotation:
     """Tek bir kampanyayı etiketleme bağlamıyla döndürür."""
-    return _build(session, campaign_id)
+    return _build(session, campaign_id, annotator=annotator)
 
 
 def _normalize_gold(deger: str | None, birim: str) -> str | None:
@@ -285,8 +292,18 @@ def save_annotations(
     return [AnnotationOut.model_validate(kayit) for kayit in kaydedilen]
 
 
-def _build(session: DbSession, campaign_id: int) -> CampaignForAnnotation:
-    """Kampanyayı etiketleme bağlamıyla birleştirir."""
+def _build(
+    session: DbSession, campaign_id: int, *, annotator: str | None = None
+) -> CampaignForAnnotation:
+    """Kampanyayı etiketleme bağlamıyla birleştirir.
+
+    ⚠️ `existing` YALNIZCA verilen etiketleyicinin kayıtlarını taşır. Aksi
+    hâlde ikinci tur (öz-tutarlılık) körlüğünü kaybeder: arayüzün "düzeltme
+    akışı" formu BİRİNCİ TURUN cevaplarıyla doldurur, etiketleyici kendi
+    verdiği kararı görüp onaylar ve uyum sahte biçimde %100 çıkar. Ölçüldü:
+    Zeyd2 turunda 704 alanın 704'ü birebir aynıydı — bağımsız yargı değil,
+    kopyaydı.
+    """
     satir = session.execute(
         select(Campaign, Bank, SourceDocument.clean_text)
         .join(Bank, Bank.id == Campaign.bank_id)
@@ -300,13 +317,10 @@ def _build(session: DbSession, campaign_id: int) -> CampaignForAnnotation:
     campaign, bank, clean_text = satir
     ornek = _sample_index(session).get(campaign_id, {})
 
-    mevcut = list(
-        session.scalars(
-            select(GoldAnnotation)
-            .where(GoldAnnotation.campaign_id == campaign_id)
-            .order_by(GoldAnnotation.field_name)
-        )
-    )
+    mevcut_sorgu = select(GoldAnnotation).where(GoldAnnotation.campaign_id == campaign_id)
+    if annotator:
+        mevcut_sorgu = mevcut_sorgu.where(GoldAnnotation.annotator == annotator)
+    mevcut = list(session.scalars(mevcut_sorgu.order_by(GoldAnnotation.field_name)))
 
     return CampaignForAnnotation(
         campaign_id=campaign_id,

@@ -183,3 +183,53 @@ class TestOtoKanitIsareti:
 
         etiketli_oturum.refresh(etiket)
         assert etiket.note != OTO_KANIT_NOTU
+
+
+class TestIkinciTurKorlugu:
+    """⚠️ İkinci tur BİRİNCİ TURUN cevaplarını GÖRMEMELİ.
+
+    Arayüzün "düzeltme akışı" `existing` alanını forma dolduruyor. Bu alan
+    etiketleyiciye göre süzülmezse ikinci tur körlüğünü kaybeder: kişi kendi
+    kararını görüp onaylar ve uyum sahte biçimde %100 çıkar.
+
+    Ölçüldü: Zeyd2 turunda 704 alanın 704'ü hem DEĞER hem KANIT METNİ olarak
+    birebir aynıydı. Kanıt fareyle elle seçiliyor; 704 seçimin aynı karakterde
+    başlayıp bitmesi mümkün değil — form ön-dolu geliyordu.
+    """
+
+    def test_baska_turun_etiketi_geri_yuklenmez(
+        self, api_client: httpx.Client, etiketli_oturum: Session
+    ) -> None:
+        cid = _ilk_kampanya_id(etiketli_oturum)
+
+        yanit = api_client.get(f"/api/v1/annotate/{cid}?annotator=Zeyd-tur2")
+
+        assert yanit.status_code == 200
+        assert yanit.json()["existing"] == []
+
+    def test_kendi_etiketi_geri_yuklenir(
+        self, api_client: httpx.Client, etiketli_oturum: Session
+    ) -> None:
+        """Düzeltme akışı KENDİ turu için çalışmaya devam etmeli."""
+        cid = _ilk_kampanya_id(etiketli_oturum)
+
+        veri = api_client.get(f"/api/v1/annotate/{cid}?annotator=Zeyd").json()
+
+        assert [k["field_name"] for k in veri["existing"]] == ["cashback_pct"]
+
+    def test_ad_verilmezse_hepsi_doner(
+        self, api_client: httpx.Client, etiketli_oturum: Session
+    ) -> None:
+        """Parametresiz çağrı geriye uyumlu kalır."""
+        cid = _ilk_kampanya_id(etiketli_oturum)
+
+        assert api_client.get(f"/api/v1/annotate/{cid}").json()["existing"]
+
+    def test_sonraki_kayit_da_suzulur(
+        self, api_client: httpx.Client, etiketli_oturum: Session
+    ) -> None:
+        """`/next` de aynı süzgeci uygulamalı; iki uç ayrışmamalı."""
+        veri = api_client.get("/api/v1/annotate/next?annotator=Zeyd-tur2").json()
+
+        assert veri["campaign_id"] == _ilk_kampanya_id(etiketli_oturum)
+        assert veri["existing"] == []
