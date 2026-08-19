@@ -339,6 +339,25 @@ def gold_durum() -> int:
     return _calistir([_python(), "-m", "scripts.gold_status", *_ek_argumanlar()], cwd=BACKEND)
 
 
+def kanit_bagla() -> int:
+    """Kanıtı boş gold etiketlerine metinden bağlamlı kanıt bağlar (ağa çıkmaz).
+
+    ⚠️ İNSAN DOĞRULAMASI DEĞİLDİR. Etiketin DEĞERİNİ metinde arar ve
+    çevresindeki cümle parçasını kanıt yazar; değerin doğruluğunu denetlemez.
+    Yazılan kanıtlar `oto-kanit` ile işaretlenir ve `gold-durum` bunları
+    insan seçimlerinden AYRI sayar.
+
+    Sınıflandırma alanları (`sector`, `product_type`, `target_customer`,
+    `reward_type`) bağlanmaz: metin kategori adını yazmaz, hangi ifadenin o
+    kategoriyi doğurduğu insan yargısıdır.
+
+    `--kuru` ile yazmadan kaç etiketin bağlanacağı raporlanır.
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.anchor_gold_evidence", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
 def cikarim() -> int:
     """Kampanya metinlerinden bilgi çıkarır (ağa çıkmaz).
 
@@ -492,6 +511,7 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "gold-ornek": (gold_ornek, "Gold set örneklemi seçer (ağa çıkmaz)"),
     "etiketle": (etiketle, "Gold set etiketleme arayüzünü açar"),
     "gold-durum": (gold_durum, "Etiketleme ilerlemesini raporlar"),
+    "kanit-bagla": (kanit_bagla, "Kanıtı boş gold etiketlerini metne bağlar"),
     "envanter-uygula": (envanter_uygula, "Hesaplayıcı envanterini ürün limitlerine uygular"),
     "cikarim": (cikarim, "Kampanya metinlerinden bilgi çıkarır (ağa çıkmaz)"),
     "degerlendir": (degerlendir, "Gold set'e karşı F1 ölçer (ağa çıkmaz)"),

@@ -186,7 +186,20 @@ python dev.py gold-ornek         # örneklem seç
 python dev.py etiketle           # etiketleme arayüzü → /api/v1/annotate/ui
 python dev.py gold-durum         # ilerleme + kanıt + öz-tutarlılık
 python dev.py gold-denetle       # kanıtı doğrulanamayan etiketleri raporla
+python dev.py kanit-bagla --kuru # kanıtı boş etiketleri metne bağla (önce dene)
 ```
+
+**Kanıt bağlama.** `kanit-bagla`, kanıtı boş kalmış etiketlerin DEĞERİNİ
+metinde arar ve çevresindeki cümle parçasını kanıt yazar. Çıplak rakam kanıt
+sayılmaz: her alan için yakınında bir birim/bağlam aranır (`TL`, `%`,
+`taksit`, `vade`). Sınıflandırma alanları (`sector`, `product_type`,
+`target_customer`, `reward_type`) bağlanmaz — metin kategori adını yazmaz,
+hangi ifadenin o kategoriyi doğurduğu insan yargısıdır.
+
+> ⚠️ Otomatik bağlama **insan doğrulaması değildir**. Yazılan kanıtlar
+> `oto-kanit` ile işaretlenir ve `gold-durum` bunları insan seçimlerinden
+> ayrı sayar. Tek bir "kanıtlı etiket" sayısı verilseydi rapor, sahip
+> olmadığımız bir titizliği iddia ederdi.
 
 **Öz-tutarlılık (kılavuz §4).** İlk 15 kaydı etiketledikten sonra durun ve
 **ertesi gün** aynı 15'i yeniden etiketleyin: arayüzdeki "Etiketleyen"

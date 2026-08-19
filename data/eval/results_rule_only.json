@@ -2,14 +2,14 @@
   "mode": "rule_only",
   "gold_campaigns": 75,
   "gold_annotations": 1650,
-  "micro_f1": 0.8144,
-  "macro_f1": 0.7839,
-  "hallucination_rate": 0.1581,
-  "correct_silence_rate": 0.9201,
+  "micro_f1": 0.811,
+  "macro_f1": 0.782,
+  "hallucination_rate": 0.1616,
+  "correct_silence_rate": 0.9185,
   "overall": {
-    "tp": 474,
-    "fp": 89,
-    "fn": 127,
+    "tp": 472,
+    "fp": 91,
+    "fn": 129,
     "tn": 1025
   },
   "by_field": {
@@ -44,9 +44,9 @@
       "tn": 71
     },
     "term_months_min": {
-      "tp": 3,
-      "fp": 1,
-      "fn": 0,
+      "tp": 2,
+      "fp": 2,
+      "fn": 1,
       "tn": 71
     },
     "term_months_max": {
@@ -86,9 +86,9 @@
       "tn": 65
     },
     "reward_amount_try": {
-      "tp": 31,
-      "fp": 1,
-      "fn": 2,
+      "tp": 30,
+      "fp": 2,
+      "fn": 3,
       "tn": 41
     },
     "reward_type": {
@@ -154,9 +154,9 @@
       "tn": 398
     },
     "assisted": {
-      "tp": 285,
-      "fp": 40,
-      "fn": 73,
+      "tp": 283,
+      "fp": 42,
+      "fn": 75,
       "tn": 627
     }
   },
@@ -192,9 +192,9 @@
       "tn": 61
     },
     "kuveyt_turk": {
-      "tp": 64,
-      "fp": 24,
-      "fn": 23,
+      "tp": 62,
+      "fp": 26,
+      "fn": 25,
       "tn": 126
     },
     "dunya_katilim": {

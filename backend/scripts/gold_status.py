@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Campaign, GoldAnnotation, SourceDocument
+from scripts.anchor_gold_evidence import OTO_KANIT_NOTU
 from app.db.session import SessionLocal
 from app.logging_config import configure_logging
 from app.services.gold_service import (
@@ -68,6 +69,7 @@ def _kanit_denetimi(session: Session) -> None:
     tekrarlayan: set[int] = set()
     bulunamayan: set[int] = set()
     kanitsiz = 0
+    otomatik = 0
     kampanya_kanitlari: dict[int, list[str]] = defaultdict(list)
 
     for etiket, clean_text in kayitlar:
@@ -75,6 +77,11 @@ def _kanit_denetimi(session: Session) -> None:
         if not kanit:
             kanitsiz += 1
             continue
+        # ⚠️ Otomatik bağlanan kanıt İNSAN DOĞRULAMASI DEĞİLDİR; ayrı sayılır.
+        # Tek bir "kanıtlı etiket" sayısı verilirse rapor, sahip olmadığımız
+        # bir titizliği iddia eder.
+        if (etiket.note or "") == OTO_KANIT_NOTU:
+            otomatik += 1
         kampanya_kanitlari[etiket.campaign_id].append(kanit)
         if len(kanit) > KANIT_MAX:
             uzun.add(etiket.campaign_id)
@@ -88,6 +95,8 @@ def _kanit_denetimi(session: Session) -> None:
     sorunlu = uzun | tekrarlayan | bulunamayan
     print("\nKanıt denetimi (§4.5 kural 2)")
     print(f"  kanıtı boş etiket        : {kanitsiz}")
+    print(f"  ├─ insan seçimi kanıt    : {len(kayitlar) - kanitsiz - otomatik}")
+    print(f"  └─ otomatik bağlanan     : {otomatik}  (insan doğrulaması DEĞİL)")
     print(f"  kanıt > {KANIT_MAX} karakter    : {len(uzun)} kampanya")
     print(f"  tüm alanlarda aynı kanıt : {len(tekrarlayan)} kampanya")
     print(f"  kanıt metinde bulunamadı : {len(bulunamayan)} kampanya")

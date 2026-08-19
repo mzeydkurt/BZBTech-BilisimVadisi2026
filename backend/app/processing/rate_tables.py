@@ -35,9 +35,9 @@ from bs4 import BeautifulSoup, Tag
 
 from app.core.normalization.money import parse_money
 from app.core.normalization.rate import parse_profit_sharing_ratio, parse_rate
-from app.core.vocab import VARIANT_VOCAB
 from app.core.normalization.term import parse_term_months
 from app.core.normalization.text import ascii_fold_tr, lower_tr, normalize_text
+from app.core.vocab import VARIANT_VOCAB
 
 # ⚠️ Stopaj satırı `product_rates`'e YAZILMAZ (SPRINT2.5 §516). Banka, paylaşım
 # tablosunun altına vade bazlı stopaj oranını da koyuyor: "Stopaj Oranı | 1
