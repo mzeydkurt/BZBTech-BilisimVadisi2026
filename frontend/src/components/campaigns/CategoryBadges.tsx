@@ -1,66 +1,7 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { taxonomyLabel } from "@/lib/taxonomy";
 import { cn } from "@/lib/utils";
 import type { CampaignCategory, TaxonomyAxis } from "@/types/api";
-
-/**
- * Kontrollü sözlük değerlerinin Türkçe karşılıkları.
- *
- * Veritabanında slug tutulur (`market_gida`); kullanıcıya okunur ad gösterilir.
- * Karşılığı olmayan bir değer gelirse slug olduğu gibi gösterilir — sessizce
- * gizlemek, sınıflandırmanın yeni bir değer ürettiğini fark etmemize engel olur.
- */
-const LABELS: Record<string, string> = {
-  // sector
-  market_gida: "Market ve Gıda",
-  akaryakit: "Akaryakıt",
-  giyim_aksesuar: "Giyim ve Aksesuar",
-  elektronik_telekom: "Elektronik",
-  beyaz_esya_ev: "Beyaz Eşya",
-  mobilya_dekorasyon: "Mobilya",
-  yapi_hirdavat: "Yapı ve Hırdavat",
-  kuyum_optik_saat: "Kuyum ve Optik",
-  eticaret_pazaryeri: "E-ticaret",
-  seyahat_konaklama: "Seyahat",
-  ulasim_arac_kiralama: "Ulaşım",
-  restoran_kafe: "Restoran",
-  eglence_dijital: "Eğlence ve Dijital",
-  egitim_kitap: "Eğitim ve Kitap",
-  saglik_kozmetik: "Sağlık ve Kozmetik",
-  hobi_oyuncak_spor: "Hobi ve Spor",
-  vergi_fatura_kamu: "Vergi ve Fatura",
-  yatirim_birikim: "Yatırım",
-  konut_gayrimenkul: "Konut",
-  kurumsal_kobi: "Kurumsal / KOBİ",
-  genel: "Genel",
-  // product_type
-  finansman: "Finansman",
-  ihtiyac_finansmani: "İhtiyaç Finansmanı",
-  konut_finansmani: "Konut Finansmanı",
-  tasit_finansmani: "Taşıt Finansmanı",
-  kart: "Kart",
-  alisveris_puani: "Alışveriş Puanı",
-  yeni_musteri: "Yeni Müşteri",
-  yatirim_urunu: "Yatırım Ürünü",
-  birikim_katilma_hesabi: "Katılma Hesabı",
-  sigorta: "Sigorta",
-  pos_uye_isyeri: "POS / Üye İşyeri",
-  dijital_bankacilik: "Dijital Bankacılık",
-  odeme_fatura: "Ödeme ve Fatura",
-  kobi_ticari: "KOBİ / Ticari",
-  isyeri_finansmani: "İşyeri Finansmanı",
-  // benefit
-  nakit_iade: "Nakit İade",
-  puan_mil: "Puan / Mil",
-  taksit: "Taksit",
-  vade_farksiz_taksit: "Vade Farksız Taksit",
-  indirim: "İndirim",
-  hediye_ceki: "Hediye Çeki",
-  ucret_muafiyeti: "Ücret Muafiyeti",
-  masrafsiz: "Masrafsız",
-  avantajli_kar_payi: "Avantajlı Kâr Payı",
-  hediye_urun: "Hediye Ürün",
-  cekilis: "Çekiliş",
-};
 
 const SOURCE_LABELS: Record<string, string> = {
   url: "adres yolundan (bankanın verisi)",
@@ -79,10 +20,6 @@ const SOURCE_LABELS: Record<string, string> = {
  * gösterilir ve nedeni ipucunda yazar.
  */
 const LOW_CONFIDENCE = 0.5;
-
-function labelOf(value: string): string {
-  return LABELS[value] ?? value;
-}
 
 interface CategoryBadgesProps {
   categories: CampaignCategory[];
@@ -133,7 +70,7 @@ export function CategoryBadges({
                     : "border-border bg-surface-100 text-text-700",
                 )}
               >
-                {labelOf(category.value)}
+                {taxonomyLabel(category.value)}
               </span>
             </TooltipTrigger>
             <TooltipContent>
