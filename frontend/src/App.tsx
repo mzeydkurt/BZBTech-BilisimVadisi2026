@@ -4,7 +4,13 @@ import { Route, BrowserRouter as Router, Routes } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CampaignsPage } from "@/pages/CampaignsPage";
+import { ChatPage } from "@/pages/ChatPage";
+import { ComparePage } from "@/pages/ComparePage";
+import { ExtractPage } from "@/pages/ExtractPage";
 import { OverviewPage } from "@/pages/OverviewPage";
+import { ProductDetailPage } from "@/pages/ProductDetailPage";
+import { ProductsPage } from "@/pages/ProductsPage";
+import { SimulatorPage } from "@/pages/SimulatorPage";
 
 // §10.4: retry 1, staleTime 30 sn. Hatalar bileşenlere `isError` ile ulaşır ve
 // ErrorState ile gösterilir — boş sonuçla asla karıştırılmaz.
@@ -27,6 +33,12 @@ export default function App() {
             <Routes>
               <Route path="/" element={<OverviewPage />} />
               <Route path="/campaigns" element={<CampaignsPage />} />
+              <Route path="/products" element={<ProductsPage />} />
+              <Route path="/products/:id" element={<ProductDetailPage />} />
+              <Route path="/compare" element={<ComparePage />} />
+              <Route path="/simulator" element={<SimulatorPage />} />
+              <Route path="/chat" element={<ChatPage />} />
+              <Route path="/extract" element={<ExtractPage />} />
               <Route
                 path="*"
                 element={
