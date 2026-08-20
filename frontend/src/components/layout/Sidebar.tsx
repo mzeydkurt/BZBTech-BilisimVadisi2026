@@ -1,4 +1,12 @@
-import { LayoutDashboard, Table2 } from "lucide-react";
+import {
+  LayoutDashboard,
+  Table2,
+  Package,
+  ArrowLeftRight,
+  Calculator,
+  MessageSquare,
+  FlaskConical,
+} from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 import { cn } from "@/lib/utils";
@@ -6,6 +14,11 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { to: "/", label: "Genel Bakış", icon: LayoutDashboard, end: true },
   { to: "/campaigns", label: "Kampanyalar", icon: Table2, end: false },
+  { to: "/products", label: "Ürünler", icon: Package, end: false },
+  { to: "/compare", label: "Karşılaştırma", icon: ArrowLeftRight, end: false },
+  { to: "/simulator", label: "Simülatör", icon: Calculator, end: false },
+  { to: "/chat", label: "Akıllı Arama", icon: MessageSquare, end: false },
+  { to: "/extract", label: "Çıkarım Lab", icon: FlaskConical, end: false },
 ];
 
 export function Sidebar() {
