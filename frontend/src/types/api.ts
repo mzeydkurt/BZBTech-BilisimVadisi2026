@@ -134,6 +134,8 @@ export interface CampaignQuery {
   page?: number;
   page_size?: number;
   include_children?: boolean;
+  /** Varsayılan false: süresi kesin dolmuş kampanyalar gizlenir (KAPI 5). */
+  include_expired?: boolean;
 }
 
 export interface CampaignListItem {
@@ -216,7 +218,15 @@ export interface CampaignCompareRequest {
 
 // ==================== Ürünler ====================
 
-export type RateType = "financing_rate" | "participation_yield" | "profit_sharing_ratio";
+/** Sıralamaya (`/compare`) girebilen oran türleri. */
+export type ComparableRateType = "financing_rate" | "participation_yield" | "profit_sharing_ratio";
+
+/**
+ * Tüm depolanabilir oran türleri. `interest_free_benevolent_loan` (karz-ı
+ * hasen / vade farksız eğitim finansmanı) KASITLI OLARAK `ComparableRateType`'ta
+ * YOK — bu ürünler sıralamaya hiç giremez (bkz. backend `RATE_TYPE_COMPARABLE_FIELD`).
+ */
+export type RateType = ComparableRateType | "interest_free_benevolent_loan";
 
 export interface ProductRateOut {
   id: number;
@@ -242,6 +252,8 @@ export interface ProductRateOut {
   rate_source: string;
   confidence: string;
   evidence_text: string | null;
+  /** bank_site | tkbb_veripetegi — KATİP KAPI 4 */
+  data_source: string;
 }
 
 export interface ProductLimitOut {
@@ -274,6 +286,16 @@ export interface ProductOut {
   variant_label: string | null;
   parent_product_id: number | null;
   is_active: boolean;
+  /** ilk_alim | sonraki_alim | null — KATİP KAPI 1.2 */
+  purchase_order: string | null;
+  brand: string | null;
+  model: string | null;
+  /** offered | not_offered | unknown — KATİP KAPI 1.5 */
+  availability_status: string;
+  amount_min: string | null;
+  amount_max: string | null;
+  term_months_min: number | null;
+  term_months_max: number | null;
   rates: ProductRateOut[];
   limits: ProductLimitOut[];
 }
@@ -282,10 +304,6 @@ export type CollateralType = "konut" | "tasit" | "yok" | "diger";
 
 export interface ProductDetailOut extends ProductOut {
   description: string | null;
-  amount_min: string | null;
-  amount_max: string | null;
-  term_months_min: number | null;
-  term_months_max: number | null;
   allowed_terms: number[] | null;
   collateral_type: CollateralType | null;
   has_calculator: boolean;
@@ -322,7 +340,7 @@ export interface RankingWeights {
 }
 
 export interface ProductRankingRequest {
-  rate_type: RateType;
+  rate_type: ComparableRateType;
   criterion: RankingCriterion;
   product_type?: string | null;
   bank_codes?: string[] | null;
@@ -366,6 +384,56 @@ export interface ProductRankingResponse {
   ranked: RankedProduct[];
   without_data: RankedProduct[];
   note: string;
+}
+
+// ==================== Finansmanlar (KATİP KAPI 6) ====================
+
+export interface FinancingQuery {
+  bank_code?: string;
+  product_type?: string;
+  limit?: number;
+}
+
+export interface FinancingResponse {
+  financing: ProductOut[];
+  no_data_products: string[];
+  coverage_note: string;
+}
+
+// ==================== Katılım Hesabı (KATİP KAPI 7) ====================
+
+export type KatilimHesabiRateType = "participation_yield" | "profit_sharing_ratio";
+export type KatilimHesabiVariant = "normal" | "ara_odemeli";
+export type KatilimHesabiTerm = "aylik" | "3_aylik" | "6_aylik" | "yillik";
+
+export interface KatilimHesabiQuery {
+  rate_type?: KatilimHesabiRateType;
+  variant?: KatilimHesabiVariant;
+  currency?: string;
+  term?: KatilimHesabiTerm;
+}
+
+export interface KatilimHesabiCrossCheck {
+  bank_site_value: string | null;
+  tkbb_value: string | null;
+  match: "ayni" | "yakin" | "farkli";
+}
+
+export interface KatilimHesabiRow {
+  bank_code: string;
+  bank_name: string;
+  /** "{vade}|{para_birimi}" -> değer, ör. "aylik|TRY" */
+  values: Record<string, string>;
+  data_source: string;
+  cross_check: KatilimHesabiCrossCheck | null;
+}
+
+export interface KatilimHesabiResponse {
+  rate_type: string;
+  variant: string;
+  rows: KatilimHesabiRow[];
+  not_offered_banks: string[];
+  data_quality_notes: string[];
 }
 
 // ==================== Simülatör ====================

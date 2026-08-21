@@ -10,8 +10,12 @@ import type {
   ChatResponse,
   ExtractRequest,
   ExtractResponse,
+  FinancingQuery,
+  FinancingResponse,
   FinancingSimulationRequest,
   FinancingSimulationResponse,
+  KatilimHesabiQuery,
+  KatilimHesabiResponse,
   Page,
   ParticipationYieldRequest,
   ParticipationYieldResponse,
@@ -131,6 +135,12 @@ export const api = {
   product: (id: number) => get<ProductDetailOut>(`/products/${id}`),
   compareProducts: (body: ProductRankingRequest) =>
     post<ProductRankingResponse>("/products/compare", body),
+
+  financing: (query: FinancingQuery) =>
+    get<FinancingResponse>("/financing", query as Record<string, unknown>),
+
+  katilimHesabi: (query: KatilimHesabiQuery) =>
+    get<KatilimHesabiResponse>("/katilim-hesabi", query as Record<string, unknown>),
 
   simulateFinancing: (body: FinancingSimulationRequest) =>
     post<FinancingSimulationResponse>("/simulator/financing", body),

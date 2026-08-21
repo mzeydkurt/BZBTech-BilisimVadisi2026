@@ -109,3 +109,27 @@ export function formatMonths(value: number | null | undefined): string {
   }
   return `${numberFormatter.format(value)} ay`;
 }
+
+/** Ay aralığını `"1 - 36 ay"` biçiminde gösterir; tek uç varsa onu, ikisi de yoksa "—". */
+export function formatMonthsRange(
+  min: number | null | undefined,
+  max: number | null | undefined,
+): string {
+  if (min === null || min === undefined) {
+    return max === null || max === undefined ? NULL_PLACEHOLDER : formatMonths(max);
+  }
+  if (max === null || max === undefined || max === min) return formatMonths(min);
+  return `${numberFormatter.format(min)} - ${formatMonths(max)}`;
+}
+
+/** Tutar aralığını `"500.000 - 2.000.000 ₺"` biçiminde gösterir; tek uç varsa onu, ikisi de yoksa "—". */
+export function formatAmountRange(
+  min: string | null | undefined,
+  max: string | null | undefined,
+): string {
+  const minN = parseDecimal(min);
+  const maxN = parseDecimal(max);
+  if (minN === null) return maxN === null ? NULL_PLACEHOLDER : formatCurrencyTRY(maxN);
+  if (maxN === null || maxN === minN) return formatCurrencyTRY(minN);
+  return `${formatNumber(minN)} - ${formatCurrencyTRY(maxN)}`;
+}

@@ -1,4 +1,4 @@
-import type { RankingCriterion, RateType } from "@/types/api";
+import type { ComparableRateType, RankingCriterion } from "@/types/api";
 
 /**
  * ⚠️ DONDURULMUŞ SÖZLEŞME: her ölçüt yalnızca belirli bir oran türüyle uyumludur
@@ -15,7 +15,7 @@ export const CRITERIA_LABELS: Record<RankingCriterion, string> = {
   en_avantajli: "En avantajlı (ağırlıklı)",
 };
 
-const CRITERIA_BY_RATE_TYPE: Record<RateType, RankingCriterion[]> = {
+const CRITERIA_BY_RATE_TYPE: Record<ComparableRateType, RankingCriterion[]> = {
   financing_rate: [
     "en_dusuk_kar_payi",
     "en_dusuk_masraf",
@@ -28,6 +28,6 @@ const CRITERIA_BY_RATE_TYPE: Record<RateType, RankingCriterion[]> = {
 };
 
 /** Seçili oran türüyle bağdaşan ölçüt listesini döner. */
-export function getValidCriteria(rateType: RateType): RankingCriterion[] {
+export function getValidCriteria(rateType: ComparableRateType): RankingCriterion[] {
   return CRITERIA_BY_RATE_TYPE[rateType];
 }
