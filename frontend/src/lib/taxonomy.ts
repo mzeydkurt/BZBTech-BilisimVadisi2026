@@ -44,6 +44,21 @@ export const TAXONOMY_LABELS: Record<string, string> = {
   odeme_fatura: "Ödeme ve Fatura",
   kobi_ticari: "KOBİ / Ticari",
   isyeri_finansmani: "İşyeri Finansmanı",
+  // product_type — KATİP KAPI 6 (Finansmanlar sekmesi)
+  gayrimenkul_finansmani: "Gayrimenkul Finansmanı",
+  alisveris_finansmani: "Alışveriş Finansmanı",
+  surdurulebilir_finansman: "Sürdürülebilir Finansman",
+  arsa_finansmani: "Arsa Finansmanı",
+  egitim_finansmani: "Eğitim Finansmanı",
+  karz_i_hasen: "Karz-ı Hasen",
+  digital_arac_finansmani: "Dijital Araç Finansmanı",
+  marka_ozel_finansman: "Marka Özel Finansman",
+  // product_type — KATİP KAPI 7 (Katılım Hesabı sekmesi)
+  katilma_hesabi: "Katılma Hesabı",
+  ozel_katilma_hesabi: "Özel Katılma Hesabı",
+  altin_katilma_hesabi: "Altın Katılma Hesabı",
+  ara_donem_kar_odemeli: "Ara Ödemeli Katılma Hesabı",
+  devlet_katkili_hesap: "Devlet Katkılı Hesap",
   // benefit
   nakit_iade: "Nakit İade",
   puan_mil: "Puan / Mil",

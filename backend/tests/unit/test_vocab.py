@@ -30,6 +30,7 @@ class TestVaryantSozlugu:
     """VARIANT_VOCAB tutarlılığı."""
 
     def test_sartnamedeki_alti_boyut_tanimli(self) -> None:
+        """Şartnamenin 6 boyutu + KATİP'in eklediği 2 yeni boyut (alım sırası, marka/model)."""
         assert set(VARIANT_DIMENSIONS) == {
             "arac_durumu",
             "konut_durumu",
@@ -37,10 +38,19 @@ class TestVaryantSozlugu:
             "sigorta",
             "musteri_tipi",
             "ozel",
+            "alim_sirasi",
+            "marka_model",
         }
 
     def test_hicbir_boyut_bos_degil(self) -> None:
+        """`marka_model` KASITLI OLARAK istisnadır — bkz. VARIANT_VOCAB yorumu.
+
+        Marka/model anahtarları (`togg_t10x` gibi) `brand`/`model` kolonlarından
+        türetilir, önceden bilinen sabit bir liste değildir.
+        """
         for boyut, anahtarlar in VARIANT_VOCAB.items():
+            if boyut == "marka_model":
+                continue
             assert anahtarlar, f"{boyut} boş"
 
     def test_anahtarlar_boyutlar_arasinda_tekil(self) -> None:
@@ -99,9 +109,24 @@ class TestOranKaynagi:
             assert Decimal("0") <= katsayi <= Decimal("1"), kaynak
 
     def test_html_tablosu_en_guvenilir(self) -> None:
-        """Bankanın kendi yayımladığı tablo birincil kaynaktır."""
+        """Bankanın kendi yayımladığı tablo birincil kaynaktır.
+
+        ⚠️ `seed_manual`/`pdf_table` İSTİSNADIR: `seed_manual` kullanıcının
+        otomasyonun çalışmadığı bir ortamda bankanın kendi yayımladığı
+        tabloyu bizzat tarayıp birebir elle girdiği veridir (KATİP KAPI 4);
+        `pdf_table` bankanın aynı yapısal tabloyu PDF paketinde yayımladığı
+        durumdur (TOM Bank). İkisi de `html_table` ile AYNI nihai kaynağın
+        farklı bir toplama/paketleme yöntemi, tahmin değil. Bu yüzden
+        1.000'e eşit tutulur; yalnızca gerçekten daha zayıf/dolaylı kaynaklar
+        (ödeme planı türetimi, hesaplayıcı, metin, js varsayılanı) kesin
+        olarak düşüktür.
+        """
         assert RATE_SOURCE_CONFIDENCE["html_table"] == Decimal("1.000")
-        digerleri = [k for ad, k in RATE_SOURCE_CONFIDENCE.items() if ad != "html_table"]
+        digerleri = [
+            k
+            for ad, k in RATE_SOURCE_CONFIDENCE.items()
+            if ad not in ("html_table", "seed_manual", "pdf_table")
+        ]
         assert all(katsayi < Decimal("1.000") for katsayi in digerleri)
 
     def test_guven_sirasi_sartnameye_uygun(self) -> None:

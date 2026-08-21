@@ -249,3 +249,120 @@ class TestGoldSilme:
             sifirla(veri, export_dizini=tmp_path, gold_sil=True)
 
         assert veri.scalar(select(func.count()).select_from(GoldAnnotation)) == 5
+
+
+class TestSuresiDolmusSilme:
+    """`delete_expired_campaigns.sil()` — yalnızca `status='expired'` silinir.
+
+    ⚠️ GERÇEK VERİ KAYBI SONRASI YAZILDI (21 Ağustos 2026). Canlı veritabanında
+    `gold_annotations.campaign_id` FK'si migration 0004'ten kalma `ON DELETE
+    CASCADE` taşıyordu — model `ondelete="SET NULL"` diyordu ama migration
+    0008 kolonu nullable yaparken FK'nin kendisini hiç düzeltmemişti. 231
+    süresi dolmuş kampanya silinince 886 elle etiketlenmiş gold satırı
+    SESSİZCE gitti (yedekten geri yüklendi, bkz. migration 0013). Bu test o
+    HATAYI YAKALARDI — ama yalnızca `app/db/base.Base.metadata.create_all()`
+    üzerinden kurulan test şemaları GERÇEK migration zincirini DEĞİL, güncel
+    MODEL tanımını yansıtıyor; yani bu test migration/model sürüklenmesini
+    değil, yalnızca `sil()` fonksiyonunun kendi mantığını doğrular. Gerçek
+    veritabanı şeması `python dev.py migrate` ile ayrıca doğrulanmalı.
+    """
+
+    def test_yalnizca_suresi_dolmus_silinir(self, veri: Session, tmp_path: Path) -> None:
+        from scripts.delete_expired_campaigns import sil
+
+        kampanyalar = list(veri.scalars(select(Campaign)))
+        # `veri` fixture'ındaki üç kampanya da "active"; birini "expired" yap.
+        dolmus = kampanyalar[0]
+        dolmus.status = "expired"
+        veri.commit()
+
+        disa_aktar(veri, hedef=tmp_path)
+        damga_bas(tmp_path)
+
+        ozeti = sil(veri, export_dizini=tmp_path)
+
+        assert ozeti.silinen["campaigns"] == 1
+        kalanlar = list(veri.scalars(select(Campaign)))
+        assert len(kalanlar) == 2
+        assert all(k.status != "expired" for k in kalanlar)
+
+    def test_suresi_dolmus_kampanyanin_goldu_silinmez(self, veri: Session, tmp_path: Path) -> None:
+        """⚠️ Asıl korunan şey: gold etiketleri SİLİNMEZ, `campaign_id` NULL'a düşer."""
+        from scripts.delete_expired_campaigns import sil
+
+        kampanyalar = list(veri.scalars(select(Campaign)))
+        dolmus = kampanyalar[0]
+        dolmus.status = "expired"
+        veri.commit()
+
+        disa_aktar(veri, hedef=tmp_path)
+        damga_bas(tmp_path)
+
+        sil(veri, export_dizini=tmp_path)
+
+        # `veri` fixture'ı kampanya 0 ve 1'e gold ekliyor (kampanya 2'ye eklemiyor).
+        assert veri.scalar(select(func.count()).select_from(GoldAnnotation)) == 5
+        assert (
+            veri.scalar(
+                select(func.count())
+                .select_from(GoldAnnotation)
+                .where(GoldAnnotation.campaign_id.is_(None))
+            )
+            == 3
+        )  # dolmus'a bağlı üç gold etiketi (start_date/end_date/profit_rate_pct)
+
+    def test_dogrulanmamis_aktarma_ile_silme_reddedilir(
+        self, veri: Session, tmp_path: Path
+    ) -> None:
+        from scripts.delete_expired_campaigns import sil
+
+        veri.scalars(select(Campaign)).first().status = "expired"  # type: ignore[union-attr]
+        veri.commit()
+        disa_aktar(veri, hedef=tmp_path)
+
+        with pytest.raises(PermissionError):
+            sil(veri, export_dizini=tmp_path)
+
+        assert veri.scalar(select(func.count()).select_from(Campaign)) == 3
+
+    def test_kuru_calistirma_silmez(self, veri: Session, tmp_path: Path) -> None:
+        from scripts.delete_expired_campaigns import sil
+
+        veri.scalars(select(Campaign)).first().status = "expired"  # type: ignore[union-attr]
+        veri.commit()
+        disa_aktar(veri, hedef=tmp_path)
+        damga_bas(tmp_path)
+
+        ozeti = sil(veri, export_dizini=tmp_path, kuru=True)
+
+        assert ozeti.silinen["campaigns"] == 1
+        assert veri.scalar(select(func.count()).select_from(Campaign)) == 3
+
+    def test_source_documents_ve_scrape_runs_dokunulmaz(
+        self, veri: Session, tmp_path: Path
+    ) -> None:
+        """Bu betik `sifirla`'nın aksine ham arşiv indeksine HİÇ dokunmaz."""
+        from app.db.models import SourceDocument
+        from scripts.delete_expired_campaigns import sil
+
+        dolmus = veri.scalars(select(Campaign)).first()
+        assert dolmus is not None
+        veri.add(
+            SourceDocument(
+                bank_id=dolmus.bank_id,
+                url=dolmus.source_url,
+                url_hash="deadbeef",
+                doc_type="campaign",
+                http_status=200,
+                raw_html_path="x.html",
+                raw_html_sha256="deadbeef",
+            )
+        )
+        dolmus.status = "expired"
+        veri.commit()
+
+        disa_aktar(veri, hedef=tmp_path)
+        damga_bas(tmp_path)
+        sil(veri, export_dizini=tmp_path)
+
+        assert veri.scalar(select(func.count()).select_from(SourceDocument)) == 1

@@ -85,20 +85,22 @@ def ornek_kampanyalar(seeded_session: Session) -> None:
 
 class TestKampanyaListesi:
     def test_sayfali_yanit_semasi(self, api_client: httpx.Client, ornek_kampanyalar: None) -> None:
+        """Varsayılan liste süresi kesin dolmuş 1 kampanyayı hariç tutar (KAPI 5)."""
         veri = api_client.get("/api/v1/campaigns").json()
 
         assert set(veri) == {"items", "total", "page", "page_size", "total_pages"}
-        assert veri["total"] == 5
+        assert veri["total"] == 4
         assert veri["page"] == 1
         assert veri["page_size"] == 25
         assert veri["total_pages"] == 1
+        assert "Katılma Hesabı Fırsatı" not in {i["title"] for i in veri["items"]}
 
     def test_sayfalama(self, api_client: httpx.Client, ornek_kampanyalar: None) -> None:
         veri = api_client.get("/api/v1/campaigns?page_size=2&page=2").json()
 
         assert len(veri["items"]) == 2
         assert veri["page"] == 2
-        assert veri["total_pages"] == 3
+        assert veri["total_pages"] == 2
 
     def test_banka_filtresi(self, api_client: httpx.Client, ornek_kampanyalar: None) -> None:
         veri = api_client.get("/api/v1/campaigns?bank=emlak_katilim").json()
@@ -108,7 +110,35 @@ class TestKampanyaListesi:
 
     def test_coklu_banka_filtresi(self, api_client: httpx.Client, ornek_kampanyalar: None) -> None:
         veri = api_client.get("/api/v1/campaigns?bank=emlak_katilim&bank=hayat_finans").json()
+        assert veri["total"] == 4
+
+    def test_suresi_dolmus_varsayilan_olarak_gizli(
+        self, api_client: httpx.Client, ornek_kampanyalar: None
+    ) -> None:
+        """§KAPI 5 — kesin olarak dolmuş kampanya gösterilmez, tarihi belirsiz olan gösterilir."""
+        veri = api_client.get("/api/v1/campaigns").json()
+        basliklar = {i["title"] for i in veri["items"]}
+
+        assert "Katılma Hesabı Fırsatı" not in basliklar  # end_date geçmişte
+        assert "Tarihsiz Kampanya" in basliklar  # end_date yok, gizlenmez
+        assert "Gelecek Kampanya" in basliklar  # end_date gelecekte
+
+    def test_include_expired_ile_gorulebilir(
+        self, api_client: httpx.Client, ornek_kampanyalar: None
+    ) -> None:
+        veri = api_client.get("/api/v1/campaigns?include_expired=true").json()
+
         assert veri["total"] == 5
+        assert "Katılma Hesabı Fırsatı" in {i["title"] for i in veri["items"]}
+
+    def test_acik_status_expired_include_expired_dan_bagimsiz_calisir(
+        self, api_client: httpx.Client, ornek_kampanyalar: None
+    ) -> None:
+        """`status=expired` açıkça istenirse `include_expired` varsayılanı devreye girmez."""
+        veri = api_client.get("/api/v1/campaigns?status=expired").json()
+
+        assert veri["total"] == 1
+        assert veri["items"][0]["title"] == "Katılma Hesabı Fırsatı"
 
     def test_durum_filtresi(self, api_client: httpx.Client, ornek_kampanyalar: None) -> None:
         veri = api_client.get("/api/v1/campaigns?status=expired").json()
