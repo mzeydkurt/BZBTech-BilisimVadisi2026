@@ -48,6 +48,9 @@ class ProductRateOut(BaseModel):
     rate_source: str
     confidence: Decimal
     evidence_text: str | None = None
+    data_source: str = Field(
+        default="bank_site", description="bank_site | tkbb_veripetegi — KATİP KAPI 4"
+    )
 
 
 class ProductLimitOut(BaseModel):
@@ -92,6 +95,21 @@ class ProductOut(BaseModel):
     variant_label: str | None = None
     parent_product_id: int | None = None
     is_active: bool
+    purchase_order: str | None = Field(
+        default=None, description="ilk_alim | sonraki_alim — KATİP KAPI 1.2"
+    )
+    brand: str | None = Field(default=None, description="Marka/model bazlı finansman (Togg gibi)")
+    model: str | None = None
+    availability_status: str = Field(
+        default="unknown", description="offered | not_offered | unknown — KATİP KAPI 1.5"
+    )
+    # KATİP — Finansmanlar sekmesinde Tutar/Vade sütunları için; ürün detayında
+    # zaten vardı, listede de yayımlanması `ProductDetailOut`'ta tekrar
+    # tanımlanmaz.
+    amount_min: Decimal | None = None
+    amount_max: Decimal | None = None
+    term_months_min: int | None = None
+    term_months_max: int | None = None
     rates: list[ProductRateOut] = Field(default_factory=list)
     limits: list[ProductLimitOut] = Field(default_factory=list)
 
@@ -104,10 +122,6 @@ class ProductDetailOut(ProductOut):
     """
 
     description: str | None = None
-    amount_min: Decimal | None = None
-    amount_max: Decimal | None = None
-    term_months_min: int | None = None
-    term_months_max: int | None = None
     allowed_terms: list[int] | None = None
     collateral_type: str | None = None
     has_calculator: bool = False

@@ -482,6 +482,10 @@ class ProductRunner:
                 calculator_url=raw.calculator_url,
                 is_binding=raw.is_binding,
                 non_binding_notice=raw.non_binding_notice,
+                purchase_order=raw.purchase_order,
+                brand=raw.brand,
+                model=raw.model,
+                availability_status=raw.availability_status,
             )
             session.add(urun)
             session.flush()
@@ -514,6 +518,10 @@ class ProductRunner:
         mevcut.calculator_url = raw.calculator_url
         mevcut.is_binding = raw.is_binding
         mevcut.non_binding_notice = raw.non_binding_notice
+        mevcut.purchase_order = raw.purchase_order
+        mevcut.brand = raw.brand
+        mevcut.model = raw.model
+        mevcut.availability_status = raw.availability_status
         return mevcut
 
     def _write_rates(
@@ -602,6 +610,8 @@ class ProductRunner:
                     is_gross=raw.is_gross,
                     source_document_id=document.id,
                     evidence_text=raw.evidence_text,
+                    data_source=raw.data_source,
+                    is_binding=raw.is_binding,
                 )
             )
             result.rates_new += 1
