@@ -1,41 +1,279 @@
 {
-  "kaynak_url": "https://tkbb.org.tr/veripetegi-detay/40",
-  "dashboard": "db-fyfb30he1txl19b",
-  "dogrulama_notu": "Kullanıcının 2026-08-21'de kendi tarayıcısında API JSON çıktısını + dashboard Excel export'unu çapraz kontrol ederek doğruladığı veri (docs/TKBB_VERI_PETEGI_BULGULARI.md). İlk veri seti (DL-FFC6K484A682B8I) AYRICA bu oturumda Playwright ile canlı siteye karşı yeniden doğrulandı (2026-08-21) — 3 aylık/6 aylık sütunları da bu doğrulamayla eklendi. Diğer 3 veri seti aynı dashboard sayfasında (id=40) ayrı widget olarak yüklenmiyor (yalnızca ilk widget bu sayfada geliyor, ölçüldü) — TKBB'nin 5 herkese açık veripetegi-detay sayfası (2,3,35,40,46) tarandı, kalan 3 widget hiçbirinde bulunamadı. Kullanıcının bu 3 veri setini nasıl bulduğu (muhtemelen dashboard içi bir sekme/filtre etkileşimi) bu oturumda yeniden üretilemedi; bu 3 tablo yalnızca kullanıcının doğrulamasına dayanır.",
+  "kaynak": "https://tkbb.org.tr/veripetegi-detay/40",
+  "aciklama": "TKBB Veri Peteği'nin 4 veri seti, pivot API'sinden birebir çekildi. Bu dosya scripts/scrape_tkbb.py'nin ÇEVRİMDIŞI YEDEĞİdir; birincil yol 'python dev.py tkbb-cek'. Değerler yuvarlanmadı.",
+  "olcu_kodu_para_birimi": {
+    "m0": "TRY",
+    "m1": "USD",
+    "m2": "EUR",
+    "m3": "XAU"
+  },
+  "not": "Kâr paylaşım oranlarında (profit_sharing_ratio) yalnızca TL (m0) tutulur — kullanıcının açık isteği.",
   "datasets": [
     {
       "widget_id": "DL-FFC6K484A682B8I",
-      "aciklama": "Dağıtılan Kâr Payı Oranları (getiri)",
+      "aciklama": "Dağıtılan Kâr Payı Oranları",
       "rate_type": "participation_yield",
       "variant": "normal",
-      "canli_dogrulama": "Playwright ile 2026-08-21'de https://tkbb.org.tr/veripetegi-detay/40 sayfasından yeniden çekildi.",
+      "kaynak": "https://tkbb.org.tr/veripetegi-detay/40",
+      "api_url": "https://veri-petegi.tkbb.org.tr/api/v1/data/?id=DL-FFC6K484A682B8I&type=pivot&refresh_cache=false&dashboard=db-fyfb30he1txl19b&filters=dbfl-5amu0677cd7d07a%3D%257B%2522anchor%2522%253A%2522now%2522%252C%2522unit%2522%253A%2522week%2522%252C%2522move%2522%253A0%252C%2522behavior%2522%253A%2522snap_beginning%2522%257D%26dbfl-5amu0677cd7d07a%3D%257B%2522anchor%2522%253A%2522now%2522%252C%2522unit%2522%253A%2522week%2522%252C%2522move%2522%253A0%252C%2522behavior%2522%253A%2522snap_ending%2522%257D&date_aggregate=auto&dashboard_date_aggregate=auto&rowLevel=0&ordering=",
+      "cekim_tarihi": "2026-08-21",
       "rows": [
-        {"bank_code": "albaraka", "values": {"aylik|TRY": "31.35", "3_aylik|TRY": "32.13", "6_aylik|TRY": "36.83", "yillik|TRY": "40.86", "aylik|USD": "0.93", "3_aylik|USD": "0.93", "6_aylik|USD": "0.92", "yillik|USD": "0.93", "aylik|EUR": "0.6", "3_aylik|EUR": "0.61", "6_aylik|EUR": "0.61", "yillik|EUR": "0.6"}},
-        {"bank_code": "dunya_katilim", "values": {"aylik|TRY": "33.26", "3_aylik|TRY": "34.2", "6_aylik|TRY": "35.45", "yillik|TRY": "39.75", "aylik|USD": "1.81", "3_aylik|USD": "1.8", "6_aylik|USD": "1.8", "yillik|USD": "1.84", "aylik|EUR": "1.71", "3_aylik|EUR": "1.72", "6_aylik|EUR": "1.73", "yillik|EUR": "1.8", "aylik|XAU": "1.67", "3_aylik|XAU": "1.67", "6_aylik|XAU": "1.7", "yillik|XAU": "1.8"}},
-        {"bank_code": "emlak_katilim", "values": {"aylik|TRY": "30.72", "3_aylik|TRY": "33.75", "6_aylik|TRY": "35.16", "yillik|TRY": "38.58", "aylik|USD": "0.7", "3_aylik|USD": "0.7", "6_aylik|USD": "0.65", "yillik|USD": "0.6", "aylik|EUR": "0.6", "3_aylik|EUR": "0.57", "6_aylik|EUR": "0.55", "yillik|EUR": "0.53", "aylik|XAU": "0.1", "3_aylik|XAU": "0.1", "6_aylik|XAU": "0.1", "yillik|XAU": "0.1"}},
-        {"bank_code": "hayat_finans", "values": {"aylik|TRY": "37.8", "3_aylik|TRY": "39.46", "6_aylik|TRY": "41.5", "yillik|TRY": "39.96", "aylik|USD": "2.39", "3_aylik|USD": "2.39", "6_aylik|USD": "2.37", "yillik|USD": "2.38", "aylik|EUR": "2.11", "3_aylik|EUR": "2.11", "6_aylik|EUR": "2.08", "yillik|EUR": "2.09"}},
-        {"bank_code": "kuveyt_turk", "values": {"aylik|TRY": "33.05", "3_aylik|TRY": "34.45", "6_aylik|TRY": "35.73", "yillik|TRY": "39.39", "aylik|USD": "1.16", "3_aylik|USD": "1.16", "6_aylik|USD": "1.15", "yillik|USD": "0.91", "aylik|EUR": "0.85", "3_aylik|EUR": "0.85", "6_aylik|EUR": "0.85", "yillik|EUR": "0.68", "aylik|XAU": "0.14", "3_aylik|XAU": "0.14", "6_aylik|XAU": "0.14", "yillik|XAU": "0.14"}},
-        {"bank_code": "tom_bank", "values": {"aylik|TRY": "42.76", "3_aylik|TRY": "42.74", "6_aylik|TRY": "39.0", "aylik|USD": "4.0", "3_aylik|USD": "3.5", "6_aylik|USD": "3.82", "aylik|EUR": "3.5", "3_aylik|EUR": "2.0"}},
-        {"bank_code": "turkiye_finans", "values": {"aylik|TRY": "28.29", "3_aylik|TRY": "28.75", "6_aylik|TRY": "29.34", "yillik|TRY": "31.22", "aylik|USD": "0.6092", "3_aylik|USD": "0.609", "6_aylik|USD": "0.6097", "yillik|USD": "0.6097", "aylik|EUR": "0.44", "3_aylik|EUR": "0.4309", "6_aylik|EUR": "0.4309", "yillik|EUR": "0.4068", "aylik|XAU": "0.04", "3_aylik|XAU": "0.04", "6_aylik|XAU": "0.0365", "yillik|XAU": "0.04"}},
-        {"bank_code": "vakif_katilim", "values": {"aylik|TRY": "31.5", "3_aylik|TRY": "32.74", "6_aylik|TRY": "33.8", "yillik|TRY": "36.91", "aylik|USD": "0.97", "3_aylik|USD": "1.01", "aylik|EUR": "0.68", "3_aylik|EUR": "0.69", "6_aylik|XAU": "0.01", "yillik|XAU": "0.01"}},
-        {"bank_code": "ziraat_katilim", "values": {"aylik|TRY": "28.04", "3_aylik|TRY": "28.69", "6_aylik|TRY": "29.61", "yillik|TRY": "31.87", "aylik|USD": "0.8", "3_aylik|USD": "0.8", "6_aylik|USD": "0.82", "yillik|USD": "0.84", "aylik|EUR": "0.5", "3_aylik|EUR": "0.51", "6_aylik|EUR": "0.51", "yillik|EUR": "0.56", "6_aylik|XAU": "0.17", "yillik|XAU": "0.1"}}
+        {
+          "bank_code": "albaraka",
+          "values": {
+            "aylik|TRY": "31.35",
+            "3_aylik|TRY": "32.13",
+            "6_aylik|TRY": "36.83",
+            "yillik|TRY": "40.86",
+            "aylik|USD": "0.93",
+            "3_aylik|USD": "0.93",
+            "6_aylik|USD": "0.92",
+            "yillik|USD": "0.93",
+            "aylik|EUR": "0.6",
+            "3_aylik|EUR": "0.61",
+            "6_aylik|EUR": "0.61",
+            "yillik|EUR": "0.6"
+          }
+        },
+        {
+          "bank_code": "dunya_katilim",
+          "values": {
+            "aylik|TRY": "33.26",
+            "3_aylik|TRY": "34.2",
+            "6_aylik|TRY": "35.45",
+            "yillik|TRY": "39.75",
+            "aylik|USD": "1.81",
+            "3_aylik|USD": "1.8",
+            "6_aylik|USD": "1.8",
+            "yillik|USD": "1.84",
+            "aylik|EUR": "1.71",
+            "3_aylik|EUR": "1.72",
+            "6_aylik|EUR": "1.73",
+            "yillik|EUR": "1.8",
+            "aylik|XAU": "1.67",
+            "3_aylik|XAU": "1.67",
+            "6_aylik|XAU": "1.7",
+            "yillik|XAU": "1.8"
+          }
+        },
+        {
+          "bank_code": "emlak_katilim",
+          "values": {
+            "aylik|TRY": "30.72",
+            "3_aylik|TRY": "33.75",
+            "6_aylik|TRY": "35.16",
+            "yillik|TRY": "38.58",
+            "aylik|USD": "0.7",
+            "3_aylik|USD": "0.7",
+            "6_aylik|USD": "0.65",
+            "yillik|USD": "0.6",
+            "aylik|EUR": "0.6",
+            "3_aylik|EUR": "0.57",
+            "6_aylik|EUR": "0.55",
+            "yillik|EUR": "0.53",
+            "aylik|XAU": "0.1",
+            "3_aylik|XAU": "0.1",
+            "6_aylik|XAU": "0.1",
+            "yillik|XAU": "0.1"
+          }
+        },
+        {
+          "bank_code": "hayat_finans",
+          "values": {
+            "aylik|TRY": "37.8",
+            "3_aylik|TRY": "39.46",
+            "6_aylik|TRY": "41.5",
+            "yillik|TRY": "39.96",
+            "aylik|USD": "2.39",
+            "3_aylik|USD": "2.39",
+            "6_aylik|USD": "2.37",
+            "yillik|USD": "2.38",
+            "aylik|EUR": "2.11",
+            "3_aylik|EUR": "2.11",
+            "6_aylik|EUR": "2.08",
+            "yillik|EUR": "2.09"
+          }
+        },
+        {
+          "bank_code": "kuveyt_turk",
+          "values": {
+            "aylik|TRY": "33.05",
+            "3_aylik|TRY": "34.45",
+            "6_aylik|TRY": "35.73",
+            "yillik|TRY": "39.39",
+            "aylik|USD": "1.16",
+            "3_aylik|USD": "1.16",
+            "6_aylik|USD": "1.15",
+            "yillik|USD": "0.91",
+            "aylik|EUR": "0.85",
+            "3_aylik|EUR": "0.85",
+            "6_aylik|EUR": "0.85",
+            "yillik|EUR": "0.68",
+            "aylik|XAU": "0.14",
+            "3_aylik|XAU": "0.14",
+            "6_aylik|XAU": "0.14",
+            "yillik|XAU": "0.14"
+          }
+        },
+        {
+          "bank_code": "tom_bank",
+          "values": {
+            "aylik|TRY": "42.76",
+            "3_aylik|TRY": "42.74",
+            "6_aylik|TRY": "39.0",
+            "aylik|USD": "4.0",
+            "3_aylik|USD": "3.5",
+            "6_aylik|USD": "3.82",
+            "aylik|EUR": "3.5",
+            "3_aylik|EUR": "2.0"
+          }
+        },
+        {
+          "bank_code": "turkiye_finans",
+          "values": {
+            "aylik|TRY": "28.29",
+            "3_aylik|TRY": "28.75",
+            "6_aylik|TRY": "29.34",
+            "yillik|TRY": "31.22",
+            "aylik|USD": "0.6092",
+            "3_aylik|USD": "0.609",
+            "6_aylik|USD": "0.6097",
+            "yillik|USD": "0.6097",
+            "aylik|EUR": "0.44",
+            "3_aylik|EUR": "0.4309",
+            "6_aylik|EUR": "0.4309",
+            "yillik|EUR": "0.4068",
+            "aylik|XAU": "0.04",
+            "3_aylik|XAU": "0.04",
+            "6_aylik|XAU": "0.0365",
+            "yillik|XAU": "0.04"
+          }
+        },
+        {
+          "bank_code": "vakif_katilim",
+          "values": {
+            "aylik|TRY": "31.5",
+            "3_aylik|TRY": "32.74",
+            "6_aylik|TRY": "33.8",
+            "yillik|TRY": "36.91",
+            "aylik|USD": "0.97",
+            "3_aylik|USD": "1.01",
+            "aylik|EUR": "0.68",
+            "3_aylik|EUR": "0.69",
+            "6_aylik|XAU": "0.01",
+            "yillik|XAU": "0.01"
+          }
+        },
+        {
+          "bank_code": "ziraat_katilim",
+          "values": {
+            "aylik|TRY": "28.04",
+            "3_aylik|TRY": "28.69",
+            "6_aylik|TRY": "29.61",
+            "yillik|TRY": "31.87",
+            "aylik|USD": "0.8",
+            "3_aylik|USD": "0.8",
+            "6_aylik|USD": "0.82",
+            "yillik|USD": "0.84",
+            "aylik|EUR": "0.5",
+            "3_aylik|EUR": "0.51",
+            "6_aylik|EUR": "0.51",
+            "yillik|EUR": "0.56",
+            "6_aylik|XAU": "0.17",
+            "yillik|XAU": "0.1"
+          }
+        }
       ]
     },
     {
       "widget_id": "DL-0M0C2ABB615D062",
-      "aciklama": "Kâr Paylaşım Oranları (bölüşüm)",
+      "aciklama": "Kâr Paylaşım Oranları",
       "rate_type": "profit_sharing_ratio",
       "variant": "normal",
+      "kaynak": "https://tkbb.org.tr/veripetegi-detay/40",
+      "api_url": "https://veri-petegi.tkbb.org.tr/api/v1/data/?id=DL-0M0C2ABB615D062&type=pivot&refresh_cache=false&dashboard=db-fyfb30he1txl19b&filters=dbfl-5amu0677cd7d07a%3D%257B%2522anchor%2522%253A%2522now%2522%252C%2522unit%2522%253A%2522week%2522%252C%2522move%2522%253A0%252C%2522behavior%2522%253A%2522snap_beginning%2522%257D%26dbfl-5amu0677cd7d07a%3D%257B%2522anchor%2522%253A%2522now%2522%252C%2522unit%2522%253A%2522week%2522%252C%2522move%2522%253A0%252C%2522behavior%2522%253A%2522snap_ending%2522%257D&date_aggregate=auto&dashboard_date_aggregate=auto&rowLevel=0&ordering=",
+      "cekim_tarihi": "2026-08-21",
       "rows": [
-        {"bank_code": "albaraka", "values": {"aylik|TRY": "90", "aylik|USD": "40", "aylik|EUR": "40", "yillik|TRY": "93"}},
-        {"bank_code": "dunya_katilim", "values": {"aylik|TRY": "90", "aylik|USD": "40", "aylik|EUR": "40", "aylik|XAU": "50", "yillik|TRY": "90"}},
-        {"bank_code": "emlak_katilim", "values": {"aylik|TRY": "90", "aylik|USD": "50", "aylik|EUR": "50", "aylik|XAU": "50", "yillik|TRY": "92"}},
-        {"bank_code": "hayat_finans", "values": {"aylik|TRY": "90", "aylik|USD": "70", "aylik|EUR": "70", "yillik|TRY": "87"}},
-        {"bank_code": "kuveyt_turk", "values": {"aylik|TRY": "92", "aylik|USD": "40", "aylik|EUR": "40", "aylik|XAU": "40", "yillik|TRY": "95"}},
-        {"bank_code": "tom_bank", "values": {"aylik|TRY": "97.8", "aylik|USD": "84.1", "aylik|EUR": "87.4"}},
-        {"bank_code": "turkiye_finans", "values": {"aylik|TRY": "98", "aylik|USD": "25", "aylik|EUR": "25", "aylik|XAU": "2", "yillik|TRY": "98"}},
-        {"bank_code": "vakif_katilim", "values": {"aylik|TRY": "90", "aylik|USD": "40", "aylik|EUR": "40", "yillik|TRY": "90"}},
-        {"bank_code": "ziraat_katilim", "values": {"aylik|TRY": "90", "aylik|USD": "30", "aylik|EUR": "30", "yillik|TRY": "90"}}
+        {
+          "bank_code": "albaraka",
+          "values": {
+            "aylik|TRY": "90.0",
+            "3_aylik|TRY": "90.0",
+            "6_aylik|TRY": "92.0",
+            "yillik|TRY": "93.0"
+          }
+        },
+        {
+          "bank_code": "dunya_katilim",
+          "values": {
+            "aylik|TRY": "90.0",
+            "3_aylik|TRY": "90.0",
+            "6_aylik|TRY": "90.0",
+            "yillik|TRY": "90.0"
+          }
+        },
+        {
+          "bank_code": "emlak_katilim",
+          "values": {
+            "aylik|TRY": "90.0",
+            "3_aylik|TRY": "92.0",
+            "6_aylik|TRY": "92.0",
+            "yillik|TRY": "92.0"
+          }
+        },
+        {
+          "bank_code": "hayat_finans",
+          "values": {
+            "aylik|TRY": "90.0",
+            "3_aylik|TRY": "90.0",
+            "6_aylik|TRY": "90.0",
+            "yillik|TRY": "87.0"
+          }
+        },
+        {
+          "bank_code": "kuveyt_turk",
+          "values": {
+            "aylik|TRY": "92.0",
+            "3_aylik|TRY": "93.0",
+            "6_aylik|TRY": "95.0",
+            "yillik|TRY": "95.0"
+          }
+        },
+        {
+          "bank_code": "tom_bank",
+          "values": {
+            "aylik|TRY": "97.8",
+            "3_aylik|TRY": "90.3",
+            "6_aylik|TRY": "95.0"
+          }
+        },
+        {
+          "bank_code": "turkiye_finans",
+          "values": {
+            "aylik|TRY": "98.0",
+            "3_aylik|TRY": "98.0",
+            "6_aylik|TRY": "98.0",
+            "yillik|TRY": "98.0"
+          }
+        },
+        {
+          "bank_code": "vakif_katilim",
+          "values": {
+            "aylik|TRY": "90.0",
+            "3_aylik|TRY": "90.0",
+            "6_aylik|TRY": "90.0",
+            "yillik|TRY": "90.0"
+          }
+        },
+        {
+          "bank_code": "ziraat_katilim",
+          "values": {
+            "aylik|TRY": "90.0",
+            "3_aylik|TRY": "90.0",
+            "6_aylik|TRY": "90.0",
+            "yillik|TRY": "90.0"
+          }
+        }
       ]
     },
     {
@@ -43,17 +281,105 @@
       "aciklama": "Ara Ödemeli Katılma Hesabı Dağıtılan Kâr Payı Oranları",
       "rate_type": "participation_yield",
       "variant": "ara_odemeli",
-      "not_offered_banks": ["dunya_katilim", "emlak_katilim", "hayat_finans", "tom_bank"],
+      "kaynak": "https://tkbb.org.tr/veripetegi-detay/40",
+      "api_url": "https://veri-petegi.tkbb.org.tr/api/v1/data/?id=DL-AU9W2TC6C9C60B8&type=pivot&refresh_cache=false&dashboard=db-fyfb30he1txl19b&filters=dbfl-5amu0677cd7d07a%3D%257B%2522anchor%2522%253A%2522now%2522%252C%2522unit%2522%253A%2522week%2522%252C%2522move%2522%253A0%252C%2522behavior%2522%253A%2522snap_beginning%2522%257D%26dbfl-5amu0677cd7d07a%3D%257B%2522anchor%2522%253A%2522now%2522%252C%2522unit%2522%253A%2522week%2522%252C%2522move%2522%253A0%252C%2522behavior%2522%253A%2522snap_ending%2522%257D&date_aggregate=auto&dashboard_date_aggregate=auto&rowLevel=0&ordering=",
+      "cekim_tarihi": "2026-08-21",
       "rows": [
-        {"bank_code": "albaraka", "values": {"aylik|TRY": "34.36", "yillik|TRY": "39.78"}},
-        {"bank_code": "kuveyt_turk", "values": {"aylik|TRY": "34.14", "yillik|TRY": "40.61"}},
-        {"bank_code": "turkiye_finans", "values": {"aylik|TRY": "28.29", "yillik|TRY": "31.22"}},
+        {
+          "bank_code": "albaraka",
+          "values": {
+            "aylik|TRY": "34.36",
+            "3_aylik|TRY": "35.69",
+            "6_aylik|TRY": "36.21",
+            "yillik|TRY": "39.78",
+            "aylik|USD": "0.93",
+            "3_aylik|USD": "0.93",
+            "6_aylik|USD": "0.93",
+            "yillik|USD": "0.93",
+            "aylik|EUR": "0.6",
+            "3_aylik|EUR": "0.6",
+            "6_aylik|EUR": "0.6",
+            "yillik|EUR": "0.6"
+          }
+        },
+        {
+          "bank_code": "kuveyt_turk",
+          "values": {
+            "aylik|TRY": "34.14",
+            "3_aylik|TRY": "35.26",
+            "6_aylik|TRY": "36.65",
+            "yillik|TRY": "40.61",
+            "aylik|USD": "0.87",
+            "3_aylik|USD": "0.87",
+            "6_aylik|USD": "0.86",
+            "yillik|USD": "0.9",
+            "aylik|EUR": "0.64",
+            "3_aylik|EUR": "0.64",
+            "6_aylik|EUR": "0.63",
+            "yillik|EUR": "0.67"
+          }
+        },
+        {
+          "bank_code": "turkiye_finans",
+          "values": {
+            "aylik|TRY": "28.29",
+            "3_aylik|TRY": "28.75",
+            "6_aylik|TRY": "29.34",
+            "yillik|TRY": "31.22",
+            "aylik|USD": "0.6092",
+            "3_aylik|USD": "0.609",
+            "6_aylik|USD": "0.6097",
+            "yillik|USD": "0.6097",
+            "aylik|EUR": "0.44",
+            "3_aylik|EUR": "0.4309",
+            "6_aylik|EUR": "0.4309",
+            "yillik|EUR": "0.4068",
+            "aylik|XAU": "0.04",
+            "3_aylik|XAU": "0.04",
+            "6_aylik|XAU": "0.0365",
+            "yillik|XAU": "0.04"
+          }
+        },
         {
           "bank_code": "vakif_katilim",
-          "values": {"aylik|TRY": "31.50", "3_aylik|TRY": "32.74", "6_aylik|TRY": "25.39", "yillik|TRY": "38.35"},
-          "evidence_text": "TKBB kaynağında tekdüze artan örüntüyü bozan anomali (6 aylık %25,39, hem öncesi hem sonrasından düşük) — banka kendi sitesinden çapraz doğrulanmalı, olduğu gibi kaydedildi."
+          "values": {
+            "aylik|TRY": "31.5",
+            "3_aylik|TRY": "32.74",
+            "6_aylik|TRY": "25.39",
+            "yillik|TRY": "38.35",
+            "aylik|USD": "1.19",
+            "3_aylik|USD": "1.25",
+            "6_aylik|USD": "1.26",
+            "yillik|USD": "1.44",
+            "aylik|EUR": "0.85",
+            "3_aylik|EUR": "0.87",
+            "6_aylik|EUR": "0.87",
+            "yillik|EUR": "1.0"
+          }
         },
-        {"bank_code": "ziraat_katilim", "values": {"aylik|TRY": "28.04", "yillik|TRY": "31.87"}}
+        {
+          "bank_code": "ziraat_katilim",
+          "values": {
+            "aylik|TRY": "28.04",
+            "3_aylik|TRY": "28.69",
+            "6_aylik|TRY": "29.61",
+            "yillik|TRY": "31.87",
+            "aylik|USD": "0.8",
+            "3_aylik|USD": "0.8",
+            "6_aylik|USD": "0.82",
+            "yillik|USD": "0.84",
+            "aylik|EUR": "0.5",
+            "3_aylik|EUR": "0.51",
+            "6_aylik|EUR": "0.51",
+            "yillik|EUR": "0.56"
+          }
+        }
+      ],
+      "not_offered_banks": [
+        "dunya_katilim",
+        "emlak_katilim",
+        "hayat_finans",
+        "tom_bank"
       ]
     },
     {
@@ -61,13 +387,61 @@
       "aciklama": "Ara Ödemeli Katılma Hesabı Kâr Paylaşım Oranları",
       "rate_type": "profit_sharing_ratio",
       "variant": "ara_odemeli",
-      "not_offered_banks": ["dunya_katilim", "emlak_katilim", "hayat_finans", "tom_bank"],
+      "kaynak": "https://tkbb.org.tr/veripetegi-detay/40",
+      "api_url": "https://veri-petegi.tkbb.org.tr/api/v1/data/?id=DL-2036D46O0D6U0CF&type=pivot&refresh_cache=false&dashboard=db-fyfb30he1txl19b&filters=dbfl-5amu0677cd7d07a%3D%257B%2522anchor%2522%253A%2522now%2522%252C%2522unit%2522%253A%2522week%2522%252C%2522move%2522%253A0%252C%2522behavior%2522%253A%2522snap_beginning%2522%257D%26dbfl-5amu0677cd7d07a%3D%257B%2522anchor%2522%253A%2522now%2522%252C%2522unit%2522%253A%2522week%2522%252C%2522move%2522%253A0%252C%2522behavior%2522%253A%2522snap_ending%2522%257D&date_aggregate=auto&dashboard_date_aggregate=auto&rowLevel=0&ordering=",
+      "cekim_tarihi": "2026-08-21",
       "rows": [
-        {"bank_code": "albaraka", "values": {"aylik|TRY": "92", "aylik|USD": "40", "aylik|EUR": "40"}},
-        {"bank_code": "kuveyt_turk", "values": {"aylik|TRY": "97", "aylik|USD": "40", "aylik|EUR": "40"}},
-        {"bank_code": "turkiye_finans", "values": {"aylik|TRY": "98", "aylik|USD": "25", "aylik|EUR": "25"}},
-        {"bank_code": "vakif_katilim", "values": {"aylik|TRY": "90", "aylik|USD": "50", "aylik|EUR": "50"}},
-        {"bank_code": "ziraat_katilim", "values": {"aylik|TRY": "90", "aylik|USD": "30", "aylik|EUR": "30"}}
+        {
+          "bank_code": "albaraka",
+          "values": {
+            "aylik|TRY": "92.0",
+            "3_aylik|TRY": "93.0",
+            "6_aylik|TRY": "94.0",
+            "yillik|TRY": "94.0"
+          }
+        },
+        {
+          "bank_code": "kuveyt_turk",
+          "values": {
+            "aylik|TRY": "97.0",
+            "3_aylik|TRY": "97.0",
+            "6_aylik|TRY": "97.0",
+            "yillik|TRY": "97.0"
+          }
+        },
+        {
+          "bank_code": "turkiye_finans",
+          "values": {
+            "aylik|TRY": "98.0",
+            "3_aylik|TRY": "98.0",
+            "6_aylik|TRY": "98.0",
+            "yillik|TRY": "98.0"
+          }
+        },
+        {
+          "bank_code": "vakif_katilim",
+          "values": {
+            "aylik|TRY": "90.0",
+            "3_aylik|TRY": "90.0",
+            "6_aylik|TRY": "91.0",
+            "yillik|TRY": "93.0"
+          }
+        },
+        {
+          "bank_code": "ziraat_katilim",
+          "values": {
+            "aylik|TRY": "90.0",
+            "3_aylik|TRY": "90.0",
+            "6_aylik|TRY": "90.0",
+            "yillik|TRY": "90.0"
+          }
+        }
+      ],
+      "not_offered_banks": [
+        "dunya_katilim",
+        "emlak_katilim",
+        "hayat_finans",
+        "tom_bank"
       ]
     }
   ]
