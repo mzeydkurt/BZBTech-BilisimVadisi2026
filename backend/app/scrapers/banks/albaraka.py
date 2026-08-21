@@ -43,7 +43,7 @@ from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.scrapers.base import BaseScraper
-from app.scrapers.models import DiscoveredUrl, RawCampaign
+from app.scrapers.models import DiscoveredUrl, RawCampaign, RawProduct
 from app.scrapers.sitemap import extract_urls
 from app.utils.slugify import slug_from_url_path
 from app.utils.urls import dedupe_urls, is_same_site
@@ -106,13 +106,22 @@ _K = "/tr/bireysel/kartlar"
 PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
     # ── Gayrimenkul ve konut ──
     (f"{_F}/konut-finansmani/konut-finansmani", "konut_finansmani", "konut"),
-    (f"{_F}/gayrimenkul-finansmani/arsa-finansmani", "konut_finansmani", "konut"),
+    # KAPI 1.1/3 — arsa finansmanı konut değil, ayrı bir tür (PDF'te
+    # doğrulandı: 0-5M TL/60 ay %3,5, 5-10M TL/0-60 ay %4,1).
+    (f"{_F}/gayrimenkul-finansmani/arsa-finansmani", "arsa_finansmani", "konut"),
     (f"{_F}/gayrimenkul-finansmani/2b-arazi-finansmani", "konut_finansmani", "konut"),
     (f"{_F}/gayrimenkul-finansmani/is-yeri-finansman", "isyeri_finansmani", "konut"),
     # ── Taşıt ──
     (f"{_F}/tasit-finansmani/tasit-finansmani", "tasit_finansmani", "tasit"),
-    (f"{_F}/tasit-finansmani/dijital-arac-finansmani", "tasit_finansmani", "tasit"),
-    (f"{_F}/tasit-finansmani/togg-finansmani", "tasit_finansmani", "tasit"),
+    # KAPI 3 — Dijital Araç Finansmanı Taşıt'ın LTV verisini paylaşıyor;
+    # `parse_products()` override'ı `parent_external_key`'i Taşıt
+    # Finansmanı'na bağlar (aynı LTV verisi iki kez elle girilmez).
+    (f"{_F}/tasit-finansmani/dijital-arac-finansmani", "digital_arac_finansmani", "tasit"),
+    # KAPI 3 — model bazlı finansman; `parse_products()` override'ı
+    # `brand="Togg"` etiketler (%0,00 satırları zaten NULL'dan ayrı,
+    # bkz. `product_rates` çıktısı — bu override yalnızca marka/model
+    # kolonlarını doldurur, mevcut doğru oran verisini değiştirmez).
+    (f"{_F}/tasit-finansmani/togg-finansmani", "marka_ozel_finansman", "tasit"),
     (f"{_F}/tasit-finansmani/deniz-tasitlari-finansmani", "tasit_finansmani", "tasit"),
     (f"{_F}/tasit-finansmani/tasit-kiralama-finansmani", "tasit_finansmani", "tasit"),
     (f"{_F}/ihtiyac/motosiklet-atv-bisiklet", "tasit_finansmani", "tasit"),
@@ -358,3 +367,28 @@ class AlbarakaScraper(BaseScraper):
             if len(aday) >= 60:
                 return aday[:max_length]
         return None
+
+    def parse_products(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawProduct]:
+        """Genel ayrıştırıcıyı çalıştırır; Togg'a marka, Dijital Araç'a ebeveyn ekler.
+
+        ⚠️ Mevcut doğru oran verisini DEĞİŞTİRMEZ — yalnızca `brand`/
+        `parent_external_key` gibi KATİP KAPI 1'de eklenen alanları doldurur.
+        """
+        from app.scrapers.products import product_external_key
+
+        urunler = super().parse_products(html, url, hint)
+        yol = urlsplit(url).path.rstrip("/")
+
+        if yol.endswith("/togg-finansmani"):
+            for urun in urunler:
+                if urun.parent_external_key is None:
+                    urun.brand = "Togg"
+
+        if yol.endswith("/dijital-arac-finansmani"):
+            tasit_url = urljoin(BASE_URL, f"{_F}/tasit-finansmani/tasit-finansmani")
+            tasit_slug = slug_from_url_path(tasit_url)
+            for urun in urunler:
+                if urun.parent_external_key is None:
+                    urun.parent_external_key = product_external_key(tasit_slug, None)
+
+        return urunler

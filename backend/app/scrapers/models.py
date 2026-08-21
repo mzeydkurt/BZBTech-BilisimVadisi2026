@@ -109,6 +109,11 @@ class RawProductRate:
     # Brüt/net ayrımı: stopaj öncesi oran ile sonrası aynı değildir.
     is_gross: bool | None = None
     evidence_text: str | None = None
+    # KATİP KAPI 4: bank_site (varsayılan) | tkbb_veripetegi.
+    data_source: str = "bank_site"
+    # ⚠️ False = hesaplayıcıdan/ödeme planından TÜRETİLMİŞ, bankanın
+    # taahhüdü DEĞİL (bkz. `ProductRate.is_binding` model yorumu).
+    is_binding: bool = True
 
 
 @dataclass
@@ -169,6 +174,16 @@ class RawProduct:
     # Form nitelikleri bankanın yayımladığı yapısal limittir; True kalır.
     is_binding: bool = True
     non_binding_notice: str | None = None
+
+    # ── KATİP KAPI 1.2/1.3/1.5 ──────────────────────────────
+    # "ilk_alim" | "sonraki_alim" | None — bkz. `variant_dimension="alim_sirasi"`.
+    purchase_order: str | None = None
+    # Marka/model bazlı finansman (Togg gibi) — bkz. `variant_dimension="marka_model"`.
+    brand: str | None = None
+    model: str | None = None
+    # offered | not_offered | unknown (varsayılan). Yalnızca TKBB kaynaklı
+    # katılma hesabı ürünlerinde `not_offered` bilinçli olarak kullanılır.
+    availability_status: str = "unknown"
 
     rates: list[RawProductRate] = field(default_factory=list)
     limits: list[RawProductLimit] = field(default_factory=list)

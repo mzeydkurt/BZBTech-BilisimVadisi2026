@@ -15,7 +15,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.vocab import RATE_TYPES
+from app.core.vocab import RATE_TYPE_COMPARABLE_FIELD
 from app.db.models.bank import Bank
 from app.db.models.campaign import Campaign
 from app.db.models.campaign_category import CampaignCategory
@@ -69,9 +69,14 @@ def _dogrula(rate_type: str, criterion: str) -> tuple[str, bool]:
             türünde anlamsızsa.
 
     """
-    if rate_type not in RATE_TYPES:
+    # ⚠️ `RATE_TYPES` (depolama sözlüğü) değil `RATE_TYPE_COMPARABLE_FIELD`
+    # (sıralamaya girebilen alt küme) ile doğrulanır. `interest_free_benevolent_loan`
+    # (karz-ı hasen/eğitim finansmanı) `RATE_TYPES`'ta vardır ama bilinçli olarak
+    # burada YOKTUR — vade farksız ürünler hiçbir ölçütte sıralamaya giremez.
+    if rate_type not in RATE_TYPE_COMPARABLE_FIELD:
         raise RankingError(
-            f"Geçersiz rate_type: {rate_type!r}. Geçerli değerler: {', '.join(RATE_TYPES)}"
+            f"Geçersiz rate_type: {rate_type!r}. Geçerli değerler: "
+            f"{', '.join(RATE_TYPE_COMPARABLE_FIELD)}"
         )
     if criterion not in CRITERIA:
         raise RankingError(

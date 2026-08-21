@@ -35,7 +35,7 @@ from app.processing.cleaner import (
     render_table_text,
 )
 from app.scrapers.base import BaseScraper
-from app.scrapers.models import DiscoveredUrl, RawCampaign
+from app.scrapers.models import DiscoveredUrl, RawCampaign, RawProduct, RawProductRate
 from app.utils.slugify import slug_from_url_path
 from app.utils.urls import is_same_site
 
@@ -54,6 +54,10 @@ PRODUCT_PATH_HINTS: Final[tuple[str, ...]] = (
     "/kartlar",
     "/finansman",
     "/urunler",
+    # KAPI 2 — Eğitim Finansmanı Sistemi ve Bana Bunu Al bu önek altında
+    # (sitemap'te doğrulandı: /krediler/hayat-finans-egitim-finansmani-sistemi,
+    # /krediler/bana-bunu-al).
+    "/krediler",
 )
 
 # İçerik taşımayan yollar keşif dışında bırakılır.
@@ -81,10 +85,13 @@ _LOC_RE: Final[re.Pattern[str]] = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I
 
 # Ürün sayfaları — arşivlenmiş sitemap'ten doğrulandı (17 Ağustos 2026).
 #
-# ⚠️ `/hesaplar/katilma-hesabi` §7.6'daki paylaşım oranı matrisini taşıyor
-# ama tablo DEVRİK (vadeler sütunda, değerler "%90 - %10" biçiminde).
-# `parse_rate_tables` şu an bu düzeni okumuyor; sayfa yine de alınır, oran
-# ayrıştırıcısı genişletilince veri kendiliğinden gelir.
+# ✅ KATİP KAPI 2 (21 Ağustos 2026): `/hesaplar/katilma-hesabi`'nin DEVRİK
+# tablosu (vadeler sütunda, değerler "%90 - %10" biçiminde) artık okunuyor —
+# bu satırı ekleyen kişinin şüphelendiği gibi `_parse_matrix_rate_table`'ın
+# (başka bir sprintte Dünya Katılım'ın tutar×vade matrisi için eklenen genel
+# "satır=etiket, sütun=vade" ayrıştırıcısı) 2. öncelik yolu bu düzeni de
+# örtüyor; gerçek sayfaya karşı doğrulandı, üç tablo da (TL, USD/EUR paylaşım
+# oranı + erken kapama kesinti tablosu) doğru okunuyor.
 PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
     ("/hesaplar/katilma-hesabi", "birikim_katilma_hesabi", "yok"),
     ("/hesaplar/avantajli-hesap", "birikim_katilma_hesabi", "yok"),
@@ -97,6 +104,11 @@ PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
     ("/finansmanlar-is/isletme-finansmani", "isyeri_finansmani", "yok"),
     ("/finansmanlar-is/mikro-finansman", "isyeri_finansmani", "yok"),
     ("/finansmanlar-is/ticari-finansman", "isyeri_finansmani", "yok"),
+    # KAPI 2 — PDF'te doğrulanan, whitelist'te eksik iki sayfa.
+    # Eğitim Finansmanı Sistemi vade farksız (kâr payı kavramı yok);
+    # `parse_products()` override'ı `interest_free_benevolent_loan` ekler.
+    ("/krediler/hayat-finans-egitim-finansmani-sistemi", "egitim_finansmani", "yok"),
+    ("/krediler/bana-bunu-al", "ihtiyac_finansmani", "yok"),
 )
 
 
@@ -221,10 +233,19 @@ class HayatFinansScraper(BaseScraper):
         if any(skip in path for skip in SKIP_PATH_HINTS):
             return None
 
+        category_hint: str | None = None
         if any(hint in path for hint in CAMPAIGN_PATH_HINTS):
             doc_type = "campaign"
         elif any(hint in path for hint in PRODUCT_PATH_HINTS):
             doc_type = "product"
+            # ⚠️ KATİP KAPI 2 DÜZELTMESİ: bu satır olmadan `category_hint`
+            # hep None kalıyordu ve `BaseScraper.parse_products()`'ta
+            # `product_type=hint.category_hint` satırı yüzünden Hayat
+            # Finans'ın TÜM ürünleri `product_type=NULL` ile yazılıyordu
+            # (gerçek veride ölçüldü — Finansmanlar/Katılım Hesabı
+            # sekmelerinin ikisinde de HİÇ görünmüyorlardı). `collateral_for`
+            # ile aynı whitelist eşleşme mantığı kullanılır.
+            category_hint = self._product_type_for(path)
         else:
             return None
 
@@ -234,8 +255,23 @@ class HayatFinansScraper(BaseScraper):
         return DiscoveredUrl(
             url=absolute.split("?")[0].split("#")[0],
             doc_type=doc_type,
+            category_hint=category_hint,
+            segment_hint="bireysel" if doc_type == "product" else None,
             discovery_method=discovery_method,
         )
+
+    @staticmethod
+    def _product_type_for(path: str) -> str | None:
+        """Yolu `PRODUCT_PAGES` whitelist'iyle eşleyip ürün türünü döndürür.
+
+        Whitelist'te olmayan (sitemap'ten dinamik gelen) bir adres için
+        `None` döner — bu, "veri yok" değil "henüz whitelist'e eklenmedi"
+        demektir; diğer bankalardaki whitelist yaklaşımıyla tutarlıdır.
+        """
+        for aday, urun_turu, _ in PRODUCT_PAGES:
+            if path.endswith(urlsplit(aday).path.rstrip("/").lower()):
+                return urun_turu
+        return None
 
     def parse_detail(self, html: str, url: str, hint: DiscoveredUrl) -> RawCampaign | None:
         """Detay sayfasını ayrıştırır.
@@ -294,3 +330,33 @@ class HayatFinansScraper(BaseScraper):
             if len(candidate) >= 40:
                 return candidate[:max_length]
         return None
+
+    def parse_products(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawProduct]:
+        """Genel ayrıştırıcıyı çalıştırır, Eğitim Finansmanı'na özel oranı ekler.
+
+        ⚠️ Eğitim Finansmanı Sistemi sayfasında oran TABLOSU YOK (vade
+        farksız — Dünya Katılım'ın Karz-ı Hasen'i ile aynı mantık). Genel
+        ayrıştırıcı bu sayfadan hiçbir `ProductRate` üretmez; bu override
+        `rate_type='interest_free_benevolent_loan'`, `profit_rate_pct=NULL`
+        satırını ekler.
+        """
+        urunler = super().parse_products(html, url, hint)
+        egitim_yolu = "/krediler/hayat-finans-egitim-finansmani-sistemi"
+        if urlsplit(url).path.rstrip("/").lower() != egitim_yolu:
+            return urunler
+
+        for urun in urunler:
+            if urun.parent_external_key is not None:
+                continue
+            if not any(r.rate_type == "interest_free_benevolent_loan" for r in urun.rates):
+                urun.rates.append(
+                    RawProductRate(
+                        rate_source="html_table",
+                        rate_type="interest_free_benevolent_loan",
+                        evidence_text=(
+                            "Vade farksız, gelir belgesiz eğitim finansmanı — "
+                            "sigorta, kredi kartı, masraf ya da vade farkı alınmamaktadır."
+                        ),
+                    )
+                )
+        return urunler

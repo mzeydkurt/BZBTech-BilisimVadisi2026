@@ -41,14 +41,17 @@ KÖKÜNDE; göreli adres çözümlemesi buna dikkat etmeli. Keşif sitemap
 
 from __future__ import annotations
 
+import io
+import re
+from decimal import Decimal
 from typing import Final
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.scrapers.base import BaseScraper
-from app.scrapers.models import DiscoveredUrl, RawCampaign
+from app.scrapers.models import DiscoveredUrl, RawCampaign, RawProduct, RawProductRate
 from app.scrapers.sitemap import extract_urls
 from app.utils.slugify import slug_from_url_path
 from app.utils.urls import is_same_site
@@ -96,6 +99,29 @@ PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
     ("/hadi-kartlarim/hadi-banka-karti", "kart", "yok"),
     ("/hadi-kartlarim/hadi-sanal-kart", "kart", "yok"),
 )
+
+# ⚠️ KAPI 2 — kâr oranı BAŞKA BİR DOMAİNDE (kurumsal vitrin
+# `www.tombank.com.tr`, kampanya tarafında hiç kullanılmayan site) yayımlanıyor
+# ve PDF paketli. `PRODUCT_PAGES`'e KONULMAZ: whitelist yalnızca YOL tutar
+# (`test_urun_sayfasi_whitelisti_sozluge_uyuyor` bunu zorunlu kılar), tam URL
+# değil — `product_base_url` (tombankhadi.com) ile `urljoin` edilince bozulur.
+# `discover_products()` override'ı bu tek adresi ayrıca ekler.
+TOM_URUNLERIMIZ_URL: Final[str] = "https://www.tombank.com.tr/urunlerimiz.html"
+
+_PDF_HREF_RE: Final[re.Pattern[str]] = re.compile(
+    r'href=["\']([^"\']*krediler_kar_oranlari[^"\']*\.pdf)["\']', re.IGNORECASE
+)
+
+# PDF'teki ürün adı → ürün anahtarı (`product_type` zaten `alisveris_finansmani`).
+_KREDI_URUNLERI: Final[dict[str, str]] = {
+    "veresiye": "veresiye_alisveris_kredisi",
+    "taksitli": "taksitli_alisveris_kredisi",
+}
+
+_URUN_BASLIKLARI: Final[dict[str, str]] = {
+    "veresiye_alisveris_kredisi": "Veresiye Alışveriş Kredisi",
+    "taksitli_alisveris_kredisi": "Taksitli Alışveriş Kredisi",
+}
 
 
 class TomBankScraper(BaseScraper):
@@ -192,6 +218,24 @@ class TomBankScraper(BaseScraper):
         """Adresin son yol parçasını döndürür."""
         return urlsplit(url).path.rstrip("/").rsplit("/", 1)[-1]
 
+    def discover_products(self) -> list[DiscoveredUrl]:
+        """Whitelist'e ek olarak kurumsal sitedeki kâr oranı sayfasını döndürür.
+
+        Returns:
+            Ürün detay adresleri (whitelist + `TOM_URUNLERIMIZ_URL`).
+        """
+        hedefler = super().discover_products()
+        hedefler.append(
+            DiscoveredUrl(
+                url=TOM_URUNLERIMIZ_URL,
+                doc_type="product",
+                category_hint="alisveris_finansmani",
+                segment_hint="bireysel",
+                discovery_method="whitelist",
+            )
+        )
+        return hedefler
+
     def parse_detail(self, html: str, url: str, hint: DiscoveredUrl) -> RawCampaign | None:
         """Kampanya detay sayfasını ayrıştırır.
 
@@ -232,3 +276,105 @@ class TomBankScraper(BaseScraper):
             if len(aday) >= 60 and aday != basliksiz:
                 return aday[:max_length]
         return None
+
+    # ── ÜRÜN / FİNANSMAN TARAFI — PDF KAYNAKLI KÂR ORANI ───
+
+    def parse_products(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawProduct]:
+        """`/urunlerimiz.html`'de PDF'ten kâr oranı okur, diğerlerinde genel yolu izler.
+
+        ⚠️ TARİH DAMGALI URL SABİT KODLANMAZ. Sayfadaki `<a href>`'den okunur;
+        PDF adı her güncellemede değişiyor (`krediler_kar_oranlari_20-05-2026.pdf`
+        gibi). Bu yüzden `discover_products()`'ta whitelist'e giren tek şey
+        PDF'İ BARINDIRAN SAYFA, PDF'in kendisi değil.
+        """
+        hedef_yol = urlsplit(TOM_URUNLERIMIZ_URL).path.rstrip("/").lower()
+        if urlsplit(url).path.rstrip("/").lower() != hedef_yol:
+            return super().parse_products(html, url, hint)
+
+        pdf_href = self._find_pdf_href(html)
+        if pdf_href is None:
+            logger.warning("tom_bank_pdf_linki_bulunamadi", url=url)
+            return []
+
+        pdf_url = urljoin(url, pdf_href)
+        fetch = self.fetcher.fetch(pdf_url)
+        if not fetch.is_success or not fetch.content:
+            logger.warning(
+                "tom_bank_pdf_alinamadi", url=pdf_url, durum=fetch.status_code, hata=fetch.error
+            )
+            return []
+
+        try:
+            satirlar = self._parse_pdf_rates(fetch.content)
+        except Exception as exc:
+            logger.warning("tom_bank_pdf_ayristirilamadi", url=pdf_url, hata=str(exc))
+            return []
+
+        urunler: list[RawProduct] = []
+        for urun_adi, oranlar in satirlar.items():
+            urunler.append(
+                RawProduct(
+                    external_key=f"tom-bank-{urun_adi}#base",
+                    name=_URUN_BASLIKLARI.get(urun_adi, urun_adi),
+                    source_url=pdf_url,
+                    product_type="alisveris_finansmani",
+                    segment="bireysel",
+                    limits_source="none",
+                    rates=oranlar,
+                )
+            )
+        return urunler
+
+    @staticmethod
+    def _find_pdf_href(html: str) -> str | None:
+        """Sayfadaki tarih damgalı kâr oranı PDF'inin bağlantısını bulur."""
+        eslesme = _PDF_HREF_RE.search(html)
+        return eslesme.group(1) if eslesme else None
+
+    @staticmethod
+    def _parse_pdf_rates(pdf_bytes: bytes) -> dict[str, list[RawProductRate]]:
+        """PDF'teki "Ürün adı | 0-6 | 7-12 | 13-24 | 25-36" satırlarını ayrıştırır.
+
+        Args:
+            pdf_bytes: Ham PDF içeriği.
+
+        Returns:
+            Ürün anahtarı (`veresiye_alisveris_kredisi` | `taksitli_alisveris_kredisi`)
+            → oran satırları.
+        """
+        import pdfplumber
+
+        vade_bantlari = ((6, "0-6 Ay"), (12, "7-12 Ay"), (24, "13-24 Ay"), (36, "25-36 Ay"))
+        satir_deseni = re.compile(
+            r"(Veresiye|Taksitli)[^\d%]*"
+            r"([\d.,]+)%\s*([\d.,]+)%\s*([\d.,]+)%\s*([\d.,]+)%",
+            re.IGNORECASE,
+        )
+
+        sonuc: dict[str, list[RawProductRate]] = {}
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            metin = "\n".join(page.extract_text() or "" for page in pdf.pages)
+
+        for satir in metin.split("\n"):
+            eslesme = satir_deseni.search(satir)
+            if not eslesme:
+                continue
+            anahtar_kelime = eslesme.group(1).lower()
+            urun_anahtari = _KREDI_URUNLERI.get(anahtar_kelime)
+            if urun_anahtari is None:
+                continue
+
+            oranlar = [Decimal(v.replace(",", ".")) for v in eslesme.groups()[1:]]
+            sonuc[urun_anahtari] = [
+                RawProductRate(
+                    rate_source="pdf_table",
+                    rate_type="financing_rate",
+                    term_months=ay,
+                    term_label=etiket,
+                    profit_rate_pct=oran,
+                    evidence_text=f"{eslesme.group(1)} Alışveriş Kredisi | {etiket} | %{oran}",
+                )
+                for (ay, etiket), oran in zip(vade_bantlari, oranlar, strict=True)
+            ]
+
+        return sonuc

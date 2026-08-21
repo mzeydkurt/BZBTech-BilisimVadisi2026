@@ -105,6 +105,15 @@ class CampaignFilters:
     # tek sayfada, öteki üç ayrı sayfada yayımlıyor. Kök sayımı olmadan
     # bankalar arası karşılaştırma yanlış olur.
     include_children: bool = False
+    # KATİP KAPI 5 — kullanıcının isteği: "kampanyanın tarihi kesin olarak
+    # dolmuşsa dashboard'da göstermesin, tarihi belirsizse göstersin."
+    # `unknown` ile `expired` AYRI durumlardır (bkz. `compute_status`); bu
+    # bayrak yalnızca `expired`'ı etkiler, tarihi bilinmeyen kampanyalar bu
+    # bayraktan bağımsız her zaman görünür kalır. `comparison_service.rank_campaigns`'daki
+    # `only_active: bool = True` deseninin aynısı — sadece ismi ve mantığı
+    # tersine çevrilmiş (burada "veri kaybı yok, sadece görünürlük" ilkesi
+    # gereği varsayılan dışlama gizli, açık `status` isteğiyle bypass edilebilir).
+    include_expired: bool = False
 
 
 def _apply_filters(
@@ -122,7 +131,14 @@ def _apply_filters(
     if filters.target_customer:
         statement = statement.where(Campaign.target_customer == filters.target_customer)
     if filters.status:
+        # Açık bir durum isteği (ör. `status=expired`) bu bayraktan bağımsız
+        # her zaman çalışır — kullanıcı "kesin olarak dolmuşları görmek
+        # istemiyorum" derken, jüri demosunda "sistem süresi dolmuşu biliyor
+        # ama filtreliyor" göstermek için `status=expired` isteğini
+        # engellemek istemez.
         statement = statement.where(Campaign.status == filters.status)
+    elif not filters.include_expired:
+        statement = statement.where(Campaign.status != "expired")
     if filters.q:
         # LIKE tabanlı basit arama. Türkçe büyük/küçük harf katlaması ve kök
         # bulma FTS5 ile PART 2'de gelecek (§9).

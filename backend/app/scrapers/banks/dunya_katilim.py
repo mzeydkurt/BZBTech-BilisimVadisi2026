@@ -47,7 +47,7 @@ from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.scrapers.base import BaseScraper
-from app.scrapers.models import DiscoveredUrl, RawCampaign
+from app.scrapers.models import DiscoveredUrl, RawCampaign, RawProduct, RawProductRate
 from app.scrapers.sitemap import extract_urls
 from app.utils.slugify import slug_from_url_path
 from app.utils.urls import dedupe_urls, is_same_site
@@ -94,6 +94,14 @@ PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
         "ihtiyac_finansmani",
         "yok",
     ),
+    # ⚠️ KAPI 2 — vade farksız, kâr payı KAVRAMI yok. `parse_products()`
+    # override'ı bu ürüne özel `interest_free_benevolent_loan` oranı ekler
+    # (sayfada oran tablosu YOK, genel ayrıştırıcı hiçbir oran üretmez).
+    (
+        "/kendim-icin/finansmanlar/ihtiyac-finansmanlari/enerya-karz-i-hasen",
+        "karz_i_hasen",
+        "yok",
+    ),
     ("/kendim-icin/finansmanlar/arac-finansmanlari/arac-finansmani", "tasit_finansmani", "tasit"),
     (
         "/kendim-icin/finansmanlar/arac-finansmanlari/cevre-dostu-arac-finansmani",
@@ -115,6 +123,10 @@ PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
 
 # Ürün listeleme sayfasındaki bağlantıları ayırt eden yol ön eki.
 PRODUCT_PREFIX: Final[str] = "/kendim-icin/finansmanlar/"
+
+KARZ_I_HASEN_PATH: Final[str] = (
+    "/kendim-icin/finansmanlar/ihtiyac-finansmanlari/enerya-karz-i-hasen"
+)
 
 CONDITION_KEYWORDS: Final[tuple[str, ...]] = (
     "kampanya koşul",
@@ -303,3 +315,36 @@ class DunyaKatilimScraper(BaseScraper):
         boilerplate var, başlığın kendisi ve bölüm başlıkları açıklama sayılmaz.
         """
         return self._first_paragraph(body_text, title)
+
+    def parse_products(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawProduct]:
+        """Genel ayrıştırıcıyı çalıştırır, Karz-ı Hasen'e özel oranı ekler.
+
+        ⚠️ Enerya Karz-ı Hasen sayfasında oran TABLOSU YOK (vade farksız —
+        kâr payı kavramı bulunmuyor). Genel `BaseScraper.parse_products()`
+        bu sayfadan hiçbir `ProductRate` üretmez; tutar/vade limitleri
+        (500-16.500 TL, 2-6 ay) metinden yine de çıkarılır. Bu override
+        yalnızca ürünün "faizsiz borç" niteliğini AÇIKÇA kaydeden tek satırı
+        ekler — `rate_type='interest_free_benevolent_loan'`,
+        `profit_rate_pct=NULL` (0 DEĞİL, "oran kavramı yok" demek).
+        """
+        urunler = super().parse_products(html, url, hint)
+        if urlsplit(url).path.rstrip("/") != KARZ_I_HASEN_PATH:
+            return urunler
+
+        for urun in urunler:
+            if urun.parent_external_key is not None:
+                continue
+            zaten_var = any(r.rate_type == "interest_free_benevolent_loan" for r in urun.rates)
+            if not zaten_var:
+                urun.rates.append(
+                    RawProductRate(
+                        rate_source="html_table",
+                        rate_type="interest_free_benevolent_loan",
+                        evidence_text=(
+                            "Antalya, Aydın, Denizli ve Konya illerinde gerçekleştirilecek "
+                            "yeni abonelik işlemlerinde vade farksız finansman imkânı — "
+                            "kâr payı alınmaz."
+                        ),
+                    )
+                )
+        return urunler

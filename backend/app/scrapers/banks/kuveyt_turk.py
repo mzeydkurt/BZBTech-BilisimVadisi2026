@@ -31,6 +31,7 @@ Başlıktan türetme denemesi anlamsız; `href` birebir okunur.
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 from typing import Final
 from urllib.parse import urljoin, urlsplit
 
@@ -40,7 +41,7 @@ from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.scrapers.base import BaseScraper
-from app.scrapers.models import DiscoveredUrl, RawCampaign
+from app.scrapers.models import DiscoveredUrl, RawCampaign, RawProduct, RawProductRate
 from app.utils.slugify import slug_from_url_path
 from app.utils.urls import is_same_site
 
@@ -118,7 +119,9 @@ PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
     # ── Konut ──
     (f"{_F}/konut-finansmanlari/konut-finansmani", "konut_finansmani", "konut"),
     (f"{_F}/konut-finansmanlari/ilk-evim-konut-finansmani", "konut_finansmani", "konut"),
-    (f"{_F}/konut-finansmanlari/arsa-finansmani", "konut_finansmani", "konut"),
+    # KAPI 1.1 — arsa finansmanı ayrı bir tür (konut değil); PDF'te doğrulandı:
+    # 1.000-5.000.000 TL, 1-24 ay %4,79 / 25-60 ay %4,49.
+    (f"{_F}/konut-finansmanlari/arsa-finansmani", "arsa_finansmani", "konut"),
     (f"{_F}/konut-finansmanlari/2b-finansmani", "konut_finansmani", "konut"),
     (f"{_F}/konut-finansmanlari/is-yeri-finansmani", "isyeri_finansmani", "konut"),
     (
@@ -179,6 +182,50 @@ PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
     (f"{_H}/diger-kiymetli-maden-hesaplari/gumus-hesap", "yatirim_urunu", "diger"),
     (f"{_H}/diger-kiymetli-maden-hesaplari/platin-hesap", "yatirim_urunu", "diger"),
 )
+
+# ⚠️ KAPI 2 — Konut/Arsa/Araç Finansmanı sayfaları oranı STATİK TABLODA
+# YAYIMLAMIYOR (ölçüldü: gerçek sayfalarda `parse_rate_tables()` sıfır tablo
+# buluyor — "%3", "%2" gibi ilgisiz yüzdeler var ama PDF'teki %2,99/%4,79 gibi
+# değerler HTML'de hiç geçmiyor). Oran yalnızca hesaplayıcıdan okunabiliyor;
+# CLAUDE.md'nin "Hesaplayıcılar SORGULANMAZ" kuralı üretim hattı için geçerli,
+# bu yüzden bu değerler kullanıcının bizzat hesaplayıcıyı sorgulayıp
+# doğruladığı `seed_manual` satırları olarak, `is_binding=False` ile eklenir
+# (bankanın taahhüdü değil, örnek/hesaplama sonucu).
+#
+# Yol son parçası → oran bantları:
+#   (alt_ay, üst_ay, alt_tutar, üst_tutar, oran, çelişkili mi, varyant_etiketi).
+#
+# ⚠️ `varyant_etiketi` ZORUNLU AYIRT EDİCİ. `band_key` oranın DEĞERİNİ değil
+# yalnızca BANDI (vade/tutar/para birimi/...) kodluyor — iki çelişkili satır
+# aynı bantta olduğu için etiketsiz bırakılırsa ikincisi upsert'te "aynı bant"
+# sayılıp sessizce ATLANIR (ölçüldü: 19-36 ay için yalnızca %3,62 kalıyordu,
+# %3,52 hiç yazılmıyordu). `variant` alanı `band_key`'e dahil olduğu için bu
+# iki satırı ayırt eder.
+_SEED_MANUAL_ORANLAR: Final[dict[str, list[tuple[int, int, str, str, str, bool, str | None]]]] = {
+    "konut-finansmani": [
+        (0, 18, "0", "3000000", "3.91", False, None),
+        (19, 24, "0", "3000000", "3.71", False, None),
+        (25, 36, "0", "3000000", "3.56", False, None),
+        (37, 48, "0", "3000000", "3.31", False, None),
+        (49, 120, "0", "3000000", "2.99", False, None),
+    ],
+    "arsa-finansmani": [
+        (1, 24, "1000", "5000000", "4.79", False, None),
+        (25, 60, "1000", "5000000", "4.49", False, None),
+    ],
+    "arac-finansmani": [
+        (1, 12, "1000000", "5000000", "3.87", False, None),
+        (13, 18, "1000000", "5000000", "3.72", False, None),
+        # ⚠️ SIFIRINCI KURAL — kaynakta AYNI vade aralığı iki farklı oranla
+        # geçiyor (muhtemelen bir vade bandı yazım hatası — bkz. modül dışı
+        # `docs/urun_dogrulama_raporu.md`). Hesaplayıcıya karşı yeniden
+        # sorgulama bu ortamda gerçekleştirilemedi (WAF/oturum gerektiriyor);
+        # iki değer de düşük güvenle (`is_binding=False`) ve çelişki notuyla
+        # kaydedilir, biri diğerinin yerine UYDURULMAZ.
+        (19, 36, "1000000", "5000000", "3.62", True, "kaynak-a"),
+        (19, 36, "1000000", "5000000", "3.52", True, "kaynak-b"),
+    ],
+}
 
 
 class KuveytTurkScraper(BaseScraper):
@@ -414,3 +461,50 @@ class KuveytTurkScraper(BaseScraper):
             if len(aday) >= 60:
                 return aday[:max_length]
         return None
+
+    def parse_products(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawProduct]:
+        """Genel ayrıştırıcıyı çalıştırır; sıfır oran bulunan konut/arsa/araç
+        finansmanı sayfalarına `_SEED_MANUAL_ORANLAR`'daki doğrulanmış oranı ekler.
+
+        ⚠️ SESSİZCE ÜST YAZMAZ. Sayfa gelecekte statik tabloya geçerse
+        `super().parse_products()` zaten `html_table` (güven 1.000) satırları
+        üretir ve bu override bir şey EKLEMEZ (`if ana.rates: return` kontrolü).
+        """
+        urunler = super().parse_products(html, url, hint)
+        yol_sonu = urlsplit(url).path.rstrip("/").rsplit("/", 1)[-1]
+        seed = _SEED_MANUAL_ORANLAR.get(yol_sonu)
+        if seed is None:
+            return urunler
+
+        for urun in urunler:
+            if urun.parent_external_key is not None or urun.rates:
+                continue
+            urun.rates = [
+                RawProductRate(
+                    rate_source="seed_manual",
+                    rate_type="financing_rate",
+                    term_months=ust_ay,
+                    term_label=f"{alt_ay}-{ust_ay} Ay",
+                    profit_rate_pct=Decimal(oran),
+                    amount_min=Decimal(alt_tutar),
+                    amount_max=Decimal(ust_tutar),
+                    variant=varyant,
+                    is_binding=False,
+                    evidence_text=(
+                        f"{alt_ay}-{ust_ay} ay, {alt_tutar}-{ust_tutar} TL: aylık kâr oranı %{oran}"
+                        + (
+                            " — ⚠️ kaynakta aynı vade aralığı için çelişkili ikinci bir "
+                            "değer de var, bkz. docs/urun_dogrulama_raporu.md"
+                            if celiskili
+                            else ""
+                        )
+                    ),
+                )
+                for alt_ay, ust_ay, alt_tutar, ust_tutar, oran, celiskili, varyant in seed
+            ]
+            urun.is_binding = False
+            urun.non_binding_notice = (
+                "Bu sayfa oranı statik tabloda yayımlamıyor; değer kullanıcı tarafından "
+                "bankanın hesaplama aracı sorgulanarak doğrulanmıştır (KATİP KAPI 2)."
+            )
+        return urunler

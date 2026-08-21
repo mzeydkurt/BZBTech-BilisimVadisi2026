@@ -25,6 +25,8 @@ yeniden dener. Kalıcı sayılırsa banka tamamen boş döner.
 
 from __future__ import annotations
 
+import re
+from decimal import Decimal, InvalidOperation
 from typing import Final
 from urllib.parse import urljoin, urlsplit
 
@@ -34,8 +36,9 @@ from app.core.normalization.text import collapse_whitespace, normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.scrapers.base import BaseScraper
-from app.scrapers.models import DiscoveredUrl, RawCampaign
-from app.utils.slugify import slug_from_url_path
+from app.scrapers.models import DiscoveredUrl, RawCampaign, RawProduct, RawProductRate
+from app.scrapers.products import product_external_key
+from app.utils.slugify import slug_from_url_path, slugify
 from app.utils.urls import is_same_site
 
 logger = get_logger(__name__)
@@ -128,6 +131,39 @@ _F = "/bireysel/finansman-urunleri"
 _H = "/bireysel/hesaplar"
 _K = "/bireysel/kartlar"
 
+# ── Ürün ve hizmet ücretleri sayfası (KATİP) ──────────────
+#
+# Canlı sayfada doğrulandı (21 Ağustos 2026, `robots.txt` engeli YOK): 3
+# Bootstrap sekmesi (İhtiyaç/Konut/Taşıt Finansmanı), her sekmede akordeon
+# panelleri, her panelin tablosunda "Masraf Adı" hücresi "Kâr oranı (N-M ay
+# vade)" ile başlayan satırlar asgari/azami oranı veriyor. Yukarıdaki tanıtım
+# sayfaları (`_F/...`) bu oranı YAYIMLAMIYOR — bu sayfa Ziraat'in konut/taşıt/
+# ihtiyaç finansmanı için TEK statik oran kaynağı.
+FEE_RATE_PATH: Final[str] = "/urun-ve-hizmet-ucretleri/bireysel-krediler"
+FEE_RATE_URL: Final[str] = f"{BASE_URL}{FEE_RATE_PATH}"
+
+# Sekme etiketi (nav linkinin metni) -> `core.taxonomy.PRODUCT_TYPES` değeri.
+_SEKME_URUN_TURU: Final[dict[str, str]] = {
+    "İhtiyaç Finansmanı": "ihtiyac_finansmani",
+    "Konut Finansmanı": "konut_finansmani",
+    "Taşıt Finansmanı": "tasit_finansmani",
+}
+
+# Yalnızca bu önekle başlayan "Masraf Adı" satırları kâr oranıdır; Tahsis
+# Ücreti / Ekspertiz Ücreti / İpotek Tesis Ücreti / Hayat Sigortası / DASK /
+# Konut Sigortası / Yıllık Maliyet Oranı / Erken Kapama Komisyonu gibi hizmet
+# ücreti satırları bu önekle eşleşmediği için kendiliğinden atlanır.
+_KAR_ORANI_ONEKLERI: Final[tuple[str, ...]] = ("kâr oran", "kar oran")
+
+# "(1-60 ay vade)" / "Oranı(1-120 ay vade)" (araya boşluksuz) biçimlerini yakalar.
+_VADE_RE: Final[re.Pattern[str]] = re.compile(r"\((\d+)\s*-\s*(\d+)\s*ay\s*vade\)", re.IGNORECASE)
+
+# Panel başlığındaki tutar bandını yakalar: "(0-10.000.000 TL'ye kadar)",
+# "(0 - 400.000 TL)*", "(400.001- 800.000 TL)*" (boşluk tutarsız).
+_TUTAR_BANDI_RE: Final[re.Pattern[str]] = re.compile(
+    r"\(\s*([\d.,]+)\s*-\s*([\d.,]+)\s*TL[^)]*\)\*?", re.IGNORECASE
+)
+
 PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
     # ── Konut ve gayrimenkul ──
     (f"{_F}/konut-gayrimenkul-finansmani", "konut_finansmani", "konut"),
@@ -170,6 +206,13 @@ PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
     (f"{_K}/banka-karti", "kart", "yok"),
     (f"{_K}/aile-kart-troy", "kart", "yok"),
     (f"{_K}/bankkart-sanal-kart", "kart", "yok"),
+    # ── Ürün ve hizmet ücretleri (KATİP) — konut/taşıt/ihtiyaç finansmanının
+    # GERÇEK kâr oranı asgari/azami değerleri yalnızca burada, statik bir
+    # tabloda yayımlanıyor; yukarıdaki tanıtım sayfalarında oran yok. `hint`
+    # üçüncü alanı (`product_type`/teminat) burada KULLANILMAZ —
+    # `parse_products()` override'ı üç sekmeyi ayrı ayrı sınıflandırır; ilk
+    # değer yalnızca whitelist biçimini sağlamak için var.
+    (FEE_RATE_PATH, "finansman", None),
 )
 
 
@@ -350,3 +393,191 @@ class ZiraatKatilimScraper(BaseScraper):
             if len(candidate) >= 40:
                 return candidate[:max_length]
         return None
+
+    def parse_products(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawProduct]:
+        """Genel ayrıştırıcıyı çalıştırır; ücret/oran sayfası için özel ayrıştırıcıya döner.
+
+        ⚠️ Ücret sayfası (`FEE_RATE_PATH`) yukarıdaki tanıtım sayfalarıyla
+        AYNI ürünü zenginleştirmez — her panel kendi bağımsız `RawProduct`'ı
+        olarak yazılır. Sebep: `ProductRunner._upsert_product` mevcut bir
+        ürünü güncellerken TÜM alanları (ad, tür, tutar/vade limitleri) kör
+        biçimde üstüne yazıyor; bu sayfanın ayrıştırıcısı tanıtım sayfasının
+        bildiği limit/varyant bilgisini bilmediği için "birleştirme" denemesi
+        o veriyi sessizce SİLERDİ. Ayrı ürün olarak tutmak, iki farklı
+        yayının (tanıtım metni / resmî ücret tablosu) ikisini de korur.
+        """
+        if urlsplit(url).path.rstrip("/") == FEE_RATE_PATH:
+            return _parse_fee_rate_page(html, url)
+        return super().parse_products(html, url, hint)
+
+
+def _tl_sayi(ham: str) -> Decimal:
+    """`"10.000.000"` gibi Türkçe biçimli bir TL tutarını `Decimal`'a çevirir."""
+    return Decimal(ham.strip().replace(".", "").replace(",", "."))
+
+
+def _oran_decimal(ham: str) -> Decimal | None:
+    """`"4,99 %"` gibi bir oranı `Decimal("4.99")`'a çevirir; ayrıştırılamazsa None."""
+    temiz = ham.strip().replace("%", "").strip().replace(".", "").replace(",", ".")
+    try:
+        return Decimal(temiz)
+    except InvalidOperation:
+        return None
+
+
+def _panel_adi_ve_tutar_bandi(baslik: str) -> tuple[str, Decimal | None, Decimal | None]:
+    """Panel başlığından tutar bandını ayrıştırır; başlık BİREBİR korunur.
+
+    Args:
+        baslik: Akordeon başlığı, ör. `"Taşıt Finansmanı (Kaskolu) (0 - 400.000 TL)*"`.
+
+    Returns:
+        (başlık BİREBİR, alt tutar, üst tutar) — tutar parenteze yoksa ikisi de None.
+    """
+    eslesme = _TUTAR_BANDI_RE.search(baslik)
+    if eslesme is None:
+        return baslik, None, None
+    try:
+        return baslik, _tl_sayi(eslesme.group(1)), _tl_sayi(eslesme.group(2))
+    except InvalidOperation:
+        return baslik, None, None
+
+
+def _kar_orani_satiri_mi(masraf_adi: str) -> bool:
+    """ "Masraf Adı" hücresi bir kâr oranı satırı mı (ücret satırı değil)?"""
+    normalized = masraf_adi.strip().lower()
+    return normalized.startswith(_KAR_ORANI_ONEKLERI)
+
+
+def _panel_urunu_olustur(
+    *, sekme_urun_turu: str, panel_baslik: str, panel_index: int, satirlar: list[Tag], url: str
+) -> RawProduct | None:
+    """Bir akordeon panelinin "Kâr oranı" satırlarından tek bir `RawProduct` üretir.
+
+    Returns:
+        Panelde en az bir kâr oranı satırı varsa ürün; yoksa None (panel
+        yalnızca hizmet ücreti içeriyor demektir — atlanır, hata sayılmaz).
+    """
+    baslik, tutar_min, tutar_max = _panel_adi_ve_tutar_bandi(panel_baslik)
+    oranlar: list[RawProductRate] = []
+
+    for satir in satirlar:
+        hucreler = satir.find_all("td")
+        if len(hucreler) < 6:
+            continue
+        masraf_adi = collapse_whitespace(hucreler[0].get_text())
+        if not masraf_adi or not _kar_orani_satiri_mi(masraf_adi):
+            continue
+
+        vade_eslesme = _VADE_RE.search(masraf_adi)
+        asgari = _oran_decimal(hucreler[2].get_text())
+        azami = _oran_decimal(hucreler[4].get_text())
+        aciklama = collapse_whitespace(hucreler[5].get_text())
+        if asgari is None and azami is None:
+            logger.warning(
+                "ziraat_ucret_sayfasi_oran_ayristirilamadi", panel=baslik, masraf_adi=masraf_adi
+            )
+            continue
+
+        oranlar.append(
+            RawProductRate(
+                rate_source="html_table",
+                rate_type="financing_rate",
+                # ⚠️ Gözlemde asgari == azami her satırda; farklı olsalar bile
+                # `ProductRate.profit_rate_pct` tek değer taşıdığı için asgari
+                # alınır — azami her iki alanda da `evidence_text`'te BİREBİR
+                # görünür kalır.
+                profit_rate_pct=asgari if asgari is not None else azami,
+                term_months=int(vade_eslesme.group(2)) if vade_eslesme else None,
+                term_label=(
+                    f"{vade_eslesme.group(1)}-{vade_eslesme.group(2)} ay vade"
+                    if vade_eslesme
+                    else None
+                ),
+                amount_min=tutar_min,
+                amount_max=tutar_max,
+                # ⚠️ Kaynak hücreleri zaten "%" işaretini içeriyor ("3,49 %");
+                # ayrıca "%" eklemek "Asgari %3,49 %" gibi çift işarete yol
+                # açardı — kanıt metni birebir olmalı, gürültülü değil.
+                evidence_text=f"{masraf_adi} — Asgari {hucreler[2].get_text().strip()}, "
+                f"Azami {hucreler[4].get_text().strip()}. {aciklama}".strip(),
+            )
+        )
+
+    if not oranlar:
+        return None
+
+    slug = f"{slug_from_url_path(url)}-{panel_index}-{slugify(baslik)}"
+    return RawProduct(
+        # ⚠️ Ayrı bir ad alanı: tanıtım sayfalarındaki AYNI isimli ürünle
+        # ÇAKIŞMAZ (`parse_products` docstring'indeki gerekçe).
+        external_key=product_external_key(slug, None),
+        name=baslik,
+        source_url=url,
+        product_type=sekme_urun_turu,
+        amount_min=tutar_min,
+        amount_max=tutar_max,
+        rates=oranlar,
+        limits_source="none",
+    )
+
+
+def _parse_fee_rate_page(html: str, url: str) -> list[RawProduct]:
+    """`/urun-ve-hizmet-ucretleri/bireysel-krediler` sayfasını ayrıştırır.
+
+    Üç Bootstrap sekmesi (İhtiyaç/Konut/Taşıt Finansmanı) × akordeon paneli
+    × "Kâr oranı (N-M ay vade)" satırları. Hizmet ücreti satırları (Tahsis
+    Ücreti, Ekspertiz Ücreti, İpotek Tesis Ücreti, Hayat/Konut Sigortası,
+    DASK, Yıllık Maliyet Oranı, Erken Kapama Komisyonu) `_kar_orani_satiri_mi`
+    ile elenir — bilinçli olarak yazılmaz (KATİP: yalnızca kâr oranı istendi).
+
+    Args:
+        html: Sayfanın ham HTML'i.
+        url: Sayfanın adresi (`RawProduct.source_url` için).
+
+    Returns:
+        Her panel için bir ürün; hiçbir kâr oranı satırı bulunamazsa boş liste.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    urunler: list[RawProduct] = []
+    panel_index = 0
+
+    sekme_etiketleri: dict[str, str] = {}
+    for anchor in soup.select("ul.nav-pills a[href^='#']"):
+        etiket = collapse_whitespace(anchor.get_text())
+        if etiket:
+            sekme_etiketleri[str(anchor["href"]).lstrip("#")] = etiket
+
+    for sekme_id, etiket in sekme_etiketleri.items():
+        urun_turu = _SEKME_URUN_TURU.get(etiket)
+        if urun_turu is None:
+            logger.warning("ziraat_ucret_sayfasi_bilinmeyen_sekme", etiket=etiket)
+            continue
+        pane = soup.find(id=sekme_id)
+        if not isinstance(pane, Tag):
+            continue
+
+        for buton in pane.find_all("button", class_="custom-accordion__title"):
+            panel_index += 1
+            # ⚠️ `<i class="zk-arrow">&nbsp;</i>` alt öğesi de metne dahil
+            # oluyor; `collapse_whitespace` sondaki NBSP'yi zaten kırpar.
+            panel_baslik = collapse_whitespace(buton.get_text())
+            hedef_id = str(buton.get("data-target", "")).lstrip("#")
+            gövde = soup.find(id=hedef_id) if hedef_id else None
+            if not panel_baslik or not isinstance(gövde, Tag):
+                continue
+
+            satirlar = gövde.find_all("tr")
+            urun = _panel_urunu_olustur(
+                sekme_urun_turu=urun_turu,
+                panel_baslik=panel_baslik,
+                panel_index=panel_index,
+                satirlar=satirlar,
+                url=url,
+            )
+            if urun is not None:
+                urunler.append(urun)
+
+    if not urunler:
+        logger.warning("ziraat_ucret_sayfasi_hic_oran_bulunamadi", url=url)
+    return urunler
