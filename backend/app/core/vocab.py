@@ -63,6 +63,16 @@ VARIANT_VOCAB: Final[dict[str, tuple[str, ...]]] = {
         "cevre_dostu",
         "surdurulebilirlik",
     ),
+    # KATİP KAPI 1.2 — Albaraka/Dünya Katılım konut finansmanında iki ayrı
+    # LTV matrisi var (Standart / İkinci Alım); enerji sınıfı boyutuyla ÇAKIŞMAZ,
+    # aynı üründe iki farklı kesişimli `product_limits` seti olabilir.
+    "alim_sirasi": ("ilk_alim", "sonraki_alim"),
+    # KATİP KAPI 1.3 — marka/model bazlı finansman (Togg gibi). Anahtar kümesi
+    # KASITLI OLARAK boş bırakılır: hangi marka/modellerin çıkacağı önceden
+    # bilinmiyor (bugün Togg, yarın başka bir marka olabilir) — `variant_key`
+    # burada `brand`/`model` kolonlarından türetilir (ör. "togg_t10x"), sabit
+    # bir sözlükle sınırlanmaz.
+    "marka_model": (),
 }
 
 # Tüm boyut adları.
@@ -80,6 +90,9 @@ VARIANT_SOURCES: Final[tuple[str, ...]] = (
     "separate_page",
     "table_column",
     "text",
+    # KATİP: marka/model varyantı (Togg gibi) — tek tablonun HER SATIRI ayrı
+    # bir model/varyant (bkz. `alim_sirasi`/`marka_model` boyutları).
+    "table_row",
 )
 
 # Tutar/vade limitinin nereden çıkarıldığı. HTML attribute (slider min/max)
@@ -109,6 +122,17 @@ RATE_SOURCES: Final[tuple[str, ...]] = (
     "text",
     "js_default",
     "none",
+    # ⚠️ KATİP dönüşümü: kullanıcının bankanın kendi sayfasından/hesaplayıcısından
+    # bizzat tarayıp doğruladığı, otomasyonun (Playwright/HTTP) bu ortamda
+    # çalışmadığı durumlarda elle girilen veri. Tahmin DEĞİLDİR — bankanın
+    # yayımladığı değerin birebir transkripsiyonudur, bu yüzden `html_table`
+    # kadar güvenilir sayılır (bkz. RATE_SOURCE_CONFIDENCE).
+    "seed_manual",
+    # TOM Bank kâr oranlarını yalnızca PDF olarak yayımlıyor
+    # (`krediler_kar_oranlari_*.pdf`) — `ProductLimit.extraction_method`'taki
+    # `pdf_table` ile aynı güvenilirlik düzeyinde, bankanın kendi yapısal
+    # tablosu, yalnızca PDF paketli.
+    "pdf_table",
 )
 
 RATE_SOURCE_CONFIDENCE: Final[dict[str, Decimal]] = {
@@ -119,6 +143,8 @@ RATE_SOURCE_CONFIDENCE: Final[dict[str, Decimal]] = {
     "text": Decimal("0.750"),
     "js_default": Decimal("0.500"),
     "none": Decimal("0.000"),
+    "seed_manual": Decimal("1.000"),
+    "pdf_table": Decimal("1.000"),
 }
 
 # JS bundle'ındaki varsayılan sabit, bankanın gerçekten uyguladığı oran DEĞİLDİR;
@@ -147,10 +173,22 @@ RATE_TYPES: Final[tuple[str, ...]] = (
     "financing_rate",
     "participation_yield",
     "profit_sharing_ratio",
+    # ⚠️ KATİP: Karz-ı Hasen (Dünya Katılım "Enerya") ve vade farksız Eğitim
+    # Finansmanı (Hayat Finans) sistemi — kâr payı KAVRAMI yok. `financing_rate`
+    # ile 0 oranını KARIŞTIRMAMAK için ayrı bir tür. Kasıtlı olarak
+    # `RATE_TYPE_COMPARABLE_FIELD`'a EKLENMEZ: bu ürünler `rank_products`
+    # sıralamasına hiç giremez (şartname anlamında finansman değil, faizsiz
+    # borç kategorisi).
+    "interest_free_benevolent_loan",
 )
 
 # ⚠️ FARKLI TÜRLER ASLA AYNI SIRALAMAYA GİRMEZ. Karşılaştırma ucu
 # `rate_type` parametresini ZORUNLU tutar; varsayılan seçmez.
+#
+# ⚠️ `interest_free_benevolent_loan` BİLİNÇLİ OLARAK BURADA YOK — bu sözlükte
+# olmayan bir `rate_type` `rank_products`'ta RankingError fırlatır
+# (bkz. `comparison_service.py`), karz-ı hasen/eğitim finansmanı ürünlerinin
+# sıralamaya sessizce girmesini engeller.
 RATE_TYPE_COMPARABLE_FIELD: Final[dict[str, str]] = {
     "financing_rate": "profit_rate_pct",
     "participation_yield": "profit_rate_pct",
@@ -168,6 +206,79 @@ CUSTOMER_TYPES: Final[tuple[str, ...]] = ("gercek_kisi", "tuzel_kisi")
 
 # Limit matrisi satırının nereden okunduğu.
 LIMIT_EXTRACTION_METHODS: Final[tuple[str, ...]] = ("html_table", "pdf_table", "text")
+
+
+# ── KATİP: TKBB entegrasyonu ve ürün mevcudiyeti ──────────
+#
+# Bir `product_rates` satırının bankanın kendi sitesinden mi yoksa TKBB Veri
+# Peteği'nin resmi API'sinden mi geldiği. İkisi AYNI tabloya yazılır (yeni
+# tablo açılmaz) ama kaynağı ayırt edilebilir kalmalı — çapraz doğrulama ve
+# "hangi veri kimden" izlenebilirliği için.
+DATA_SOURCES: Final[tuple[str, ...]] = ("bank_site", "tkbb_veripetegi")
+
+# Bir `products` satırının bankanın gerçekten sunup sunmadığı. "Ürün yok" ile
+# "veri henüz toplanmadı" AYRI durumlardır — TKBB'de "ara ödemeli katılma
+# hesabı" yalnızca 5 bankada var, diğer 4 bankada satır hiç yok (`not_offered`,
+# `unknown` değil).
+AVAILABILITY_STATUSES: Final[tuple[str, ...]] = ("offered", "not_offered", "unknown")
+
+# ── KATİP KAPI 6: Finansmanlar sekmesinin kapsamı ─────────
+#
+# "Finansman" sekmesine giren `product_type` değerleri. Katılma hesabı
+# ürünleri (`katilma_hesabi`, `ozel_katilma_hesabi`, `altin_katilma_hesabi`,
+# `ara_donem_kar_odemeli`, `devlet_katkili_hesap`, `birikim_katilma_hesabi`)
+# BİLİNÇLİ OLARAK burada YOK — onlar Katılım Hesabı sekmesine (KAPI 7) gider.
+# `karz_i_hasen`/`egitim_finansmani` dahildir: kâr paysız olsalar da esasen
+# birer finansman ürünüdür, yalnızca oran sütununda "Kâr Payı Alınmaz" gösterilir.
+FINANSMAN_TIPLERI: Final[frozenset[str]] = frozenset(
+    {
+        "finansman",
+        "ihtiyac_finansmani",
+        "konut_finansmani",
+        "tasit_finansmani",
+        "isyeri_finansmani",
+        "gayrimenkul_finansmani",
+        "alisveris_finansmani",
+        "surdurulebilir_finansman",
+        "arsa_finansmani",
+        "egitim_finansmani",
+        "karz_i_hasen",
+        "digital_arac_finansmani",
+        "marka_ozel_finansman",
+    }
+)
+
+# ── KATİP KAPI 7: Katılım Hesabı sekmesinin kapsamı ───────
+#
+# ⚠️ `birikim_katilma_hesabi` GERÇEK VERİDE ZATEN KULLANILAN DEĞER —
+# SPRINT 2-4'ün scraper'ları katılma hesabı ürünlerinin neredeyse tamamını
+# (Dünya Katılım, Emlak Katılım, Kuveyt Türk, Türkiye Finans, Vakıf Katılım,
+# Ziraat Katılım) bu tek tip altında topladı (`app/core/taxonomy.py`'nin
+# kampanya taksonomisiyle aynı isim). KAPI 1.1'in önerdiği ince taneli
+# değerler (`katilma_hesabi`, `ozel_katilma_hesabi`, ...) henüz hiçbir
+# scraper tarafından üretilmiyor ama KATİP'in yeni banka verisiyle
+# (KAPI 2-4) üretilmeye başlayabilir — iki kümenin BİRLEŞİMİ tutulur, yoksa
+# bu sekme gerçek veriyle boş görünür (ölçüldü).
+KATILIM_HESABI_TIPLERI: Final[frozenset[str]] = frozenset(
+    {
+        "birikim_katilma_hesabi",
+        "katilma_hesabi",
+        "ozel_katilma_hesabi",
+        "altin_katilma_hesabi",
+        "ara_donem_kar_odemeli",
+        "devlet_katkili_hesap",
+    }
+)
+
+# TKBB Veri Peteği'nin vade etiketleri → `product_rates.term_months`. Yalnızca
+# bu 4 vade pivot tabloya girer; farklı bir vadedeki (ör. 18 ay) satır pivot
+# dışında kalır ama veritabanında durur (bkz. `docs/TKBB_VERI_PETEGI_BULGULARI.md`).
+KATILIM_HESABI_VADE_ETIKETI: Final[dict[int, str]] = {
+    1: "aylik",
+    3: "3_aylik",
+    6: "6_aylik",
+    12: "yillik",
+}
 
 
 def rate_confidence(rate_source: str) -> Decimal:

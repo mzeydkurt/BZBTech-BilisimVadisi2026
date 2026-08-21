@@ -2,13 +2,28 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import annotate, banks, campaigns, chat, extract, health, products, simulator, stats
+from app.api.v1 import (
+    annotate,
+    banks,
+    campaigns,
+    chat,
+    extract,
+    financing,
+    health,
+    katilim_hesabi,
+    products,
+    simulator,
+    stats,
+)
 
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(banks.router)
 api_router.include_router(campaigns.router)
 api_router.include_router(products.router)
+# KATİP KAPI 6/7 — Kampanyalar/Ürünler'in yanına eklenen yeni sekmeler.
+api_router.include_router(financing.router)
+api_router.include_router(katilim_hesabi.router)
 api_router.include_router(simulator.router)
 api_router.include_router(chat.router)
 api_router.include_router(stats.router)

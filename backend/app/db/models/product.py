@@ -33,9 +33,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.vocab import (
     ACCOUNT_TIERS,
+    AVAILABILITY_STATUSES,
     COLLATERAL_TYPES,
     CURRENCIES,
     CUSTOMER_TYPES,
+    DATA_SOURCES,
     LIMIT_EXTRACTION_METHODS,
     LIMIT_SOURCES,
     RATE_SOURCES,
@@ -64,6 +66,10 @@ class Product(TimestampMixin, Base):
         CheckConstraint(in_check("limits_source", LIMIT_SOURCES), name="limits_source_valid"),
         CheckConstraint(
             in_check("collateral_type", COLLATERAL_TYPES), name="collateral_type_valid"
+        ),
+        CheckConstraint(
+            in_check("availability_status", AVAILABILITY_STATUSES),
+            name="availability_status_valid",
         ),
         # Tutar ve vade aralıkları tersine dönmüş olamaz; bozuk ayrıştırma
         # (ör. "50.000" ile "5.000"in karışması) burada yakalanır.
@@ -139,6 +145,20 @@ class Product(TimestampMixin, Base):
     # değildir ve arayüzde rozetle gösterilir.
     is_binding: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     non_binding_notice: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ── KATİP: alım sırası, marka/model, mevcudiyet ────────
+    # "ilk_alim" | "sonraki_alim" | NULL — konut finansmanında iki ayrı LTV
+    # matrisi olduğunda (Standart / İkinci Alım) `product_limits` kesişimini
+    # ayırt eder. `variant_dimension="alim_sirasi"` ile birlikte kullanılır.
+    purchase_order: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Marka/model bazlı finansman (ör. Togg T10X). `variant_dimension="marka_model"`.
+    brand: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # ⚠️ "Ürün yok" (`not_offered`) ile "veri henüz toplanmadı" (`unknown`)
+    # AYRI durumlardır — bkz. `app/core/vocab.py::AVAILABILITY_STATUSES`.
+    # Yalnızca TKBB kaynaklı katılma hesabı ürünlerinde `not_offered`
+    # kullanılır; scrape edilen finansman verisinde `unknown` kalabilir.
+    availability_status: Mapped[str] = mapped_column(Text, nullable=False, default="unknown")
 
     # ── İzleme ────────────────────────────────────────────
     # ⚠️ Ürün sayfadan KALKINCA satır SİLİNMEZ, `is_active=False` olur.
@@ -225,6 +245,7 @@ class ProductRate(Base):
         CheckConstraint(in_check("currency", CURRENCIES), name="rate_currency_valid"),
         CheckConstraint(in_check("account_tier", ACCOUNT_TIERS), name="account_tier_valid"),
         CheckConstraint(in_check("customer_type", CUSTOMER_TYPES), name="customer_type_valid"),
+        CheckConstraint(in_check("data_source", DATA_SOURCES), name="data_source_valid"),
         # ⚠️ Bölüşüm oranının iki ucu 100'ü aşamaz. "90/10" toplamı 100 olmalı
         # ama bazı bankalar masrafı ayırıp "89.1/10.9" yazıyor; tam eşitlik
         # ZORLANMAZ, yalnızca üst sınır denetlenir.
@@ -320,6 +341,9 @@ class ProductRate(Base):
     # ⚠️ NOT NULL: kaynağı bilinmeyen oran karşılaştırmaya giremez.
     # Güven sıralaması ve karşılaştırılabilirlik `app/core/vocab.py`'de.
     rate_source: Mapped[str] = mapped_column(Text, nullable=False, default="html_table")
+    # KATİP: bankanın kendi sitesi mi (`bank_site`, varsayılan — geriye dönük
+    # veri bozulmaz) yoksa TKBB Veri Peteği'nin resmi API'si mi (`tkbb_veripetegi`).
+    data_source: Mapped[str] = mapped_column(Text, nullable=False, default="bank_site")
     confidence: Mapped[Decimal] = mapped_column(
         Numeric(4, 3), nullable=False, default=Decimal("1.000")
     )

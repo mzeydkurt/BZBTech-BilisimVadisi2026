@@ -78,6 +78,15 @@ def read_campaigns(
     include_children: Annotated[
         bool, Query(description="Alt kampanyaları da listele (varsayılan: yalnızca kökler)")
     ] = False,
+    include_expired: Annotated[
+        bool,
+        Query(
+            description=(
+                "Süresi kesin olarak dolmuş kampanyaları da listele "
+                "(varsayılan: gizli — tarihi belirsiz olanlar bundan etkilenmez)"
+            )
+        ),
+    ] = False,
 ) -> Page[CampaignListItem]:
     """Filtrelenmiş ve sayfalanmış kampanya listesi döndürür.
 
@@ -103,6 +112,7 @@ def read_campaigns(
         page=page,
         page_size=page_size,
         include_children=include_children,
+        include_expired=include_expired,
     )
 
     campaigns, total = list_campaigns(session, filters)

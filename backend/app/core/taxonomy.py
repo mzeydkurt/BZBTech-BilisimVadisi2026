@@ -46,6 +46,24 @@ PRODUCT_TYPES: Final[tuple[str, ...]] = (
     "odeme_fatura",
     "kobi_ticari",
     "isyeri_finansmani",
+    # KATİP KAPI 1.1 — yeni banka verisiyle ortaya çıkan türler. Bu tek
+    # sözlük hem kampanya taksonomisinde hem `Product.product_type`'ta
+    # kullanılır (bkz. `tests/unit/test_product_pages.py`); ayrı bir liste
+    # açmak aynı kavramı iki yerde tanımlamak, sessizce ıraksamak olurdu.
+    "gayrimenkul_finansmani",
+    "alisveris_finansmani",
+    "surdurulebilir_finansman",
+    "arsa_finansmani",
+    "egitim_finansmani",
+    # Karz-ı Hasen — vade farksız, kâr payı KAVRAMI yok (bkz.
+    # `RATE_TYPES.interest_free_benevolent_loan`). `rank_products`
+    # sıralamasına hiç girmez.
+    "karz_i_hasen",
+    "digital_arac_finansmani",
+    "marka_ozel_finansman",
+    # TKBB Veri Peteği'nin "ara ödemeli katılma hesabı" — yalnızca 5 bankada
+    # sunuluyor, diğerlerinde `availability_status='not_offered'`.
+    "ara_donem_kar_odemeli",
 )
 
 # ── Eksen 2: harcama sektörü ──────────────────────────────
@@ -71,6 +89,9 @@ SECTORS: Final[tuple[str, ...]] = (
     "yatirim_birikim",
     "konut_gayrimenkul",
     "kurumsal_kobi",
+    # KATİP — daha önce karşılığı olmayan gerçek kampanya konuları.
+    "dogalgaz_enerji",
+    "otomotiv",
     # Sektörden bağımsız kampanyalar; eşleşme bulunamadığında da kullanılır.
     "genel",
 )
@@ -264,6 +285,17 @@ MERCHANT_SECTOR: Final[dict[str, str]] = {
     # Kuyum
     "zen pırlanta": "kuyum_optik_saat",
     "zen pirlanta": "kuyum_optik_saat",
+    # Elektronik (KATİP)
+    "casper": "elektronik_telekom",
+    # Giyim (KATİP) — Albaraka'nın "DS Damat" kampanyaları
+    "ds damat": "giyim_aksesuar",
+    "damat": "giyim_aksesuar",
+    # Doğalgaz/enerji (KATİP) — Dünya Katılım'ın Enerya Karz-ı Hasen ortağı
+    "enerya": "dogalgaz_enerji",
+    # ⚠️ Gerçek dünyada Alfemo bir mobilya/yatak markasıdır; kullanıcının
+    # açık isteği üzerine burada `otomotiv` sektörüne bağlandı. Kodda emsali
+    # yok — yanlışsa (marka karışıklığı ihtimali) tek satır geri alınır.
+    "alfemo": "otomotiv",
 }
 
 # ⚠️ Tek başına geçtiğinde sıradan kelimeyle karışabilecek marka adları.
@@ -307,6 +339,19 @@ PRODUCT_TYPE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
         "paraf",
         "vkart",
         "world kart",
+        # ⚠️ Albaraka'nın kart katman isimleri — "kart" kelimesi hiç geçmiyor
+        # ("Trend'lilere Tüm Banka ATM'leri Ücretsiz" #619, "Eflatun'lulara..."
+        # #605). ⚠️ Gerçek başlıkta İYELİK EKİ APOSTROFLA ayrılıyor
+        # ("Trend’lilere", "Eflatun’lulara" — kıvrık tırnak U+2019); eşleştirme
+        # kelime sınırını yalnızca SOLDAN arıyor (`_kelime_var`), bu yüzden
+        # apostrof dahil biçim ZORUNLU — apostrofsuz "trendli" bu başlıkta hiç
+        # eşleşmiyordu. Hem kıvrık (’) hem düz (') tırnak eklendi.
+        "trend kart",
+        "trend’li",
+        "trend'li",
+        "eflatun kart",
+        "eflatun’lu",
+        "eflatun'lu",
         "kart",
     ),
     "alisveris_puani": ("bankkart lira", "worldpuan", "paraf para", "puan kazan"),
@@ -360,7 +405,11 @@ SECTOR_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
     "vergi_fatura_kamu": ("vergi", "fatura", "mtv", "trafik ceza", "kamu ödeme"),
     "sigorta": ("sigorta",),
     "yatirim_birikim": ("altın", "döviz", "fon", "yatırım", "birikim"),
-    "konut_gayrimenkul": ("konut", "gayrimenkul", "emlak", "tapu"),
+    # ⚠️ Çıplak "emlak" ölçüldükten sonra ÇIKARILDI: bankanın kendi adı
+    # ("Emlak Katılım") başlıkta/açıklamada geçtiğinde gerçek emlak/konut
+    # konusu olmayan kampanyaları da bu sektöre düşürüyordu. "konut",
+    # "gayrimenkul", "tapu" gerçek emlak sinyalini zaten yakalıyor.
+    "konut_gayrimenkul": ("konut", "gayrimenkul", "tapu"),
     "kurumsal_kobi": ("üye işyeri", "pos", "kurumsal", "kobi", "işletme"),
 }
 
