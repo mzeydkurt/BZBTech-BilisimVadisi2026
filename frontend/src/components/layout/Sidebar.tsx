@@ -1,7 +1,8 @@
 import {
   LayoutDashboard,
   Table2,
-  Package,
+  Landmark,
+  HandCoins,
   ArrowLeftRight,
   Calculator,
   MessageSquare,
@@ -14,7 +15,8 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { to: "/", label: "Genel Bakış", icon: LayoutDashboard, end: true },
   { to: "/campaigns", label: "Kampanyalar", icon: Table2, end: false },
-  { to: "/products", label: "Ürünler", icon: Package, end: false },
+  { to: "/financing", label: "Finansmanlar", icon: Landmark, end: false },
+  { to: "/katilim-hesabi", label: "Katılım Hesabı", icon: HandCoins, end: false },
   { to: "/compare", label: "Karşılaştırma", icon: ArrowLeftRight, end: false },
   { to: "/simulator", label: "Simülatör", icon: Calculator, end: false },
   { to: "/chat", label: "Akıllı Arama", icon: MessageSquare, end: false },
@@ -26,9 +28,9 @@ export function Sidebar() {
     <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-brand-900">
       <div className="border-b border-white/10 px-4 py-4">
         <p className="text-sm font-semibold leading-tight text-white">
-          Katılım Bankacılığı
+          KATİP
         </p>
-        <p className="text-xs text-white/70">Kampanya Analiz Platformu</p>
+        <p className="text-xs text-white/70">Katılım Bankacılığı Kampanya Analiz Platformu</p>
       </div>
 
       <nav className="flex-1 p-2" aria-label="Ana gezinme">

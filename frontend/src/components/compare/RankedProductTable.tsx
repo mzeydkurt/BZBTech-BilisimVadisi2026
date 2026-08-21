@@ -44,7 +44,14 @@ export function RankedProductTable({ items, winnerId }: { items: RankedProduct[]
                 <RateTypeBadge rateType={item.rate_type} />
               </TableCell>
               <TableCell className="tabular text-right text-text-900">
-                <MissingValue value={item.profit_rate_pct} format={formatPercent} />
+                <MissingValue
+                  value={
+                    item.rate_type === "profit_sharing_ratio"
+                      ? item.investor_share_pct
+                      : item.profit_rate_pct
+                  }
+                  format={formatPercent}
+                />
               </TableCell>
               <TableCell className="tabular text-right text-text-500">
                 {formatMonths(item.term_months)}

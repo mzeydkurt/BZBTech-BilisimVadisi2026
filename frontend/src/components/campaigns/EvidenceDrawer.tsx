@@ -70,6 +70,17 @@ export function EvidenceDrawer({ campaignId, onClose }: EvidenceDrawerProps) {
                   </div>
                 </div>
 
+                {campaign.description && (
+                  <section>
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-text-500">
+                      Açıklama (kaynaktan birebir)
+                    </h4>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-text-900">
+                      {campaign.description}
+                    </p>
+                  </section>
+                )}
+
                 <section>
                   <h4 className="text-xs font-semibold uppercase tracking-wide text-text-500">
                     Tarih Kanıtı

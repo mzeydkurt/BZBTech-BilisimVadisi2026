@@ -10,16 +10,16 @@ import {
 } from "@/components/ui/select";
 import { CRITERIA_LABELS, getValidCriteria } from "@/lib/compareRules";
 import { cn } from "@/lib/utils";
-import type { Bank, ProductRankingRequest, RateType } from "@/types/api";
+import type { Bank, ComparableRateType, ProductRankingRequest } from "@/types/api";
 
-const RATE_TYPE_OPTIONS: { value: RateType; label: string }[] = [
+const RATE_TYPE_OPTIONS: { value: ComparableRateType; label: string }[] = [
   { value: "financing_rate", label: "Finansman maliyeti" },
   { value: "participation_yield", label: "Katılma getirisi" },
   { value: "profit_sharing_ratio", label: "Katılımcı payı" },
 ];
 
 export interface CompareFormState {
-  rate_type: RateType;
+  rate_type: ComparableRateType;
   criterion: ProductRankingRequest["criterion"];
   product_type: string;
   bank_codes: string[];
@@ -39,7 +39,7 @@ interface CompareFormProps {
 export function CompareForm({ value, onChange, onSubmit, banks, isPending }: CompareFormProps) {
   const validCriteria = getValidCriteria(value.rate_type);
 
-  const handleRateTypeChange = (rateType: RateType) => {
+  const handleRateTypeChange = (rateType: ComparableRateType) => {
     const nextCriteria = getValidCriteria(rateType);
     onChange({
       ...value,
@@ -68,7 +68,7 @@ export function CompareForm({ value, onChange, onSubmit, banks, isPending }: Com
           <label htmlFor="compare-rate-type" className="mb-1 block text-sm text-text-500">
             Oran Türü
           </label>
-          <Select value={value.rate_type} onValueChange={(next) => handleRateTypeChange(next as RateType)}>
+          <Select value={value.rate_type} onValueChange={(next) => handleRateTypeChange(next as ComparableRateType)}>
             <SelectTrigger id="compare-rate-type">
               <SelectValue />
             </SelectTrigger>

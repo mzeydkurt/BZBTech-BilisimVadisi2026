@@ -11,7 +11,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatPercent, formatText } from "@/lib/format";
+import {
+  formatAmountRange,
+  formatMonthsRange,
+  formatPercent,
+  formatText,
+  parseDecimal,
+} from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ProductOut } from "@/types/api";
 
@@ -55,6 +61,40 @@ function groupByParent(products: ProductOut[]): ProductGroup[] {
   return groups;
 }
 
+/**
+ * Ürünün tutar/vade sütunları için gösterilecek değer.
+ *
+ * ⚠️ `Product.amount_min/max` ve `term_months_min/max` gerçek veride NEREDEYSE
+ * HİÇ DOLU DEĞİL (ölçüldü: 279 üründen yalnızca 49'unda tutar, 6'sında vade
+ * var — bu alanlar yalnızca hesaplayıcı slider'ı bulunan sayfalarda dolar).
+ * Asıl bant bilgisi `product_rates.amount_min/max`/`term_months`'ta duruyor
+ * (325 / 739 satırda dolu); ürün alanı boşsa oranlardan derlenir.
+ */
+function tutarBandi(product: ProductOut): [string | null, string | null] {
+  if (product.amount_min || product.amount_max) {
+    return [product.amount_min, product.amount_max];
+  }
+  const mins = product.rates.map((r) => parseDecimal(r.amount_min)).filter((n): n is number => n !== null);
+  const maxs = product.rates.map((r) => parseDecimal(r.amount_max)).filter((n): n is number => n !== null);
+  if (mins.length === 0 && maxs.length === 0) return [null, null];
+  return [
+    mins.length > 0 ? String(Math.min(...mins)) : null,
+    maxs.length > 0 ? String(Math.max(...maxs)) : null,
+  ];
+}
+
+function vadeBandi(product: ProductOut): [number | null, number | null] {
+  // ⚠️ `!= null` (gevşek) kasıtlı: `undefined` de `null` gibi "değer yok"
+  // sayılmalı — API bu alanları bazen hiç göndermiyor (ölçüldü), `!== null`
+  // ile `undefined` "değer var" sanılıp yanlışlıkla erken dönüyordu.
+  if (product.term_months_min != null || product.term_months_max != null) {
+    return [product.term_months_min, product.term_months_max];
+  }
+  const aylar = product.rates.map((r) => r.term_months).filter((n): n is number => n != null);
+  if (aylar.length === 0) return [null, null];
+  return [Math.min(...aylar), Math.max(...aylar)];
+}
+
 function primaryRateCell(product: ProductOut) {
   if (product.rates.length === 0) {
     return <span className="text-text-400">—</span>;
@@ -88,7 +128,9 @@ export function ProductTable({ products }: { products: ProductOut[] }) {
             <TableHead>Ürün</TableHead>
             <TableHead className="w-40">Banka</TableHead>
             <TableHead className="w-44">Tür</TableHead>
-            <TableHead className="w-56">Oran</TableHead>
+            <TableHead className="w-40">Tutar</TableHead>
+            <TableHead className="w-56">Kâr Oranı</TableHead>
+            <TableHead className="w-32">Vade</TableHead>
             <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
@@ -122,7 +164,9 @@ function ProductGroupRows({ group }: { group: ProductGroup }) {
         <TableCell className="text-text-500">
           {parent.product_type ? taxonomyLabel(parent.product_type) : "—"}
         </TableCell>
+        <TableCell className="tabular text-text-500">{formatAmountRange(...tutarBandi(parent))}</TableCell>
         <TableCell>{primaryRateCell(parent)}</TableCell>
+        <TableCell className="tabular text-text-500">{formatMonthsRange(...vadeBandi(parent))}</TableCell>
         <TableCell>
           <Link
             to={`/products/${parent.id}`}
@@ -145,7 +189,9 @@ function ProductGroupRows({ group }: { group: ProductGroup }) {
           <TableCell className="text-text-500">
             {variant.product_type ? taxonomyLabel(variant.product_type) : "—"}
           </TableCell>
+          <TableCell className="tabular text-text-500">{formatAmountRange(...tutarBandi(variant))}</TableCell>
           <TableCell>{primaryRateCell(variant)}</TableCell>
+          <TableCell className="tabular text-text-500">{formatMonthsRange(...vadeBandi(variant))}</TableCell>
           <TableCell>
             <Link
               to={`/products/${variant.id}`}

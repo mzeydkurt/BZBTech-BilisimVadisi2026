@@ -11,7 +11,7 @@ import { useCampaigns } from "@/hooks/useCampaigns";
 import type { CampaignQuery } from "@/types/api";
 
 const PAGE_SIZE = 25;
-const EMPTY_FILTERS: FilterState = { banks: [], status: "all", q: "" };
+const EMPTY_FILTERS: FilterState = { banks: [], status: "all", q: "", includeExpired: false };
 
 export function CampaignsPage() {
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
@@ -27,6 +27,7 @@ export function CampaignsPage() {
       bank: filters.banks.length > 0 ? filters.banks : undefined,
       status: filters.status === "all" ? undefined : filters.status,
       q: filters.q || undefined,
+      include_expired: filters.includeExpired || undefined,
       sort,
       order,
       page,

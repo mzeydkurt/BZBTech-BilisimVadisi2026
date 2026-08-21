@@ -5,12 +5,14 @@ const LABELS: Record<RateType, string> = {
   financing_rate: "Finansman maliyeti · aylık",
   participation_yield: "Katılma getirisi · yıllık",
   profit_sharing_ratio: "Katılımcı payı",
+  interest_free_benevolent_loan: "Kâr Payı Alınmaz",
 };
 
 const CLASSES: Record<RateType, string> = {
   financing_rate: "border-brand-700/30 bg-teal-100 text-brand-900",
   participation_yield: "border-teal-500/30 bg-teal-100 text-brand-900",
   profit_sharing_ratio: "border-warn-600/30 bg-surface text-warn-600",
+  interest_free_benevolent_loan: "border-border bg-surface text-text-500",
 };
 
 /**

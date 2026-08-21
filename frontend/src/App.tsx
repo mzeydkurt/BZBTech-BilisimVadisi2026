@@ -7,9 +7,10 @@ import { CampaignsPage } from "@/pages/CampaignsPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { ComparePage } from "@/pages/ComparePage";
 import { ExtractPage } from "@/pages/ExtractPage";
+import { FinancingPage } from "@/pages/FinancingPage";
+import { KatilimHesabiPage } from "@/pages/KatilimHesabiPage";
 import { OverviewPage } from "@/pages/OverviewPage";
 import { ProductDetailPage } from "@/pages/ProductDetailPage";
-import { ProductsPage } from "@/pages/ProductsPage";
 import { SimulatorPage } from "@/pages/SimulatorPage";
 
 // §10.4: retry 1, staleTime 30 sn. Hatalar bileşenlere `isError` ile ulaşır ve
@@ -33,7 +34,8 @@ export default function App() {
             <Routes>
               <Route path="/" element={<OverviewPage />} />
               <Route path="/campaigns" element={<CampaignsPage />} />
-              <Route path="/products" element={<ProductsPage />} />
+              <Route path="/financing" element={<FinancingPage />} />
+              <Route path="/katilim-hesabi" element={<KatilimHesabiPage />} />
               <Route path="/products/:id" element={<ProductDetailPage />} />
               <Route path="/compare" element={<ComparePage />} />
               <Route path="/simulator" element={<SimulatorPage />} />

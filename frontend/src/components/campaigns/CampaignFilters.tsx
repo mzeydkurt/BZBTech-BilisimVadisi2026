@@ -18,6 +18,8 @@ export interface FilterState {
   banks: string[];
   status: CampaignStatus | "all";
   q: string;
+  /** Varsayılan false: süresi kesin dolmuş kampanyalar gizlenir (KAPI 5). */
+  includeExpired: boolean;
 }
 
 interface CampaignFiltersProps {
@@ -55,7 +57,8 @@ export function CampaignFilters({ banks, value, onChange }: CampaignFiltersProps
     onChange({ ...value, banks: next });
   };
 
-  const hasActiveFilter = value.banks.length > 0 || value.status !== "all" || value.q !== "";
+  const hasActiveFilter =
+    value.banks.length > 0 || value.status !== "all" || value.q !== "" || value.includeExpired;
 
   return (
     <div className="rounded-lg border border-border bg-surface p-4">
@@ -102,11 +105,24 @@ export function CampaignFilters({ banks, value, onChange }: CampaignFiltersProps
           </Select>
         </div>
 
+        <div className="flex items-center gap-2 pb-2">
+          <input
+            id="campaign-include-expired"
+            type="checkbox"
+            checked={value.includeExpired}
+            onChange={(event) => onChange({ ...value, includeExpired: event.target.checked })}
+            className="h-4 w-4 rounded-sm border-border"
+          />
+          <label htmlFor="campaign-include-expired" className="text-sm text-text-500">
+            Süresi dolmuşları da göster
+          </label>
+        </div>
+
         {hasActiveFilter && (
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onChange({ banks: [], status: "all", q: "" })}
+            onClick={() => onChange({ banks: [], status: "all", q: "", includeExpired: false })}
           >
             <X className="h-4 w-4" aria-hidden="true" />
             Temizle
