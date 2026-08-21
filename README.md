@@ -1,8 +1,9 @@
-# BZB Tech - Katılım Bankacılığı Kampanya Analiz Platformu
+# KATİP — Katılım Bankacılığı Kampanya Analiz Platformu
 
-Türkiye'deki katılım bankalarının kamuya açık kampanya sayfalarından veri
-toplayan, bu veriyi normalize ederek karşılaştırılabilir hâle getiren ve web
-arayüzü üzerinden sunan analiz platformu.
+BZB Tech tarafından geliştirilen KATİP (Katılım Bankacılığı Kampanya Analiz
+Platformu), Türkiye'deki katılım bankalarının kamuya açık kampanya
+sayfalarından veri toplayan, bu veriyi normalize ederek karşılaştırılabilir
+hâle getiren ve web arayüzü üzerinden sunan analiz platformudur.
 
 > **TEKNOFEST 2026 — Bilişim Vadisi / İkinci Senaryo** · Takım: **BZBTech**
 

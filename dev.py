@@ -353,6 +353,24 @@ def gold_durum() -> int:
     return _calistir([_python(), "-m", "scripts.gold_status", *_ek_argumanlar()], cwd=BACKEND)
 
 
+def tkbb_yukle() -> int:
+    """TKBB Veri Peteği'nin elle doğrulanmış verisini yükler (ağa çıkmaz).
+
+    `tkbb-cek` bu ortamda çalışmadığında/çalıştırılmadığında kullanılan
+    fallback — KAPI 4.4.
+    """
+    return _calistir([_python(), "-m", "scripts.load_tkbb_seed"], cwd=BACKEND)
+
+
+def tkbb_cek() -> int:
+    """TKBB Veri Peteği'ni Playwright ile canlı sitesinden çeker.
+
+    ⚠️ Gerçek ağa çıkar, Playwright/Chromium ister. Başarısız olursa
+    `tkbb-yukle` fallback'ine düşün — KAPI 4.3/4.4.
+    """
+    return _calistir([_python(), "-m", "scripts.scrape_tkbb", *_ek_argumanlar()], cwd=BACKEND)
+
+
 def kanit_bagla() -> int:
     """Kanıtı boş gold etiketlerine metinden bağlamlı kanıt bağlar (ağa çıkmaz).
 
@@ -438,6 +456,19 @@ def sifirla() -> int:
     """
     return _calistir(
         [_python(), "-m", "scripts.reset_campaign_data", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
+def suresi_dolanlari_temizle() -> int:
+    """Süresi KESİN OLARAK dolmuş kampanyaları kalıcı siler. VERİ SİLER.
+
+    `sifirla` ile aynı güvenlik desenini (doğrulanmış dışa aktarma +
+    `--onay SIL` + SQLite yedeği) izler ama TÜMÜNÜ değil, yalnızca
+    `status='expired'` olan kampanyaları siler — tarihi bilinmeyen
+    (`unknown`) kampanyalar etkilenmez. `source_documents` korunur.
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.delete_expired_campaigns", *_ek_argumanlar()], cwd=BACKEND
     )
 
 
@@ -657,6 +688,8 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "etiketle": (etiketle, "Gold set etiketleme arayüzünü açar"),
     "gold-durum": (gold_durum, "Etiketleme ilerlemesini raporlar"),
     "kanit-bagla": (kanit_bagla, "Kanıtı boş gold etiketlerini metne bağlar"),
+    "tkbb-yukle": (tkbb_yukle, "TKBB Veri Peteği'nin elle doğrulanmış verisini yükler"),
+    "tkbb-cek": (tkbb_cek, "TKBB Veri Peteği'ni Playwright ile canlı çeker (KAPI 4.3)"),
     "envanter-uygula": (envanter_uygula, "Hesaplayıcı envanterini ürün limitlerine uygular"),
     "cikarim": (cikarim, "Kampanya metinlerinden bilgi çıkarır (ağa çıkmaz)"),
     "degerlendir": (degerlendir, "Gold set'e karşı F1 ölçer (ağa çıkmaz)"),
@@ -670,6 +703,10 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "disa-aktar": (disa_aktar, "Veri setini kararlı anahtarlarla dışa aktarır"),
     "disa-aktar-dogrula": (disa_aktar_dogrula, "Dışa aktarmayı doğrular ve damgalar"),
     "sifirla": (sifirla, "Kampanya verisini sıfırlar (VERİ SİLER, onay ister)"),
+    "suresi-dolanlari-temizle": (
+        suresi_dolanlari_temizle,
+        "Süresi kesin dolmuş kampanyaları kalıcı siler (VERİ SİLER, onay ister)",
+    ),
     "gold-yeniden-bagla": (gold_yeniden_bagla, "Gold etiketlerini yeniden bağlar"),
     "gold-denetle": (gold_denetle, "Kanıtı doğrulanamayan gold etiketlerini raporlar"),
     "test": (test, "Testleri kapsam raporuyla çalıştırır"),

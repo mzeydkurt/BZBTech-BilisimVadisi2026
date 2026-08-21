@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "katilim-kampanya-analiz-backend"
+name = "katip-backend"
 version = "0.1.0"
-description = "Katılım bankacılığı kampanya analizi platformu — backend"
+description = "KATİP — Katılım Bankacılığı Kampanya Analiz Platformu — backend"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 
@@ -25,6 +25,10 @@ dependencies = [
     # Windows'ta IANA zaman dilimi veritabanı yoktur; ZoneInfo("Europe/Istanbul")
     # bu paket olmadan hata verir. Kampanya durumu Türkiye saatine göre hesaplanır.
     "tzdata>=2024.1",
+    # KATİP KAPI 2: TOM Bank kâr oranlarını yalnızca PDF olarak yayımlıyor
+    # (`krediler_kar_oranlari_*.pdf`) — `pdf_table` extraction_method'u
+    # (`app/core/vocab.py`) bu yüzden vardı, üreten kod buradan gelir.
+    "pdfplumber>=0.11,<0.12",
 ]
 
 [project.optional-dependencies]
