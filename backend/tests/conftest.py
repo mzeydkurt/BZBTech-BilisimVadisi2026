@@ -26,6 +26,14 @@ os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("AIRGAP_MODE", "false")
 
+# ⚠️ `setdefault` DEĞİL, doğrudan atama. Testler ASLA gerçek bir modele
+# gitmemelidir: `.env` içinde `LLM_PROVIDER=local` bırakıldığında
+# `/api/v1/extract` hibrit testi Ollama'ya çıkıyor, ağ koruması onu kesiyor
+# ve test "ürün hatası" gibi görünen bir yapılandırma hatasıyla kırılıyordu.
+# Ölçüm sabit olmalı; sağlayıcı seçimi geliştiricinin .env dosyasına
+# bırakılamaz.
+os.environ["LLM_PROVIDER"] = "mock"
+
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 

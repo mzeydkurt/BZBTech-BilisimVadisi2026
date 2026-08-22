@@ -92,8 +92,11 @@ class Settings(BaseSettings):
     prompt_version: str = "v1"
     # null | fixture | invalid | timeout | halluc  (yalnızca MockProvider için)
     mock_llm_mode: str = "null"
-    # SPRINT 5'te kullanılacak.
-    embedding_model: str = "BAAI/bge-m3"
+    # ⚠️ SOHBET MODELİNDEN AYRI BİR MODELDİR. Ollama aynı anda tek modeli
+    # bellekte tutuyor; gömme ile üretimi aynı modelden istemek her geçişte
+    # yeniden yükleme (12-20 sn) maliyeti çıkarır. Gömme modeli küçüktür
+    # (274 MB) ve ikisi yan yana durabilir.
+    embedding_model: str = "nomic-embed-text"
 
     # ── Türetilmiş değerler ───────────────────────────────
 
