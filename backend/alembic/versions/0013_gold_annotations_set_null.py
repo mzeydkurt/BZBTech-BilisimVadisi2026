@@ -39,6 +39,7 @@ from __future__ import annotations
 
 from alembic import op
 from app.db.base import NAMING_CONVENTION
+from app.db.migration_utils import gercek_check_adi
 
 revision = "0013"
 down_revision = "0012"
@@ -58,7 +59,9 @@ def upgrade() -> None:
         batch.create_foreign_key(_FK_ADI, "campaigns", ["campaign_id"], ["id"], ondelete="SET NULL")
         # ⚠️ Dokunulmuyor gibi görünse de recreate bunu da yeniden adlandırır;
         # açıkça düşürüp temiz adla kurmak tek yol.
-        batch.drop_constraint(_CHECK_ADI, type_="check")
+        batch.drop_constraint(
+            gercek_check_adi("gold_annotations", "method_valid", _CHECK_ADI), type_="check"
+        )
         # ⚠️ TAM AD AÇIKÇA VERİLİR (kısa ad DEĞİL). Bu ad blok içinde
         # `naming_convention`'ın otomatik önek eklemesine güvenmez — ölçüldü,
         # bu bağlamda tutarsız davranıyor (bazen ekliyor, bazen eklemiyor).
@@ -77,7 +80,9 @@ def downgrade() -> None:
     ) as batch:
         batch.drop_constraint(_FK_ADI, type_="foreignkey")
         batch.create_foreign_key(_FK_ADI, "campaigns", ["campaign_id"], ["id"], ondelete="CASCADE")
-        batch.drop_constraint(_CHECK_ADI, type_="check")
+        batch.drop_constraint(
+            gercek_check_adi("gold_annotations", "method_valid", _CHECK_ADI), type_="check"
+        )
         # ⚠️ TAM AD AÇIKÇA VERİLİR (kısa ad DEĞİL). Bu ad blok içinde
         # `naming_convention`'ın otomatik önek eklemesine güvenmez — ölçüldü,
         # bu bağlamda tutarsız davranıyor (bazen ekliyor, bazen eklemiyor).

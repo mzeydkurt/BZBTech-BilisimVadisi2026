@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from alembic import op
 
+from app.db.migration_utils import gercek_check_adi
+
 from app.db.base import NAMING_CONVENTION
 
 revision = "0012"
@@ -43,12 +45,22 @@ _YENI_RATE_SOURCES = (
 def upgrade() -> None:
     """`rate_source_valid` kısıtına `pdf_table` değerini ekler."""
     with op.batch_alter_table("product_rates", naming_convention=NAMING_CONVENTION) as batch:
-        batch.drop_constraint("ck_product_rates_rate_source_valid", type_="check")
+        batch.drop_constraint(
+            gercek_check_adi(
+                "product_rates", "rate_source_valid", "ck_product_rates_rate_source_valid"
+            ),
+            type_="check",
+        )
         batch.create_check_constraint("rate_source_valid", f"rate_source IN ({_YENI_RATE_SOURCES})")
 
 
 def downgrade() -> None:
     """`pdf_table` değerini kısıttan kaldırır."""
     with op.batch_alter_table("product_rates", naming_convention=NAMING_CONVENTION) as batch:
-        batch.drop_constraint("ck_product_rates_rate_source_valid", type_="check")
+        batch.drop_constraint(
+            gercek_check_adi(
+                "product_rates", "rate_source_valid", "ck_product_rates_rate_source_valid"
+            ),
+            type_="check",
+        )
         batch.create_check_constraint("rate_source_valid", f"rate_source IN ({_ESKI_RATE_SOURCES})")

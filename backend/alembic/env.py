@@ -32,6 +32,7 @@ def render_item(type_: str, obj: Any, autogen_context: Any) -> str | bool:
         return "sa.DateTime(timezone=True)"
     return False
 
+
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 

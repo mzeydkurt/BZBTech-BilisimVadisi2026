@@ -57,20 +57,16 @@ dokunuşunu (ve dolayısıyla yukarıdaki isim katmanlama riskini) gerektirmez.
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 from app.db.base import NAMING_CONVENTION
+from app.db.migration_utils import gercek_check_adi
 
 revision = "0011"
 down_revision = "0010"
 branch_labels = None
 depends_on = None
 
-# Bu veritabanında biriken tarihsel isim (bkz. modül docstring'i).
-_ESKI_RATE_SOURCE_KISIT_ADI = (
-    "ck_product_rates_ck_product_rates_ck_product_rates_"
-    "ck_product_rates_ck_product_rates_rate_source_valid"
-)
 
 _ESKI_RATE_TYPES = "'financing_rate', 'participation_yield', 'profit_sharing_ratio'"
 _YENI_RATE_TYPES = (
@@ -133,7 +129,12 @@ def upgrade() -> None:
         # eşleşir.
         batch.drop_constraint("ck_product_rates_rate_type_valid", type_="check")
         batch.create_check_constraint("rate_type_valid", f"rate_type IN ({_YENI_RATE_TYPES})")
-        batch.drop_constraint(_ESKI_RATE_SOURCE_KISIT_ADI, type_="check")
+        batch.drop_constraint(
+            gercek_check_adi(
+                "product_rates", "rate_source_valid", "ck_product_rates_rate_source_valid"
+            ),
+            type_="check",
+        )
         batch.create_check_constraint("rate_source_valid", f"rate_source IN ({_YENI_RATE_SOURCES})")
 
 
@@ -143,17 +144,13 @@ def downgrade() -> None:
     ⚠️ `.f()` burada da KULLANILMAZ — bkz. `upgrade()` içindeki gerekçe. Düz
     string, reflected kısıtla eşleşmesi için gereken ek dönüşümü tetikler.
 
-    ⚠️ DOWNGRADE + TEKRAR UPGRADE SİMETRİK DEĞİL. Bu downgrade `rate_source_valid`'i
-    TEMİZ adla yeniden kurar (`_ESKI_RATE_SOURCES` değer listesiyle) — bu göçün
-    kendisinin `upgrade()`'de varsaydığı, gerçek dağıtımlardaki TARİHSEL katmanlı
-    adla (`_ESKI_RATE_SOURCE_KISIT_ADI`) AYNI DEĞİL. Sıfırdan kurulan (0001'den
-    başlayan) her ortamda `upgrade()` doğru çalışır çünkü mangled ad
-    deterministik olarak 0002-0010 zincirinden üretilir; ama bu tek dosyada
-    "upgrade → downgrade → tekrar upgrade" döngüsü test edilirse ikinci
-    upgrade'de aynı sabit adı bulamaz (test edildi). Üretim akışı bu döngüyü
-    hiç yapmaz (downgrade tek yönlü bir kaçış kapısıdır); test ortamında bu
-    döngüye ihtiyaç olursa DB'yi 0010 öncesi bir yedekten geri yükleyip tek
-    seferlik `upgrade head` çalıştırın.
+    Bu downgrade `rate_source_valid`'i TEMİZ adla yeniden kurar
+    (`_ESKI_RATE_SOURCES` değer listesiyle). `upgrade()` düşürülecek kısıtın
+    adını artık sabit yazmıyor, `gercek_check_adi()` ile veritabanından
+    okuyor; bu yüzden "upgrade → downgrade → tekrar upgrade" döngüsü
+    ADI NE OLURSA OLSUN çalışır. Sabit ad kullanıldığı sürece bu döngü
+    kırılıyordu ve boş bir veritabanında `alembic upgrade head` hiç
+    tamamlanamıyordu.
     """
     with op.batch_alter_table(
         "product_rates", naming_convention=NAMING_CONVENTION, recreate="always"
