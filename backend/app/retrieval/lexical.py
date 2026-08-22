@@ -95,9 +95,7 @@ class Bm25Index:
                 self._postings.setdefault(terim, set()).add(doc_id)
 
         self._doc_count = len(documents)
-        self._avg_length = (
-            sum(self._lengths.values()) / self._doc_count if self._doc_count else 0.0
-        )
+        self._avg_length = sum(self._lengths.values()) / self._doc_count if self._doc_count else 0.0
 
     @property
     def doc_count(self) -> int:
