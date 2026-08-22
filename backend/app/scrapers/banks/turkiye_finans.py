@@ -208,7 +208,7 @@ class TurkiyeFinansScraper(BaseScraper):
         Arşiv daima EN SONA konur: böylece bir kampanya hem güncel hem biten
         listede görünürse güncel kategorisiyle kaydedilir.
         """
-        tumu = [*CATEGORY_PAGES.items(), (ARCHIVE_CATEGORY, ARCHIVE_PAGE)]
+        tumu = list(CATEGORY_PAGES.items())
         if not self.categories:
             return tumu
 
@@ -305,6 +305,12 @@ class TurkiyeFinansScraper(BaseScraper):
 
         body_text = clean_html(html, bank_code=self.bank_code, title=title)
 
+        # Arşiv listesinden gelen `biten` kategori adı taksonomiye yazılmaz —
+        # ürün/sektör sinyali değildir, yalnızca arşiv işaretidir.
+        bank_category = hint.category_hint
+        if bank_category and bank_category.casefold() == ARCHIVE_CATEGORY:
+            bank_category = None
+
         return RawCampaign(
             external_slug=slug_from_url_path(url),
             title=title,
@@ -313,7 +319,7 @@ class TurkiyeFinansScraper(BaseScraper):
             conditions_text=extract_section_text(html, CONDITION_KEYWORDS),
             exclusions_text=extract_section_text(html, EXCLUSION_KEYWORDS),
             category=None,
-            bank_category=hint.category_hint,
+            bank_category=bank_category,
             segment=hint.segment_hint,
             # ⚠️ Yapısal tarih alanı YOK. Dönem, varsa, koşul metninde serbest
             # biçimde geçer ve `BaseScraper._apply_period()` tarafından ortak

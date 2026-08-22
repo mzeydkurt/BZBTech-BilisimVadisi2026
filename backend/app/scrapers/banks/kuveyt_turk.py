@@ -350,7 +350,7 @@ class KuveytTurkScraper(BaseScraper):
                 for kategori in kategoriler
             ]
 
-        sayfalar.append((f"{BASE_URL}{ARCHIVE_PATH}", True))
+        # Arşiv bilerek eklenmez — süresi dolmuş kampanyalar yeniden çekilmesin.
         return sayfalar
 
     def _campaign_links(self, listing_url: str) -> list[str]:

@@ -256,7 +256,8 @@ class HayatFinansScraper(BaseScraper):
             url=absolute.split("?")[0].split("#")[0],
             doc_type=doc_type,
             category_hint=category_hint,
-            segment_hint="bireysel" if doc_type == "product" else None,
+            # Hayat dijital bireysel kanal; kampanya sayfalarında URL segmenti yok.
+            segment_hint="bireysel",
             discovery_method=discovery_method,
         )
 

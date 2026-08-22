@@ -19,6 +19,7 @@ from bs4 import BeautifulSoup
 from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
+from app.processing.categorizer import infer_segment
 from app.scrapers.base import BaseScraper
 from app.scrapers.models import DiscoveredUrl, RawCampaign
 from app.utils.slugify import slug_from_url_path
@@ -227,6 +228,7 @@ class EmlakKatilimScraper(BaseScraper):
         body_text = clean_html(html, bank_code=self.bank_code, title=title)
         conditions = extract_section_text(html, CONDITION_KEYWORDS)
         exclusions = extract_section_text(html, EXCLUSION_KEYWORDS)
+        description = self._first_paragraph(body_text)
 
         # ⚠️ Tarih burada ÇIKARILMAZ. Yapısal alan yok; dönem koşul metninin
         # içinde serbest metin olarak geçiyor ve bu `BaseScraper._apply_period()`
@@ -240,17 +242,28 @@ class EmlakKatilimScraper(BaseScraper):
         elif coupon:
             participation_method = "kod"
 
+        segment = hint.segment_hint or "bireysel"
+        cikarim = infer_segment(
+            title=title,
+            description=description,
+            conditions_text=conditions,
+            body_text=body_text,
+            source_url=url,
+        )
+        if cikarim is not None and cikarim.value != "bireysel":
+            segment = cikarim.value
+
         return RawCampaign(
             external_slug=slug_from_url_path(url),
             title=title,
             source_url=url,
-            description=self._first_paragraph(body_text),
+            description=description,
             conditions_text=conditions,
             exclusions_text=exclusions,
             # Sitede kategori etiketi YOK — PART 3'te sınıflandırılacak.
             category=None,
             bank_category=hint.category_hint,
-            segment=hint.segment_hint,
+            segment=segment,
             participation_method=participation_method,
             sms_keyword=sms_keyword,
             sms_number=sms_number,

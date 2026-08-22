@@ -42,6 +42,7 @@ from app.config import get_settings
 from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
+from app.processing.categorizer import infer_segment
 from app.scrapers.base import BaseScraper
 from app.scrapers.models import DiscoveredUrl, RawCampaign, RawProduct
 from app.scrapers.sitemap import extract_urls
@@ -335,6 +336,18 @@ class AlbarakaScraper(BaseScraper):
         body_text = clean_html(html, bank_code=self.bank_code, title=title)
         conditions = extract_section_text(html, CONDITION_KEYWORDS)
 
+        # Listing varsayılanı bireysel; metin/URL daha spesifik kanal söylüyorsa onu al.
+        segment = hint.segment_hint or "bireysel"
+        cikarim = infer_segment(
+            title=title,
+            description=self._first_paragraph(body_text),
+            conditions_text=conditions,
+            body_text=body_text,
+            source_url=url,
+        )
+        if cikarim is not None and cikarim.value != "bireysel":
+            segment = cikarim.value
+
         return RawCampaign(
             # ⚠️ Sonekler (-1, _1, -14) korunur; farklı dönem demektir.
             external_slug=slug_from_url_path(url),
@@ -345,7 +358,7 @@ class AlbarakaScraper(BaseScraper):
             exclusions_text=extract_section_text(html, EXCLUSION_KEYWORDS),
             category=None,
             bank_category=hint.category_hint,
-            segment=hint.segment_hint,
+            segment=segment,
             is_archived=False,
         )
 
