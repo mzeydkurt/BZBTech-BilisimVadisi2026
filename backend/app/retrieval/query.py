@@ -38,7 +38,7 @@ from app.core.taxonomy import (
 # arandığında "KT'de kampanya var mı" sorgusu hiçbir banka bulamıyor.
 # Anahtarlar `BANK_SEED` içindeki kodlarla birebir aynıdır.
 BANK_ALIASES: Final[dict[str, tuple[str, ...]]] = {
-    "kuveyt_turk": ("kuveyt turk", "kuveyt türk", "kuveytturk", "kt katilim", "kuveyt"),
+    "kuveyt_turk": ("kuveyt turk", "kuveyt türk", "kuveytturk", "kt katilim", "kuveyt", "kt"),
     "albaraka": ("albaraka turk", "albaraka türk", "albaraka", "albarakaturk"),
     "turkiye_finans": ("turkiye finans", "türkiye finans", "turkiyefinans", "tfkb"),
     "vakif_katilim": ("vakif katilim", "vakıf katılım", "vakifkatilim", "vakif"),
@@ -55,6 +55,29 @@ BANK_ALIASES: Final[dict[str, tuple[str, ...]]] = {
     "tom_bank": ("t.o.m.", "tom katilim", "tom bank", "tombank", "tom"),
     "dunya_katilim": ("dunya katilim", "dünya katılım", "dunyakatilim", "dunya"),
     "adil_katilim": ("adil katilim", "adil katılım", "adilkatilim", "adil"),
+}
+
+# ── Yalnızca SORGUDA geçerli, çıplak eksen sözcükleri ─────
+# ⚠️ `taxonomy.py` DEĞİŞTİRİLMEZ. O sözlük uzun kampanya SAYFALARI için
+# ayarlandı: çıplak "finansman" kelimesi her bankanın her sayfasında geçiyor,
+# bu yüzden `PRODUCT_TYPE_KEYWORDS["finansman"]` yalnızca "finansman kullan",
+# "finansman imkânı" gibi ÖBEKLERİ arıyor. Kısa bir soruda ise çıplak
+# "finansman" kelimesi gerçek ve tek sinyaldir — aynı sözlüğü iki bağlamda
+# aynı eşikle kullanmak, sorguyu sessizce süzgeçsiz bırakıyordu
+# ("En uzun vadeli finansman hangi bankada?" → hiçbir eksen süzgeci yok).
+#
+# ⚠️ YEDEK OLARAK ÇALIŞIR. Aynı eksende daha özgül bir değer eşleştiyse
+# (ör. `konut_finansmani`) çıplak sözcük EKLENMEZ; yoksa her konut sorgusu
+# genel finansman kampanyalarını da içine alır ve isabet düşer.
+QUERY_ONLY_KEYWORDS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
+    "product_type": {
+        "finansman": ("finansman", "finanse"),
+        "kart": ("kredi karti", "banka karti"),
+        "sigorta": ("sigorta",),
+        "yatirim_urunu": ("yatirim",),
+        "birikim_katilma_hesabi": ("katilma hesabi", "birikim"),
+        "dijital_bankacilik": ("dijital bankacilik", "mobil bankacilik"),
+    },
 }
 
 # ── Niyet işaretçileri ────────────────────────────────────
@@ -282,9 +305,7 @@ def _banka_kodlari(katlanmis: str) -> list[QuerySignal]:
     for kod, takma_adlar in BANK_ALIASES.items():
         for takma in sorted(takma_adlar, key=len, reverse=True):
             if _kelime_var(katlanmis, takma):
-                sonuc.append(
-                    QuerySignal(kind="bank", value=kod, label="Banka", evidence=takma)
-                )
+                sonuc.append(QuerySignal(kind="bank", value=kod, label="Banka", evidence=takma))
                 break
     return sonuc
 
@@ -309,6 +330,24 @@ def _eksen_suzgecleri(katlanmis: str) -> list[QuerySignal]:
         for deger, kelimeler in sozluk.items():
             # ⚠️ Eksende geçerli olmayan bir değer süzgece giremez; sözlük ile
             # denetimli kelime listesi ıraksarsa sessiz süzgeç hatası olur.
+            if deger not in AXIS_VALUES.get(eksen, ()):
+                continue
+            for kelime in sorted(kelimeler, key=len, reverse=True):
+                if _kelime_var(katlanmis, kelime):
+                    sonuc.append(
+                        QuerySignal(
+                            kind=eksen, value=deger, label=etiketler[eksen], evidence=kelime
+                        )
+                    )
+                    break
+
+    # Yalnızca sorguda geçerli çıplak sözcükler — o eksende hiçbir özgül değer
+    # eşleşmediyse devreye girer (bkz. `QUERY_ONLY_KEYWORDS` notu).
+    eslesen_eksenler = {sinyal.kind for sinyal in sonuc}
+    for eksen, sozluk_ek in QUERY_ONLY_KEYWORDS.items():
+        if eksen in eslesen_eksenler:
+            continue
+        for deger, kelimeler in sozluk_ek.items():
             if deger not in AXIS_VALUES.get(eksen, ()):
                 continue
             for kelime in sorted(kelimeler, key=len, reverse=True):
@@ -407,14 +446,19 @@ def _sayisal_kisitlar(katlanmis: str) -> list[NumericConstraint]:
         if yon is None:
             continue
 
-        sonuc.append(
-            NumericConstraint(field=alan, op=yon, value=deger, evidence=ham.strip())
-        )
+        sonuc.append(NumericConstraint(field=alan, op=yon, value=deger, evidence=ham.strip()))
     return sonuc
 
 
 def _toplama(katlanmis: str) -> AggregateSpec | None:
-    """Toplama niyetini ve hesaplanacak alanı belirler."""
+    """Toplama niyetini ve hesaplanacak alanı belirler.
+
+    ⚠️ İŞARETÇİYİ SAYI İZLİYORSA TOPLAMA DEĞİL KISITTIR. "en az 250 TL ödül
+    veren kampanyalar" bir üstünlük sorusu değil, bir eşiktir; toplama sayılırsa
+    kullanıcı 608 kampanyanın asgarisini görür ve kendi eşiğini hiç göremez.
+    Aynı ifade ("en az") iki işi de yapabildiği için ayrım sayının varlığına
+    bakılarak yapılır.
+    """
     for isaretci in COUNT_MARKERS:
         if isaretci in katlanmis:
             return AggregateSpec(kind="count")
@@ -422,6 +466,8 @@ def _toplama(katlanmis: str) -> AggregateSpec | None:
     for isaretci, yon in AGGREGATE_MARKERS.items():
         yer = katlanmis.find(isaretci)
         if yer == -1:
+            continue
+        if _SAYI_RE.match(katlanmis[yer + len(isaretci) :].lstrip()):
             continue
         # ⚠️ "En düşük NE?" sorusunun alanı belirtilmemişse toplama yapılamaz;
         # rastgele bir alan seçmek uydurma cevap üretir.
