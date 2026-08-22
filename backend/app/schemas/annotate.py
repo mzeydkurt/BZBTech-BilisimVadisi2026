@@ -82,6 +82,10 @@ class ProgressOut(BaseModel):
     """Etiketleme ilerlemesi."""
 
     sample_size: int
+    # Örneklemde hâlâ DB'de çözülebilen kampanya sayısı (yetim slug'lar hariç).
+    reachable_campaigns: int = 0
+    # Yeniden kazımada düşmüş / slug'ı kaybolmuş örneklem satırları.
+    orphan_campaigns: int = 0
     annotated_campaigns: int
     total_annotations: int
     blind_campaigns: int
