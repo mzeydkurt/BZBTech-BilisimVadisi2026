@@ -1,22 +1,38 @@
-"""Yerel model sağlayıcısı — Ollama'nın OpenAI uyumlu ucu üzerinden.
+"""Yerel model sağlayıcısı — Ollama üzerinden.
 
-⚠️ SPRINT 3A'DA BU DOSYA ÇALIŞTIRILMAZ. Kod yazılır ama model kurulu olmadığı
-için test EDİLMEZ; `health()` False döner ve bu BEKLENEN durumdur. Gerçek
-modelle doğrulama ve prompt ince ayarı SPRINT 3B'nin işidir.
-
-⚠️ SPRINT 3B'DE ARAYÜZ İMZALARI DEĞİŞMEYECEK. Yalnızca bu sınıfın içi
-düzeltilebilir: uç adresi, istek gövdesi, yanıt ayrıştırma. `LLMProvider`
-sözleşmesine (`providers/base.py`) dokunulmaz — çıkarım motorunun tamamı o
-sözleşmenin üzerine kurulu.
+⚠️ ARAYÜZ İMZALARI DEĞİŞMEZ. Yalnızca bu sınıfın içi düzeltilebilir: uç
+adresi, istek gövdesi, yanıt ayrıştırma. `LLMProvider` sözleşmesine
+(`providers/base.py`) dokunulmaz — çıkarım motorunun tamamı o sözleşmenin
+üzerine kurulu.
 
 ⚠️ AIRGAP_MODE BU SAĞLAYICIYI ENGELLEMEZ. Model `localhost`ta çalışır; kurum
 ağının dışına çıkan bir istek değildir. Aksine on-premise iddiasının ta
 kendisidir: veri kurumdan çıkmadan çıkarım yapılır. Airgap yalnızca kazımayı
 (bankalara giden istekleri) durdurur.
+
+⚠️ ÜRETİM ÇAĞRISI OPENAI UYUMLU `/v1` UCUNU KULLANMAZ — Ollama'nın kendi
+`/api/chat` ucunu kullanır. Gerekçe ölçüldü (22 Ağustos 2026, `qwen3:8b`):
+
+    POST /v1/chat/completions
+      + chat_template_kwargs={"enable_thinking": false}
+    → HTTP 200 · finish_reason="length" · choices[0].message.content = ""
+
+Düşünen modellerde `/v1` ucu düşünme çıktısını `content` alanına koymuyor;
+üretim bütçesinin tamamı düşünmeye gidiyor ve geriye BOŞ metin kalıyor.
+HATA FIRLATMIYOR — yalnızca hiçbir alan çıkarılamıyor ve F1 sıfıra düşüyor.
+`/api/chat` ucundaki `think: false` parametresi düşünmeyi gerçekten kapatıyor;
+aynı istem orada geçerli JSON döndürdü.
+
+`think: false` düşünmeyen modellerde de güvenlidir (`qwen2.5-coder:7b` ile
+denendi: HTTP 200, yok sayılıyor), bu yüzden koşulsuz gönderilir.
+
+⚠️ SAĞLIK YOKLAMASI `/v1/models` UCUNDA KALIR. Model listesini vermek için
+yeterlidir ve `LOCAL_LLM_BASE_URL` ayarının anlamı korunur.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from typing import Any, Final
@@ -36,9 +52,13 @@ from app.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Ollama'nın OpenAI uyumlu uçları.
-CHAT_PATH: Final[str] = "/chat/completions"
+# Ollama'nın kendi sohbet ucu — `/v1` önekinin DIŞINDADIR (yukarıdaki nota bak).
+NATIVE_CHAT_PATH: Final[str] = "/api/chat"
+# OpenAI uyumlu model listesi ucu; yalnızca sağlık yoklaması için.
 MODELS_PATH: Final[str] = "/models"
+
+# Yeniden denemeler arasındaki temel bekleme; her denemede ikiye katlanır.
+RETRY_BASE_DELAY_SECONDS: Final[float] = 1.0
 
 
 class LocalProvider(LLMProvider):
@@ -59,11 +79,13 @@ class LocalProvider(LLMProvider):
     def model_info(self) -> ModelInfo:
         """Yapılandırılmış modelin kimliği.
 
-        ⚠️ `local_llm_model` SPRINT 3B'de doldurulacak; 3A'da boş olması
-        normaldir ve `health()` zaten False döndürür.
+        ⚠️ `license` alanı sabit "Apache-2.0" yazar ve bu YALNIZCA seçim
+        havuzundaki modeller (Qwen2.5 / Qwen3 / Mistral) için doğrudur.
+        Havuz dışı bir model yapılandırılırsa bu alan yalan söyler; havuz
+        `docs/SPRINT3B_LLM_LOCAL_KURULUM.md` §3.1'de tanımlıdır.
         """
         return ModelInfo(
-            name=self._model or "(tanımlanmadı — SPRINT 3B)",
+            name=self._model or "(tanımlanmadı)",
             version=self._settings.prompt_version,
             license="Apache-2.0",
             is_local=True,
@@ -73,11 +95,11 @@ class LocalProvider(LLMProvider):
     async def health(self) -> bool:
         """Servise ulaşılabiliyor ve model yüklü mü?
 
-        ⚠️ İSTİSNA YÜKSELTMEZ (bkz. `LLMProvider.health`). SPRINT 3A'da model
-        kurulu olmadığı için False dönmesi beklenen sonuçtur, hata değil.
+        ⚠️ İSTİSNA YÜKSELTMEZ (bkz. `LLMProvider.health`). Model kurulu
+        değilken False dönmesi beklenen sonuçtur, hata değil.
         """
         if not self._model:
-            logger.info("yerel_model_tanimlanmadi", not_="SPRINT 3B'de .env'e yazılacak")
+            logger.info("yerel_model_tanimlanmadi", not_=".env içindeki LOCAL_LLM_MODEL boş")
             return False
 
         try:
@@ -98,8 +120,46 @@ class LocalProvider(LLMProvider):
         return True
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        """SPRINT 5'te uygulanacak (bkz. `embeddings` tablosu)."""
-        raise NotImplementedError("Gömme SPRINT 5'te uygulanacak.")
+        """Metinleri gömme vektörlerine çevirir.
+
+        Gömme modeli sohbet modelinden AYRIDIR (`EMBEDDING_MODEL`); aynı
+        modelden hem üretim hem gömme istemek Ollama'da modeli boşuna
+        yeniden yükletir.
+
+        ⚠️ BOŞ METİN GÖNDERİLMEZ. Ollama boş girdi için sıfır vektör
+        döndürüyor; sıfır vektörün kosinüs benzerliği tanımsızdır ve sıralamayı
+        sessizce bozar. Boş girdi hata olarak bildirilir.
+
+        Args:
+            texts: Gömülecek metinler.
+
+        Returns:
+            Her metin için bir vektör; sıra girdi sırasıyla aynıdır.
+
+        Raises:
+            ValueError: Metinlerden biri boş.
+            LLMUnavailableError: Servise ulaşılamıyor.
+            LLMTimeoutError: Model zamanında yanıt vermedi.
+        """
+        if not texts:
+            return []
+        for sira, metin in enumerate(texts):
+            if not metin.strip():
+                raise ValueError(f"Boş metin gömülemez (sıra {sira})")
+
+        govde: dict[str, Any] = {
+            "model": self._settings.embedding_model,
+            "input": texts,
+        }
+        yanit = await self._istek(self._native_url("/api/embed"), govde)
+
+        vektorler = yanit.get("embeddings")
+        if not isinstance(vektorler, list) or len(vektorler) != len(texts):
+            raise LLMInvalidJSONError(
+                f"Gömme yanıtı beklenen biçimde değil: {len(texts)} metin gönderildi, "
+                f"{len(vektorler) if isinstance(vektorler, list) else '?'} vektör döndü"
+            )
+        return [[float(x) for x in vektor] for vektor in vektorler]
 
     async def generate(
         self,
@@ -115,7 +175,7 @@ class LocalProvider(LLMProvider):
         Args:
             prompt: Kullanıcı istemi.
             system: Sistem istemi.
-            schema: Verilirse yanıt JSON'a zorlanır (`response_format`).
+            schema: Verilirse yanıt JSON'a zorlanır (`format: json`).
             temperature: Örnekleme sıcaklığı (varsayılan 0).
             max_tokens: Üretilecek en fazla token.
 
@@ -125,7 +185,8 @@ class LocalProvider(LLMProvider):
         Raises:
             LLMUnavailableError: Servise ulaşılamıyor.
             LLMTimeoutError: Model zamanında yanıt vermedi.
-            LLMInvalidJSONError: Şema istendi ama yanıt geçerli JSON değil.
+            LLMInvalidJSONError: Şema istendi ama yanıt geçerli JSON değil,
+                ya da model boş yanıt döndürdü.
         """
         mesajlar: list[dict[str, str]] = []
         if system:
@@ -135,26 +196,31 @@ class LocalProvider(LLMProvider):
         govde: dict[str, Any] = {
             "model": self._model,
             "messages": mesajlar,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
+            "stream": False,
+            # Düşünme kapalı — açıkken üretim bütçesi tükeniyor ve `content`
+            # boş kalıyor (dosya başındaki ölçüme bak).
+            "think": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+                "num_ctx": self._settings.local_llm_context,
+            },
         }
         if schema is not None:
-            # Ollama'nın JSON kipi: yanıt geçerli JSON olmaya zorlanır.
-            govde["response_format"] = {"type": "json_object"}
+            govde["format"] = "json"
 
         baslangic = time.monotonic()
-        yanit = await self._istek(govde)
+        yanit = await self._istek(self._native_url(NATIVE_CHAT_PATH), govde)
         gecen_ms = int((time.monotonic() - baslangic) * 1000)
 
         metin = self._icerik(yanit)
         ayristirilan = self._ayristir(metin) if schema is not None else None
-        kullanim = yanit.get("usage") or {}
 
         return LLMResponse(
             text=metin,
             parsed=ayristirilan,
-            prompt_tokens=kullanim.get("prompt_tokens"),
-            completion_tokens=kullanim.get("completion_tokens"),
+            prompt_tokens=yanit.get("prompt_eval_count"),
+            completion_tokens=yanit.get("eval_count"),
             latency_ms=gecen_ms,
             from_cache=False,
             model_name=self._model,
@@ -162,14 +228,27 @@ class LocalProvider(LLMProvider):
 
     # ── İç yardımcılar ────────────────────────────────────
 
-    async def _istek(self, govde: dict[str, Any]) -> dict[str, Any]:
+    def _native_url(self, path: str) -> str:
+        """Ollama'nın kendi uç adresini üretir.
+
+        `LOCAL_LLM_BASE_URL` OpenAI uyumluluğu için `/v1` ile bitiyor; yerel
+        uçlar o önekin dışındadır. Önek yoksa adres olduğu gibi kullanılır —
+        Ollama'yı ters vekil arkasında çalıştıran kurulumlar bozulmasın.
+        """
+        kok = self._base_url[: -len("/v1")] if self._base_url.endswith("/v1") else self._base_url
+        return f"{kok}{path}"
+
+    async def _istek(self, url: str, govde: dict[str, Any]) -> dict[str, Any]:
         """İsteği yeniden denemeli olarak yapar.
 
-        ⚠️ Yeniden deneme YALNIZCA zaman aşımı ve bağlantı hatası için. Model
-        anlamlı bir hata döndürdüyse (ör. model bulunamadı) tekrar denemek
-        aynı sonucu verir ve boşuna bekletir.
+        ⚠️ Yeniden deneme YALNIZCA zaman aşımı için. Model anlamlı bir hata
+        döndürdüyse (ör. model bulunamadı) tekrar denemek aynı sonucu verir ve
+        boşuna bekletir.
+
+        ⚠️ ÜSTEL BEKLEME VAR. Zaman aşımının en sık nedeni modelin belleğe
+        yüklenmesi (ilk çağrıda 12-20 sn ölçüldü); hemen tekrar denemek aynı
+        yüklemeyi ikinci kez tetikleyip durumu kötüleştiriyor.
         """
-        url = f"{self._base_url}{CHAT_PATH}"
         son_hata: Exception | None = None
 
         for deneme in range(self._settings.llm_max_retries + 1):
@@ -184,6 +263,8 @@ class LocalProvider(LLMProvider):
             except httpx.TimeoutException as exc:
                 son_hata = exc
                 logger.warning("yerel_llm_zaman_asimi", deneme=deneme + 1, url=url)
+                if deneme < self._settings.llm_max_retries:
+                    await asyncio.sleep(RETRY_BASE_DELAY_SECONDS * (2**deneme))
             except httpx.HTTPStatusError as exc:
                 raise _durum_hatasi(exc) from exc
             except httpx.HTTPError as exc:
@@ -195,11 +276,26 @@ class LocalProvider(LLMProvider):
 
     @staticmethod
     def _icerik(yanit: dict[str, Any]) -> str:
-        """Yanıt gövdesinden metni çıkarır."""
-        secenekler = yanit.get("choices") or []
-        if not secenekler:
-            raise LLMInvalidJSONError("Yanıtta 'choices' alanı yok")
-        return str((secenekler[0].get("message") or {}).get("content", ""))
+        """Yanıt gövdesinden metni çıkarır.
+
+        ⚠️ BOŞ METİN SESSİZCE GEÇİRİLMEZ. Düşünme kipi açık kaldığında ya da
+        `num_predict` düşük olduğunda Ollama HTTP 200 döndürüyor ama `content`
+        boş geliyor. Bu durumu normal bir "alan bulunamadı" yanıtı gibi
+        işlemek, tüm çalıştırmanın sıfır çıkarımla ve HİÇBİR HATA MESAJI
+        OLMADAN bitmesi demektir.
+        """
+        mesaj = yanit.get("message")
+        if not isinstance(mesaj, dict):
+            raise LLMInvalidJSONError("Yanıtta 'message' alanı yok")
+
+        metin = str(mesaj.get("content") or "")
+        if not metin.strip():
+            neden = yanit.get("done_reason") or "bilinmiyor"
+            raise LLMInvalidJSONError(
+                f"Model boş yanıt döndürdü (done_reason={neden}). "
+                "Düşünme kipi açık kalmış ya da num_predict yetersiz olabilir."
+            )
+        return metin
 
     @staticmethod
     def _ayristir(metin: str) -> dict[str, Any]:
@@ -228,7 +324,7 @@ def _durum_hatasi(exc: httpx.HTTPStatusError) -> LLMUnavailableError:
     """HTTP durum hatasını sağlayıcı hatasına çevirir.
 
     404 çoğunlukla "model yüklü değil" demektir ve kurulum sorununa işaret
-    eder; mesaj bunu açıkça söyler ki SPRINT 3B'de vakit kaybedilmesin.
+    eder; mesaj bunu açıkça söyler ki vakit kaybedilmesin.
     """
     if exc.response.status_code == httpx.codes.NOT_FOUND:
         return LLMUnavailableError(f"Model bulunamadı ({exc.request.url}). 'ollama pull' gerekli.")
