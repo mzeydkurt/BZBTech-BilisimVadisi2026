@@ -26,6 +26,8 @@ class DiscoveredUrl:
     category_hint: str | None = None
     segment_hint: str | None = None  # bireysel | kurumsal | kobi | ticari | tarim
     discovery_method: str = "listing"
+    # Liste kartında bitiş tarihi varsa detay HTTP'sinden önce süre kontrolü için.
+    end_date_hint: date | None = None
 
 
 @dataclass
