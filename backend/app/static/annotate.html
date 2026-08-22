@@ -20,7 +20,7 @@
   .rozet { font-size: 12px; padding: 2px 8px; border-radius: 3px;
            border: 1px solid var(--cizgi); background: var(--zemin); }
   .rozet.kor { background: #e8eef4; border-color: #b9cde0; color: var(--vurgu); font-weight: 600; }
-  .rozet.zor { background: var(--uyari-zemin); border-color: #e3c78a; color: var(--uyari); }
+  .rozet.uyari { background: var(--uyari-zemin); border-color: #e3c78a; color: var(--uyari); }
   .buyu { flex: 1; }
   main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px;
          align-items: start; }
@@ -144,12 +144,38 @@ $("#metin").addEventListener("mouseup", () => {
   durum("");
 });
 
+const ALAN_ETIKET = {
+  profit_rate_pct: "Kâr payı oranı",
+  profit_share_rate_pct: "Kâr paylaşım oranı",
+  allocation_fee_pct: "Tahsis ücreti",
+  file_fee_try: "Dosya masrafı",
+  has_no_fee: "Masrafsız mı",
+  term_months_min: "Min vade (ay)",
+  term_months_max: "Max vade (ay)",
+  installment_count: "Taksit sayısı",
+  financing_amount_min: "Min finansman",
+  financing_amount_max: "Max finansman",
+  min_spend_try: "Min harcama",
+  max_spend_try: "Max harcama",
+  reward_amount_try: "Ödül tutarı",
+  reward_type: "Ödül türü",
+  cashback_pct: "Nakit iade %",
+  discount_pct: "İndirim %",
+  loyalty_points: "Puan / mil",
+  start_date: "Başlangıç",
+  end_date: "Bitiş",
+  target_customer: "Hedef kitle",
+  product_type: "Ürün türü",
+  sector: "Sektör",
+};
+
 function alanSatiri(ad, tanim) {
   const birim = tanim.unit;
   const secenekler = tanim.options || [];
   const satir = document.createElement("div");
   satir.className = "alan";
   satir.dataset.alan = ad;
+  const gorunen = ALAN_ETIKET[ad] || ad;
 
   // ⚠️ Enum alanlarda kontrollü sözlük otomatik tamamlama olarak sunulur.
   // Elle yazılan bir değer ("e-ticaret" yerine "eticaret_pazaryeri")
@@ -159,7 +185,7 @@ function alanSatiri(ad, tanim) {
     : "";
 
   satir.innerHTML = `
-    <label for="f_${ad}">${ad} <span class="birim">${birim}</span></label>
+    <label for="f_${ad}" title="${ad}">${gorunen} <span class="birim">${birim}</span></label>
     <input type="text" id="f_${ad}" autocomplete="off"
            ${secenekler.length ? `list="d_${ad}"` : ""}>
     <button class="bosla" title="Bu bilgi metinde YOK">∅</button>
@@ -241,8 +267,17 @@ async function alanlariYukle() {
 
 async function ilerlemeYukle() {
   const p = await (await fetch(`${API}/progress`)).json();
-  $("#ilerleme").textContent =
-    `${p.annotated_campaigns} / ${p.sample_size} kampanya · kör ${p.blind_campaigns}/${p.blind_target}`;
+  const erisilebilir = p.reachable_campaigns ?? p.sample_size;
+  const yetim = p.orphan_campaigns ?? 0;
+  let metin =
+    `${p.annotated_campaigns} / ${erisilebilir} erişilebilir · kör ${p.blind_campaigns}/${p.blind_target}`;
+  if (yetim > 0) {
+    metin += ` · ⚠ ${yetim} yetim (DB'de yok)`;
+  }
+  $("#ilerleme").textContent = metin;
+  $("#ilerleme").title =
+    `Örneklem ${p.sample_size} · erişilebilir ${erisilebilir} · yetim ${yetim} ` +
+    `(yeniden kazımada slug'ı kaybolanlar; gold_sample'a dokunulmaz)`;
 }
 
 function formuTemizle() {
