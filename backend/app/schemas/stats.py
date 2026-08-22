@@ -68,6 +68,22 @@ class SectorCount(BaseModel):
     count: int
 
 
+class TaxonomyCount(BaseModel):
+    """Taksonomi eksen değeri başına kampanya sayısı."""
+
+    value: str
+    count: int
+
+
+class BankCoverage(BaseModel):
+    """Banka bazında aktif / toplam kampanya kapsaması."""
+
+    bank_code: str
+    bank_name: str
+    active: int
+    total: int
+
+
 class StatsResponse(BaseModel):
     """Genel bakış sayfasının beslendiği istatistikler."""
 
@@ -83,13 +99,23 @@ class StatsResponse(BaseModel):
     products_total: int = Field(default=0, description="Yapısal ürün sayısı")
     rates_total: int = Field(default=0, description="Yapısal oran satırı sayısı")
     limits_total: int = Field(default=0, description="Yapısal limit satırı sayısı")
-    ai_coverage_pct: float = Field(default=0.0, description="AI/Kural çıkarım kapsama oranı (%)")
+    ai_coverage_pct: float = Field(
+        default=0.0,
+        description="Sınıflandırma kapsamı: en az bir taksonomi etiketi olan kök kampanya oranı (%)",
+    )
     green_campaigns_count: int = Field(
         default=0, description="Yeşil / Sürdürülebilir finansman kampanya sayısı"
+    )
+    ending_soon_count: int = Field(
+        default=0,
+        description="Aktif ve bitiş tarihi ≤14 gün içinde olan kök kampanya sayısı",
     )
     campaigns_by_bank: list[BankCampaignCount]
     campaigns_by_category: list[CategoryCount]
     sector_distribution: list[SectorCount] = Field(default_factory=list)
+    audience_distribution: list[TaxonomyCount] = Field(default_factory=list)
+    benefit_distribution: list[TaxonomyCount] = Field(default_factory=list)
+    active_by_bank: list[BankCoverage] = Field(default_factory=list)
     radar_scores: list[RadarScore] = Field(default_factory=list)
     last_scrape_at: datetime | None = Field(
         default=None, description="Son tamamlanan kazımanın zamanı (Türkiye saati)"
