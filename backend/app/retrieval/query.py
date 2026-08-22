@@ -122,7 +122,7 @@ STATUS_MARKERS: Final[dict[str, tuple[str, ...]]] = {
 # "%80" tutar olarak yazılmıştı). Aynı hatayı sorgu tarafında tekrarlamayız.
 NUMERIC_FIELD_MARKERS: Final[dict[str, tuple[str, ...]]] = {
     "profit_rate_pct": ("kar payi", "kar pay", "oran"),
-    "term_months_max": ("vade", " ay"),
+    "term_months_max": ("vade", "ay", "aylik"),
     "installment_count": ("taksit",),
     "reward_amount_try": ("odul", "iade", "hediye", "kazanc", "bonus"),
     "min_spend_try": ("harcama", "alisveris"),
@@ -382,15 +382,31 @@ def _durumlar(katlanmis: str) -> list[QuerySignal]:
     return sonuc
 
 
-def _alan_bul(katlanmis: str, konum: int, yuzde_mi: bool) -> str | None:
+def _alan_bul(katlanmis: str, konum: int, yuzde_mi: bool | None) -> str | None:
     """Sayının hangi `campaign_metrics` alanına ait olduğunu bulur.
 
     Sayının solundaki ve sağındaki pencereye bakılır; işaretçi bulunamazsa
     `None` döner ve sayı süzgece ÇEVRİLMEZ.
 
+    ⚠️ İŞARETÇİ KELİME SINIRINDA ARANIR, `find()` İLE DEĞİL — ÖLÇÜLDÜ.
+    `find()` kullanıldığında `term_months_max` işaretçisi `"ay"`,
+    **"kâr payı"** ifadesinin içindeki `p-ay-ı`'ya uyuyordu; "Hangi bankada en
+    düşük kâr payı oranı var?" sorusu `profit_rate_pct` yerine
+    `term_months_max` üzerinden yanıtlanıp **"en düşük kâr payı 1"** diyordu.
+    Hata fırlatmıyor, yalnızca yanlış alanı raporluyordu. İşaretçiye baştan
+    boşluk koymak da çözmüyor: `normalize_text()` baştaki boşluğu siliyor.
+
     ⚠️ Yüzde işareti taşıyan sayı tutar alanına yazılamaz, tutar alanına ait
     işaretçi taşıyan sayı da yüzde alanına yazılamaz. Sprint 2'de "%80"
     ifadesinin `amount_max` olarak kaydedildiği hata tam buradan doğmuştu.
+
+    Args:
+        katlanmis: Katlanmış sorgu metni.
+        konum: Sayının (ya da toplama işaretçisinin) bittiği konum.
+        yuzde_mi: `True` yalnızca oran alanları · `False` yalnızca tutar/adet
+            alanları · `None` **ayrım yapma**. Toplama sorularında ("en düşük
+            kâr payı") ortada sayı yoktur; yüzde ayrımı uygulanırsa doğru alan
+            elenir.
     """
     sol = max(0, konum - MARKER_WINDOW)
     pencere = katlanmis[sol : konum + MARKER_WINDOW]
@@ -398,15 +414,15 @@ def _alan_bul(katlanmis: str, konum: int, yuzde_mi: bool) -> str | None:
     en_iyi: str | None = None
     en_iyi_uzaklik = MARKER_WINDOW + 1
     for alan, isaretciler in NUMERIC_FIELD_MARKERS.items():
-        if yuzde_mi and alan not in PERCENT_FIELDS:
+        if yuzde_mi is True and alan not in PERCENT_FIELDS:
             continue
-        if not yuzde_mi and alan in PERCENT_FIELDS:
+        if yuzde_mi is False and alan in PERCENT_FIELDS:
             continue
         for isaretci in isaretciler:
-            yer = pencere.find(_fold(isaretci))
-            if yer == -1:
+            eslesme = re.search(rf"(?<![a-z0-9]){re.escape(_fold(isaretci))}", pencere)
+            if eslesme is None:
                 continue
-            uzaklik = abs((sol + yer) - konum)
+            uzaklik = abs((sol + eslesme.start()) - konum)
             if uzaklik < en_iyi_uzaklik:
                 en_iyi, en_iyi_uzaklik = alan, uzaklik
     return en_iyi
@@ -471,9 +487,9 @@ def _toplama(katlanmis: str) -> AggregateSpec | None:
             continue
         # ⚠️ "En düşük NE?" sorusunun alanı belirtilmemişse toplama yapılamaz;
         # rastgele bir alan seçmek uydurma cevap üretir.
-        alan = _alan_bul(katlanmis, yer + len(isaretci), yuzde_mi=False) or _alan_bul(
-            katlanmis, yer + len(isaretci), yuzde_mi=True
-        )
+        # ⚠️ `yuzde_mi=None`: toplama sorusunda sayı yoktur, bu yüzden
+        # oran/tutar ayrımı yapılamaz ve yapılmamalıdır.
+        alan = _alan_bul(katlanmis, yer + len(isaretci), yuzde_mi=None)
         if alan is None:
             continue
         return AggregateSpec(kind="extremum", field=alan, direction=yon)
