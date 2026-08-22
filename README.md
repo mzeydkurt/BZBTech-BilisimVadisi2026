@@ -53,7 +53,7 @@ her değerin **kaynağını** ve **çıkarım güvenilirliğini** kayıt altına
 | Web arayüzü (genel bakış + kampanya tablosu) | ✅ | Yükleniyor / hata / sonuç yok durumları ayrı |
 
 **Kapsam dışı (sonraki sprintler):** yapay zekâ / LLM entegrasyonu, sohbet
-arayüzü, kalan 9 bankanın scraper'ı, kampanya karşılaştırma motoru.
+arayüzü, kalan 8 bankanın scraper'ı, kampanya karşılaştırma motoru.
 
 ### Toplanan veri
 
@@ -73,14 +73,199 @@ arayüzü, kalan 9 bankanın scraper'ı, kampanya karşılaştırma motoru.
 |---|---|---|
 | Şema genişletmesi (ürün varyantı, taksonomi, hesaplayıcı envanteri) | ✅ | 5 yeni tablo · `downgrade` turu sınandı |
 | Kalan 8 bankanın scraper'ı | ✅ | **10 bankanın tamamı** · sitemap, JSON ucu ve liste sayfası yolları |
-| Kampanya taksonomisi (4 dik eksen) | ✅ | **2970 etiket** · her kampanyada en az 2 |
-| Ürün / finansman verisi | ✅ | **222 ürün** · varyant, limit ve teminat türü |
-| Yapısal oran tabloları | ✅ | **253 oran** / 5 banka · LTV matrisi ve ödeme planı dahil |
+| Kampanya taksonomisi (4 dik eksen) | ✅ | **3.000 etiket** · her kampanyada en az 2 |
+| Ürün / finansman verisi | ✅ | **234 ürün** · varyant, limit ve teminat türü |
+| Yapısal oran tabloları | ✅ | **373 oran** · LTV matrisi ve ödeme planı dahil |
 | Hesaplayıcı form envanteri | ✅ | 10 envanter / 6 banka · **hiçbir hesaplayıcı sorgulanmadı** |
 | Veri sıfırlama ve dışa aktarma zinciri | ✅ | Kararlı anahtarlı dışa aktarma + doğrulama damgası |
 
 **Kapsam dışı (sonraki sprintler):** sohbet arayüzü, kampanya karşılaştırma
 motoru, yerel LLM ile çalıştırma.
+
+### Toplanan veri
+
+| Tablo | Kayıt | Not |
+|---|---|---|
+| `campaigns` | 608 | 10 bankanın tamamı |
+| `campaign_categories` | 3.000 | 4 eksen · her kampanyada en az 2 etiket |
+| `campaign_extractions` | 4.508 | Kural tabanlı çıkarım, kanıtlı |
+| `campaign_metrics` | 608 | Yalnızca guard'ı geçen değerler |
+| `campaign_products` | 216 | Kampanya–ürün bağı, yöntem ve güvenle |
+| `products` | 234 | Limit kaynağı etiketli |
+| `product_rates` | 373 | Yapısal oran satırı |
+| `product_limits` | 108 | Tutar/vade/LTV matrisi |
+| `calculator_inventory` | 10 | 6 bankanın hesaplayıcı form envanteri |
+| `calculator_probes` | **0** | Hesaplayıcılar bilinçli olarak **sorgulanmadı** |
+| `entity_cards` | 1.253 | Varlık kartları |
+| `gold_annotations` | 2.360 | Elle etiketlenmiş cevap anahtarı |
+
+Banka bazında kampanya:
+
+| Banka | Kampanya | | Banka | Kampanya |
+|---|---|---|---|---|
+| Ziraat Katılım | 210 | | Kuveyt Türk | 47 |
+| Vakıf Katılım | 92 | | Albaraka Türk | 40 |
+| T.O.M. Katılım | 71 | | Türkiye Finans | 22 |
+| Türkiye Emlak Katılım | 68 | | Hayat Finans | 10 |
+| Dünya Katılım | 48 | | Adil Katılım | 0 |
+
+| `date_precision` | Kampanya |
+|---|---|
+| `exact` | 293 |
+| `partial` | 155 |
+| `inferred` | 106 |
+| `unknown` | **54** |
+
+> `unknown` bir eksiklik değil **bulgudur**. Tarihi bulunamayan kampanya
+> "süresi dolmuş" işaretlenmez; `status='unknown'` ayrı bir durumdur.
+> `date_precision='exact'` kanıt metni olmadan geçersizdir — veritabanı
+> düzeyinde CHECK ile zorlanır, kanıtsız `exact` sayısı **0**.
+
+> **Adil Katılım'ın 0 kampanyası bir eksiklik değil, bulgudur.** Bankanın kamuya
+> açık kampanya sayfası yok; 9 aday adres denetlendi ve hepsi belgelendi. Site
+> var olmayan her adres için ana sayfayı HTTP 200 ile döndürdüğünden, içerik
+> özeti karşılaştırması yapılmasaydı 9 uydurma kayıt oluşacaktı.
+
+Ham HTML arşivi **690 MB** ve asla silinmez: biten kampanyalar bankaların
+sitesinden kalkıyor, arşiv kanıt zinciridir. Dosya adı içerik adreslidir, bu
+yüzden aynı adresin farklı zamanlardaki hâlleri birbirini **ezmez**.
+
+Ayrıntılı veri sözlüğü, kalite ölçümleri ve bilinen sorunlar:
+[`data/README.md`](data/README.md) · robots kapsam gerekçeleri:
+[`data/robots_report.md`](data/robots_report.md)
+
+### Kampanya taksonomisi
+
+Dört **dik** eksen; bir kampanya her eksende birden fazla etiket alabilir:
+
+| Eksen | Değer sayısı | Kaynak |
+|---|---|---|
+| `product_type` | 15 | Şartnamenin 8 zorunlu türü + 7 ek tür |
+| `sector` | 22 | Ziraat'in 14 gerçek kategorisi temel alındı |
+| `audience` | 14 | Şartname 5.3 "Hedef Kitle Bilgileri" |
+| `benefit` | 11 | Fayda türü |
+
+Kanıt önceliği — güçlüden zayıfa:
+
+| Kaynak | Güven | Açıklama |
+|---|---|---|
+| `url` | 1.00 | Adres yolundaki kategori (Kuveyt Türk) |
+| `bank_category` | 1.00 | Bankanın kendi etiketi (Ziraat'in 14 kategorisi) |
+| `merchant` | 0.90 | Marka sözlüğü |
+| `keyword` | 0.70 | Anahtar kelime sözlüğü |
+
+İlk ikisi **çıkarım değil kaynak veridir**: banka sektörü kendi sayfasında
+yazıyor. Bankanın liste kartlarındaki etiket `campaigns.bank_category`
+sütununa taşındığında sektörü çıkarılamayan kampanya oranı %44,2'den
+**%30,5**'e indi.
+
+> **Uydurma etiket yok.** Kaynak yoksa etiket yazılmaz. Sektör sinyali
+> bulunmayan kampanyalara `genel` yazılır ama **0.30 güvenle** — düşük güven,
+> sonraki sprintte hangi kayıtların önce ele alınacağını gösterir.
+
+Sınıflandırma deterministiktir ve **ağa çıkmadan** yeniden çalıştırılabilir;
+sözlük genişletildiğinde bankalara yeni istek gitmez. Etiketler her
+çalıştırmada silinip yeniden yazılır, böylece sözlükten çıkarılan bir
+kelimenin ürettiği etiket veritabanında kalmaz.
+
+Arayüzde kampanya tablosunda **Sektör** ve **Ürün Türü** kolonları rozet
+olarak gösterilir; her rozetin ipucunda etiketin hangi kaynaktan ve hangi
+metinden çıkarıldığı yazar. Düşük güvenli etiketler kesikli çerçeveyle
+ayırt edilir — gizlenmez, çünkü "sınıflandırılamadı" bilgisi de bir bulgudur.
+
+### Sahada doğrulanan ve önlenen veri hataları
+
+Aşağıdakilerin tamamı **canlı sitelerde ölçüldü**. Ortak özellikleri hata
+fırlatmadan sessizce yanlış veri üretmeleri; her biri için regresyon testi var.
+
+| Bulgu | Etki | Önlem |
+|---|---|---|
+| Ziraat detay sayfalarında ilk `<h1>` logo metni | 209 kampanyanın 209'u "Ziraat Katılım Bankası" adıyla kaydedildi | `extract_title(ignore_headings=...)` |
+| Aynı `<h1>` sorunu soft-404'ü de gizliyordu | 2 "sayfa yok" yanıtı kampanya sanıldı | `is_soft_404` ham `<title>` etiketine de bakıyor |
+| Bölüm başlığı `<p><strong>` içinde | Ziraat 209/209, Emlak 66/66 kayıtta koşul metni boş kaldı | Satır içi başlıkta blok atasına çıkılıyor |
+| T.O.M.'da aynı kampanya iki yol önekinde | 76 kampanya 157 kayda çıkıyordu | Slug bazında tekilleştirme |
+| Türkiye Finans başlıklarında kelime içi zero-width space | Kolon eşleştirmesi sessizce boş dönüyordu | `normalize_text()` zorunlu |
+| Göç sırasında SQLite FK denetimi açık | Tablo yeniden kurulurken `product_rates` satırları siliniyordu | Göç boyunca denetim kapatılıyor |
+| Sayfanın tamamında çıplak sayı tutar sayılıyordu | "36 ay" ve "%80" ifadeleri `amount_max` olarak yazılmıştı | Tutarda para birimi işareti zorunlu |
+| Paylaşım oranı ve vade aralıkları tutar sanılıyordu | "40-60" ve "1-30 gün" ürün limitine yazılıyordu | Aralıkta en az bir uçta para birimi aranıyor |
+
+### Analiz dokümanıyla çelişen, sahada düzeltilen varsayımlar
+
+Planlama dokümanındaki dört varsayım canlı ölçümde tutmadı; kod ölçüme göre
+yazıldı.
+
+| Doküman | Ölçüm (Ağustos 2026) |
+|---|---|
+| Ziraat: `/kampanyalar/{kategori}` gezilecek | O adres **HTTP 404**; tek giriş `/kart-kampanyalari` (209 kampanya, tek istek) |
+| Albaraka: liste rotasyonlu, 12-15 kez çek | Rotasyon **yok** — 3 çekimde de aynı 12 slug |
+| Vakıf: liste JS, httpx ile 0 kampanya | Sunucu HTML'inde kampanyalar **var**; geçersiz slug gerçek 404 döndürüyor |
+| Dünya: sitemap gzip | Düz XML — ama 46 kampanya adresi veriyor; liste sayfası gerçekten JS |
+
+### Yapısal oran verisi
+
+| `rate_source` | Satır | Güven |
+|---|---|---|
+| `html_table` | 367 | 1.00 |
+| `payment_plan_derived` | 6 | 0.95 |
+
+Türkiye Finans oranı serbest metinde değil gerçek bir HTML tablosunda
+yayımlıyor — veri setinin en güvenilir parçası. Aynı ürün için sigortalı ve
+sigortasız olmak üzere iki ayrı tablo veriyor.
+
+> **Varyant boyutu tablonun dışındadır.** Hangi tablonun sigortalı hangisinin
+> sigortasız olduğu yalnızca üstteki başlıkta yazılı. Başlık okunmazsa iki
+> tablo tek ürüne ait sanılır ve "en düşük kâr payı" karşılaştırması bir
+> bankanın sigortalı oranını başka bankanın sigortasız oranıyla kıyaslar.
+
+Albaraka oranı hiç yayımlamıyor, 23 satırlık ödeme planı veriyor; oran annüite
+denkleminden geri hesaplanıp bir kademe düşük güvenle kaydediliyor.
+
+### Bilinçli kırpmalar — sessiz değil
+
+Şartname sessiz kapsam daraltmayı yasaklıyor. Aşağıdakiler **ölçülmüş
+kararlardır**, gerekçeleri belgelidir:
+
+1. **Ürün varyant satırı yazılmadı.** Hesaplayıcı dropdown'ları ölçüldüğünde
+   ürüne değil **siteye** ait çıktı (Ziraat'in tek seçicisi 17 finansman
+   türünü birden sunuyor ve üç sayfada aynı). Filtresiz çalıştırma 42 sahte
+   varyant üretiyordu.
+2. **Hesaplayıcılar sorgulanmadı** (`calculator_probes` = 0). Form envanteri
+   bankanın yayımladığı yapısal limittir ve tek istek atmadan okunur.
+3. **Dünya Katılım'ın 48 kampanyası çekilmedi** — `robots.txt` engelliyor.
+4. **2025 öncesinde bitmiş kampanyalar yazılmadı.** Eşik bitiş tarihine
+   uygulanır, başlangıca değil: uzun vadeli kampanyalar yıllar önce başlayıp
+   hâlâ sürüyor olabiliyor.
+
+Bilinen ayrıştırma sorunları (Emlak'ın taşıt LTV matrisi, Hayat Finans'ın
+devrik paylaşım tablosu, Albaraka'da JS ile yüklenen 9 kampanya)
+[`data/README.md`](data/README.md) içinde tek tek listelidir.
+
+---
+
+## SPRINT 3 — devam ediyor
+
+Yapay zekâ çıkarım katmanı. Şimdiye kadar tamamlananlar:
+
+| Alan | Durum | Sonuç |
+|---|---|---|
+| Gold set (cevap anahtarı) | ✅ | **2.360 elle etiketlenmiş alan** |
+| Kural tabanlı çıkarım | ✅ | **4.508 çıkarım**, kanıt metniyle |
+| Değerlendirme ve ablasyon altyapısı | ✅ | Üç kip karşılaştırmalı ölçülüyor |
+| Varlık kartı üretimi | ✅ | 1.253 kart |
+
+`rule_only` kipinin gold set'e karşı ölçülmüş temel çizgisi:
+**kör alt küme F1 0,785** · mikro F1 0,809 · makro F1 0,773 ·
+halüsinasyon oranı 0,171 · doğru susma oranı 0,913.
+
+Devam eden işler — **tamamlanmadan bu bölüme sayı yazılmaz:**
+
+| Alan | Durum |
+|---|---|
+| Yerel LLM'in (Ollama) sağlayıcıya bağlanması | ⏳ |
+| Prompt ince ayarı ve tam çıkarım çalıştırması | ⏳ |
+| `llm_only` / `hybrid` ablasyon ölçümü | ⏳ |
+| Kanıta dayalı doğal dil sorgulama (RAG) | ⏳ |
+| Kapalı ağ (airgap) doğrulaması | ⏳ |
 
 
 ---
@@ -149,6 +334,7 @@ python dev.py scrape --banka ziraat_katilim
 python dev.py scrape-deneme             # veritabanına yazmadan dene
 python dev.py urun-kazi                 # ürün/finansman limit, varyant ve oranları
 python dev.py urun-kazi-deneme          # veritabanına yazmadan dene
+python dev.py tkbb-cek                  # TKBB Veri Peteği (Playwright gerektirir)
 ```
 
 Kazımadan sonra kapsama denetlenir (ağa çıkmaz):
@@ -174,6 +360,8 @@ Toplanmış veriyle çalışır; bankalara yeni istek gitmez.
 python dev.py yeniden-isle       # temiz metni ham HTML arşivinden yeniden üret
 python dev.py geri-doldur        # banka kategorisini arşivden doldur
 python dev.py siniflandir        # dört eksenli taksonomi
+python dev.py urun-esle          # kampanyaları ürünlerle eşleştirir
+python dev.py tkbb-yukle         # TKBB'nin elle doğrulanmış verisini yükler
 python dev.py cikarim            # metinden bilgi çıkarımı
 python dev.py degerlendir        # gold set'e karşı F1
 python dev.py ablation           # rule_only / llm_only / hybrid karşılaştırması
@@ -320,6 +508,8 @@ python dev.py llm-saglik     # LLM sağlayıcısının durumu (SPRINT 3A: mock)
 python dev.py bicimle        # kodu biçimlendir (ruff format + fix)
 python dev.py derle-web      # arayüzü üretim için derle
 python dev.py migrate-geri   # son göçü geri al (VERİ SİLEBİLİR, onay ister)
+python dev.py suresi-dolanlari-temizle   # süresi kesin dolmuş kampanyaları
+                                         # kalıcı siler (VERİ SİLER, onay ister)
 ```
 
 ### dev.py kullanmadan
