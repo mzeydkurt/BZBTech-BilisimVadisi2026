@@ -26,15 +26,18 @@ yeniden dener. Kalıcı sayılırsa banka tamamen boş döner.
 from __future__ import annotations
 
 import re
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Final
 from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup, Tag
 
+from app.core.normalization.date_tr import parse_date_tr
 from app.core.normalization.text import collapse_whitespace, normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
+from app.processing.categorizer import infer_segment
 from app.scrapers.base import BaseScraper
 from app.scrapers.models import DiscoveredUrl, RawCampaign, RawProduct, RawProductRate
 from app.scrapers.products import product_external_key
@@ -81,6 +84,7 @@ PRODUCT_LISTING: Final[str] = f"{BASE_URL}/bireysel/finansman-urunleri"
 # Kart içindeki alanların CSS sınıfları (canlı sayfadan doğrulandı).
 CARD_LINK_CLASS: Final[str] = "item-title"
 CARD_CATEGORY_CLASS: Final[str] = "item-category"
+CARD_DATE_CLASS: Final[str] = "campaign-date"
 
 # ⚠️ MARKA BAŞLIĞI TUZAĞI — canlı çekimde ölçüldü.
 #
@@ -226,10 +230,11 @@ class ZiraatKatilimScraper(BaseScraper):
     brand_headings = BRAND_HEADINGS
 
     def discover(self) -> list[DiscoveredUrl]:
-        """Ana liste ve arşiv sayfasından kampanya adreslerini toplar.
+        """Ana liste sayfasından kampanya adreslerini toplar.
 
-        Toplam İKİ istek yapılır. Sektör etiketi kartın içinden okunur;
-        `categories` verilmişse yalnızca o sektörlerin kartları alınır.
+        ⚠️ Arşiv (`IsArchived=true`) gezilmez — süresi dolmuş kampanyalar
+        yeniden çekilmesin. Canlı listede kalan bayat kartlar detay sonrası
+        `donem_gecerli_mi` / `bitis_gecmis` ile atlanır.
 
         Returns:
             Keşfedilen kampanya adresleri (tekilleştirilmiş).
@@ -237,12 +242,11 @@ class ZiraatKatilimScraper(BaseScraper):
         discovered: list[DiscoveredUrl] = []
         seen: set[str] = set()
 
-        for listing_url, is_archived in ((LISTING_URL, False), (ARCHIVE_URL, True)):
-            for hint in self._cards(listing_url, is_archived=is_archived):
-                if hint.url in seen:
-                    continue
-                seen.add(hint.url)
-                discovered.append(hint)
+        for hint in self._cards(LISTING_URL, is_archived=False):
+            if hint.url in seen:
+                continue
+            seen.add(hint.url)
+            discovered.append(hint)
 
         return discovered
 
@@ -289,6 +293,7 @@ class ZiraatKatilimScraper(BaseScraper):
                     category_hint=sektor,
                     segment_hint="bireysel",
                     discovery_method="archive" if is_archived else "listing",
+                    end_date_hint=self._card_end_date(anchor),
                 )
             )
 
@@ -328,6 +333,22 @@ class ZiraatKatilimScraper(BaseScraper):
             kapsayici = kapsayici.parent
         return None
 
+    @staticmethod
+    def _card_end_date(anchor: Tag) -> date | None:
+        """Kartın bitiş tarihini okur (`<span class="campaign-date">`).
+
+        Detay çekiminden önce süresi dolmuş kartları atlamak için kullanılır.
+        """
+        kapsayici = anchor.find_parent(class_="item-content") or anchor.parent
+        for _ in range(3):
+            if kapsayici is None:
+                return None
+            etiket = kapsayici.find("span", class_=CARD_DATE_CLASS)
+            if etiket is not None:
+                return parse_date_tr(collapse_whitespace(etiket.get_text()))
+            kapsayici = kapsayici.parent
+        return None
+
     def parse_detail(self, html: str, url: str, hint: DiscoveredUrl) -> RawCampaign | None:
         """Kampanya detay sayfasını ayrıştırır.
 
@@ -347,6 +368,19 @@ class ZiraatKatilimScraper(BaseScraper):
         body_text = clean_html(html, bank_code=self.bank_code, title=title)
         conditions = extract_section_text(html, CONDITION_KEYWORDS)
         exclusions = extract_section_text(html, EXCLUSION_KEYWORDS)
+        description = self._first_paragraph(body_text)
+
+        # Liste varsayılanı bireysel; metin MasterKOBİ / ticari diyorsa override.
+        segment = hint.segment_hint or "bireysel"
+        cikarim = infer_segment(
+            title=title,
+            description=description,
+            conditions_text=conditions,
+            body_text=body_text,
+            source_url=url,
+        )
+        if cikarim is not None and cikarim.value != "bireysel":
+            segment = cikarim.value
 
         return RawCampaign(
             # ⚠️ Slug href'ten birebir okunur. Sondaki `-0`, `-1`, `-2` ekleri
@@ -354,14 +388,14 @@ class ZiraatKatilimScraper(BaseScraper):
             external_slug=slug_from_url_path(url),
             title=title,
             source_url=url,
-            description=self._first_paragraph(body_text),
+            description=description,
             conditions_text=conditions,
             exclusions_text=exclusions,
             # Kanonik sınıflandırma ayrı adımda yapılır; bankanın ham sektör
             # etiketi `hint.category_hint` üzerinden taşınır.
             category=None,
             bank_category=hint.category_hint,
-            segment=hint.segment_hint,
+            segment=segment,
             is_archived=hint.discovery_method == "archive" or ARCHIVE_PARAM in urlsplit(url).query,
         )
 
