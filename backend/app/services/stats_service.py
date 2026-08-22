@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import Row, func, select
 from sqlalchemy.orm import Session
@@ -20,12 +20,14 @@ from app.db.models import (
 )
 from app.schemas.stats import (
     BankCampaignCount,
+    BankCoverage,
     CategoryCount,
     RadarScore,
     SectorCount,
     StatsResponse,
+    TaxonomyCount,
 )
-from app.services.campaign_service import ISTANBUL_TZ
+from app.services.campaign_service import ISTANBUL_TZ, today_tr
 
 
 def _count_by_status(session: Session, status: str) -> int:
@@ -203,6 +205,17 @@ def _radar_skorlari(
     return skorlar
 
 
+def _taxonomy_counts(session: Session, axis: str) -> list[TaxonomyCount]:
+    """Tek taksonomi ekseninin değer dağılımını döndürür."""
+    rows = session.execute(
+        select(CampaignCategory.value, func.count(func.distinct(CampaignCategory.campaign_id)))
+        .where(CampaignCategory.axis == axis)
+        .group_by(CampaignCategory.value)
+        .order_by(func.count(func.distinct(CampaignCategory.campaign_id)).desc())
+    ).all()
+    return [TaxonomyCount(value=str(val), count=cnt) for val, cnt in rows]
+
+
 def get_stats(session: Session) -> StatsResponse:
     """Genel bakış sayfası için tüm istatistikleri hesaplar.
 
@@ -240,6 +253,24 @@ def get_stats(session: Session) -> StatsResponse:
     ]
     banks_with_data = sum(1 for item in campaigns_by_bank if item.count > 0)
 
+    active_by_code = _kod_sayi(
+        session.execute(
+            select(Bank.code, func.count(Campaign.id))
+            .join(Campaign, Campaign.bank_id == Bank.id)
+            .where(Campaign.parent_campaign_id.is_(None), Campaign.status == "active")
+            .group_by(Bank.code)
+        ).all()
+    )
+    active_by_bank = [
+        BankCoverage(
+            bank_code=item.bank_code,
+            bank_name=item.bank_name,
+            active=active_by_code.get(item.bank_code, 0),
+            total=item.count,
+        )
+        for item in campaigns_by_bank
+    ]
+
     category_rows = session.execute(
         select(Campaign.category, func.count(Campaign.id))
         .group_by(Campaign.category)
@@ -262,6 +293,8 @@ def get_stats(session: Session) -> StatsResponse:
         .order_by(func.count(CampaignCategory.campaign_id).desc())
     ).all()
     sector_distribution = [SectorCount(sector=str(sec), count=cnt) for sec, cnt in sector_rows]
+    audience_distribution = _taxonomy_counts(session, "audience")
+    benefit_distribution = _taxonomy_counts(session, "benefit")
 
     # Yapısal ürün, oran ve limit toplamları
     products_total = session.scalar(select(func.count()).select_from(Product)) or 0
@@ -274,12 +307,42 @@ def get_stats(session: Session) -> StatsResponse:
             select(func.count())
             .select_from(Campaign)
             .where(
+                Campaign.parent_campaign_id.is_(None),
                 (Campaign.title.ilike("%yeşil%"))
                 | (Campaign.title.ilike("%elektrikli%"))
                 | (Campaign.title.ilike("%sarj%"))
                 | (Campaign.title.ilike("%şarj%"))
                 | (Campaign.title.ilike("%güneş%"))
                 | (Campaign.title.ilike("%cevre%"))
+                | (Campaign.title.ilike("%çevre%")),
+            )
+        )
+        or 0
+    )
+
+    # Sınıflandırma kapsamı: en az bir taksonomi etiketi olan kök kampanya oranı.
+    labeled = (
+        session.scalar(
+            select(func.count(func.distinct(Campaign.id)))
+            .select_from(Campaign)
+            .join(CampaignCategory, CampaignCategory.campaign_id == Campaign.id)
+            .where(Campaign.parent_campaign_id.is_(None))
+        )
+        or 0
+    )
+    ai_coverage_pct = round((labeled / total_campaigns) * 100.0, 1) if total_campaigns else 0.0
+
+    bugun = today_tr()
+    ending_soon_count = (
+        session.scalar(
+            select(func.count())
+            .select_from(Campaign)
+            .where(
+                Campaign.parent_campaign_id.is_(None),
+                Campaign.status == "active",
+                Campaign.end_date.is_not(None),
+                Campaign.end_date >= bugun,
+                Campaign.end_date <= bugun + timedelta(days=14),
             )
         )
         or 0
@@ -308,11 +371,15 @@ def get_stats(session: Session) -> StatsResponse:
         products_total=products_total,
         rates_total=rates_total,
         limits_total=limits_total,
-        ai_coverage_pct=94.5,
+        ai_coverage_pct=ai_coverage_pct,
         green_campaigns_count=green_count,
+        ending_soon_count=ending_soon_count,
         campaigns_by_bank=campaigns_by_bank,
         campaigns_by_category=campaigns_by_category,
         sector_distribution=sector_distribution,
+        audience_distribution=audience_distribution,
+        benefit_distribution=benefit_distribution,
+        active_by_bank=active_by_bank,
         radar_scores=radar_scores,
         last_scrape_at=last_scrape_at,
     )
