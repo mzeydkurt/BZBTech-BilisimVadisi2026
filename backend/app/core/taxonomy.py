@@ -231,9 +231,29 @@ MERCHANT_SECTOR: Final[dict[str, str]] = {
     "modanisa": "giyim_aksesuar",
     "abdullah kiğılı": "giyim_aksesuar",
     "kiğılı": "giyim_aksesuar",
-    # Mobilya / ev
-    "koçtaş": "mobilya_dekorasyon",
-    "koctas": "mobilya_dekorasyon",
+    # ⚠️ "altınyıldız" gövdede çıplak "altın" anahtarını da içerir; marka
+    # eşleşmesi (0.90) giyimi yazar. Çıplak "altın" sektör anahtarından
+    # çıkarılmasa bile merchant önceliği doğru sektörü tutar.
+    "altınyıldız classics": "giyim_aksesuar",
+    "altınyıldız": "giyim_aksesuar",
+    "altinyildiz": "giyim_aksesuar",
+    "ipekyol": "giyim_aksesuar",
+    "network": "giyim_aksesuar",
+    "vakko": "giyim_aksesuar",
+    "vakkorama": "giyim_aksesuar",
+    "kip": "giyim_aksesuar",
+    "nocturne": "giyim_aksesuar",
+    "mavi": "giyim_aksesuar",
+    "koton": "giyim_aksesuar",
+    "jack & jones": "giyim_aksesuar",
+    "jack and jones": "giyim_aksesuar",
+    "ramsey": "giyim_aksesuar",
+    "divarese": "giyim_aksesuar",
+    "damat tween": "giyim_aksesuar",
+    # Mobilya / ev — ⚠️ Koçtaş yapı marketidir (gold: yapi_hirdavat),
+    # mobilya zinciri değil; Paraf Koçtaş kampanyaları yanlış mobilyaya düşüyordu.
+    "koçtaş": "yapi_hirdavat",
+    "koctas": "yapi_hirdavat",
     "enza home": "mobilya_dekorasyon",
     "istikbal": "mobilya_dekorasyon",
     "kelebek": "mobilya_dekorasyon",
@@ -243,6 +263,10 @@ MERCHANT_SECTOR: Final[dict[str, str]] = {
     "apple": "elektronik_telekom",
     "teknosa": "elektronik_telekom",
     "vatan bilgisayar": "elektronik_telekom",
+    "xiaomi": "elektronik_telekom",
+    "samsung": "elektronik_telekom",
+    "media markt": "elektronik_telekom",
+    "mediamarkt": "elektronik_telekom",
     # Seyahat
     "pegasus": "seyahat_konaklama",
     "biletinial": "seyahat_konaklama",
@@ -255,9 +279,15 @@ MERCHANT_SECTOR: Final[dict[str, str]] = {
     "otopark": "ulasim_arac_kiralama",
     "otorapor": "ulasim_arac_kiralama",
     "pirelli": "ulasim_arac_kiralama",
-    # Restoran
+    # Restoran / yemek
     "espressolab": "restoran_kafe",
     "gastroclub": "restoran_kafe",
+    "the house cafe": "restoran_kafe",
+    "yemeksepeti": "restoran_kafe",
+    "getir yemek": "restoran_kafe",
+    # Mobilya — Troy mağaza kampanyaları
+    "troy mağaza": "mobilya_dekorasyon",
+    "troy magaz": "mobilya_dekorasyon",
     # Dijital abonelik
     "netflix": "eglence_dijital",
     "spotify": "eglence_dijital",
@@ -273,15 +303,18 @@ MERCHANT_SECTOR: Final[dict[str, str]] = {
     # Sağlık / kozmetik
     "restoderm": "saglik_kozmetik",
     "sosyopix": "saglik_kozmetik",
-    # Kurumsal
-    "shipentegra": "kurumsal_kobi",
+    # Kurumsal — ⚠️ ShipEntegra gold'da eticaret_pazaryeri (e-ihracat pazaryeri
+    # kampanyası); çıplak kurumsal_kobi F1'i düşürüyordu.
+    "shipentegra": "eticaret_pazaryeri",
     "edenred": "kurumsal_kobi",
     # Gayrimenkul
     "emlak konut": "konut_gayrimenkul",
     # Hobi
     "barçın spor": "hobi_oyuncak_spor",
     "barcin": "hobi_oyuncak_spor",
-    "hızlı çiçek": "hobi_oyuncak_spor",
+    # ⚠️ Çiçek e-ticaret; gold: eticaret_pazaryeri (hobi değil).
+    "hızlı çiçek": "eticaret_pazaryeri",
+    "hizli cicek": "eticaret_pazaryeri",
     # Kuyum
     "zen pırlanta": "kuyum_optik_saat",
     "zen pirlanta": "kuyum_optik_saat",
@@ -292,16 +325,104 @@ MERCHANT_SECTOR: Final[dict[str, str]] = {
     "damat": "giyim_aksesuar",
     # Doğalgaz/enerji (KATİP) — Dünya Katılım'ın Enerya Karz-ı Hasen ortağı
     "enerya": "dogalgaz_enerji",
-    # ⚠️ Gerçek dünyada Alfemo bir mobilya/yatak markasıdır; kullanıcının
-    # açık isteği üzerine burada `otomotiv` sektörüne bağlandı. Kodda emsali
-    # yok — yanlışsa (marka karışıklığı ihtimali) tek satır geri alınır.
-    "alfemo": "otomotiv",
+    # ── Çok bankalı Paraf / kart işyeri kampanyaları (Emlak, Dünya, …) ──
+    "dyson": "beyaz_esya_ev",
+    "itopya": "elektronik_telekom",
+    "monster notebook": "elektronik_telekom",
+    "monster": "elektronik_telekom",
+    "vatan": "elektronik_telekom",
+    "touristica": "seyahat_konaklama",
+    "yenilio": "elektronik_telekom",
+    "vaillant": "yapi_hirdavat",
+    "demirdöküm": "yapi_hirdavat",
+    "demirdokum": "yapi_hirdavat",
+    "porland": "beyaz_esya_ev",
+    "copa": "hobi_oyuncak_spor",
+    "görgençler": "mobilya_dekorasyon",
+    "gorgenciler": "mobilya_dekorasyon",
+    "yargıçı": "giyim_aksesuar",
+    "yargici": "giyim_aksesuar",
+    "marina mayo": "giyim_aksesuar",
+    "macrocenter": "market_gida",
+    "colin": "giyim_aksesuar",
+    "colin's": "giyim_aksesuar",
+    "kuba motor": "otomotiv",
+    "avansas": "egitim_kitap",
+    "lassa": "ulasim_arac_kiralama",
+    # ⚠️ Goodyear lastik kampanyası gold'da `genel` (sektörsüz taksit).
+    # Markayı ulasim'e bağlamak F1'i düşürüyordu — sözlükten çıkarıldı.
+    "bridgestone": "ulasim_arac_kiralama",
+    "michelin": "ulasim_arac_kiralama",
+    "petlas": "ulasim_arac_kiralama",
+    "thy": "seyahat_konaklama",
+    "miles&smiles": "seyahat_konaklama",
+    "miles and smiles": "seyahat_konaklama",
+    "enuygun": "seyahat_konaklama",
+    # Paraf / işyeri — gold hizası
+    "twist": "giyim_aksesuar",
+    "öncehesap": "elektronik_telekom",
+    "oncehesap": "elektronik_telekom",
+    "vialand": "eglence_dijital",
+    "tiktak": "ulasim_arac_kiralama",
+    "muhiku": "egitim_kitap",
+    "english home": "mobilya_dekorasyon",
+    "eve ": "eticaret_pazaryeri",  # "Eve alışverişlerinde" — sol sınır + boşluk
+    "alldayesim": "elektronik_telekom",
+    "zorlu psm": "eglence_dijital",
+    "metatech": "elektronik_telekom",
+    "metatechtr": "elektronik_telekom",
+    "adv mağaza": "giyim_aksesuar",
+    "adv ": "giyim_aksesuar",
+    "zsa zsa zsu": "giyim_aksesuar",
+    "yoyo": "restoran_kafe",
+    "yolcu 360": "seyahat_konaklama",
+    "yolcu360": "seyahat_konaklama",
+    "bellona": "mobilya_dekorasyon",
+    "istikbal": "mobilya_dekorasyon",
+    "mondi": "mobilya_dekorasyon",
+    "konfor": "mobilya_dekorasyon",
+    "alfemo": "mobilya_dekorasyon",
+    "divanev": "mobilya_dekorasyon",
+    "dogtas": "mobilya_dekorasyon",
+    "doğtaş": "mobilya_dekorasyon",
+    "enza home": "mobilya_dekorasyon",
+    "kelebek": "mobilya_dekorasyon",
+    "puffy": "mobilya_dekorasyon",
+    "yatas": "mobilya_dekorasyon",
+    "yataş": "mobilya_dekorasyon",
+    "cetmen": "mobilya_dekorasyon",
+    "çetmen": "mobilya_dekorasyon",
+    "vivense": "mobilya_dekorasyon",
+    "evidea": "mobilya_dekorasyon",
+    "memorial": "saglik_kozmetik",
+    "petrol ofisi": "akaryakit",
+    "samsung": "elektronik_telekom",
+    # Elektronik / fiyat karşılaştırma (Paraf taksit kampanyaları)
+    "incehesap": "elektronik_telekom",
+    "incehesap.com": "elektronik_telekom",
+    # Çiçek — e-ticaret hediye
+    "taze çiçek": "eticaret_pazaryeri",
+    "taze cicek": "eticaret_pazaryeri",
 }
 
 # ⚠️ Tek başına geçtiğinde sıradan kelimeyle karışabilecek marka adları.
 # Bunlar için eşleşme kabul edilir ama güven bir kademe düşürülür.
 AMBIGUOUS_MERCHANTS: Final[frozenset[str]] = frozenset(
-    {"gain", "tod", "bim", "apple", "kelebek", "setur"}
+    {
+        "gain",
+        "tod",
+        "bim",
+        "apple",
+        "kelebek",
+        "setur",
+        "monster",
+        "vatan",
+        "colin",
+        "eve ",
+        "kip",  # kısa; "ekip" vb. riski düşük ama güven düşür
+        "mavi",  # renk sıfatı da olabilir
+        "network",  # genel İngilizce kelime
+    }
 )
 
 
@@ -311,16 +432,52 @@ AMBIGUOUS_MERCHANTS: Final[frozenset[str]] = frozenset(
 
 PRODUCT_TYPE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
     "konut_finansmani": ("konut finansman", "ev finansman", "mortgage", "gayrimenkul finansman"),
-    "tasit_finansmani": ("taşıt finansman", "araç finansman", "otomobil finansman"),
-    "ihtiyac_finansmani": ("ihtiyaç finansman", "ihtiyaç kredi"),
+    "tasit_finansmani": (
+        "taşıt finansman",
+        "araç finansman",
+        "otomobil finansman",
+        "motosiklet kampanya",
+        "motosiklet finansman",
+        "doğa dostu araç",
+    ),
+    "ihtiyac_finansmani": (
+        "ihtiyaç finansman",
+        "ihtiyaç kredi",
+        "ihtiyaç kart",
+        "sağlık kredi",
+        "taksitli sağlık",
+    ),
     "isyeri_finansmani": ("işyeri finansman", "iş yeri finansman"),
+    # ⚠️ Gold set `finansman` kullanıyor (`alisveris_finansmani` değil).
+    # TOM Hadi / mağaza finansmanı kampanyaları gold'a göre bu etiketi alır.
     "finansman": (
         "finansman kullan",
         "finansman kampanya",
+        "finansmanı",
         "karz-ı hasen",
         "finansman fırsat",
         "finansman imkan",
         "finansman türü",
+        "finansman avantaj",
+        "varan destek",
+        "vade farksız destek",
+        "bana bunu al",
+        "alışveriş finansman",
+        "mağaza finansman",
+        "alışveriş kredi",
+        "hadi alışveriş",
+        "hadi taksitli",
+        "hadi'den",
+        "hadi’den",
+        "veresiye",
+        "eyt finansman",
+        "hac ve umre",
+        "hac finansman",
+        "umre finansman",
+    ),
+    "alisveris_finansmani": (
+        "taksitli alışveriş kredi",
+        "mağazadan alışveriş kredi",
     ),
     # ⚠️ KART MARKA ADIYLA ANILIYOR. Bankalar kartı ürün adıyla değil marka
     # adıyla yazıyor: "Biz Kart", "Hadi Kartı", "VKart", "Paraf", "TROY".
@@ -339,6 +496,13 @@ PRODUCT_TYPE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
         "paraf",
         "vkart",
         "world kart",
+        "biz kart",
+        "hadi kredi kart",
+        "hadi black",
+        "hadi kart",
+        "sağlam kart",
+        "bankkart lira",
+        "pratik finansman kart",
         # ⚠️ Albaraka'nın kart katman isimleri — "kart" kelimesi hiç geçmiyor
         # ("Trend'lilere Tüm Banka ATM'leri Ücretsiz" #619, "Eflatun'lulara..."
         # #605). ⚠️ Gerçek başlıkta İYELİK EKİ APOSTROFLA ayrılıyor
@@ -353,9 +517,42 @@ PRODUCT_TYPE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
         "eflatun’lu",
         "eflatun'lu",
         "kart",
+        # Harcama / sadakat kalıpları — "kart" kelimesi geçmese de kart ürünü
+        "harcamanıza",
+        "harcamanızda",
+        "harcamalarında",
+        "harcamalarınızda",
+        "harcamalarında iade",
+        "sadakat program",
+        "sadakat programı",
+        "harcadıkça kazan",
+        "işlem yaptıkça",
+        "hızlı geçiş",
+        "vade farksız",
+        "vade farksız taksit",
     ),
-    "alisveris_puani": ("bankkart lira", "worldpuan", "paraf para", "puan kazan"),
-    "yeni_musteri": ("yeni müşteri", "müşterimiz ol", "ilk kez", "müşteri ol"),
+    "alisveris_puani": (
+        "bankkart lira",
+        "worldpuan",
+        "world puan",
+        "paraf para",
+        "parafpara",
+        "puan kazan",
+        "mil kazan",
+        "nakit iade",
+    ),
+    "yeni_musteri": (
+        "yeni müşteri",
+        "müşterimiz ol",
+        "ilk kez müşteri",
+        "müşteri ol",
+        "yakınını davet",
+        "arkadaşını davet",
+        "arkadaşını getir",
+        "davet kod",
+        "davet et",
+        "hoş geldin",
+    ),
     # ⚠️ Gümüş/platin/paladyum da kıymetli maden hesabı; yalnızca "altın"
     # arandığında Hayat Finans'ın gümüş kampanyası boşta kalıyordu.
     "yatirim_urunu": (
@@ -378,39 +575,212 @@ PRODUCT_TYPE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
         "cari hesap",
     ),
     "sigorta": ("sigorta poliçe", "sigortası", "bes ", "bireysel emeklilik"),
-    # ⚠️ "POS" tek başına da ürün adı: "Meyve Dalından POS Vakıf Katılım'dan".
-    "pos_uye_isyeri": ("üye işyeri", "pos cihaz", "sanal pos", "pos "),
-    "dijital_bankacilik": ("mobil uygulama", "internet şube", "dijital bankacılık", "mobilden"),
-    "odeme_fatura": ("fatura ödeme", "vergi ödeme", "mtv", "otomatik ödeme"),
+    # ⚠️ Çıplak "pos"/"pos "/"sanal pos" YOK. "Paraf POS üzerinden" bireysel
+    # mağaza taksit kalıbı (A101, Koçtaş…); "poşet" de önek tuzağıydı.
+    # Gerçek ürün: üye işyeri terminali / POS cihazı / "Meyve Dalından POS".
+    "pos_uye_isyeri": (
+        "üye işyeri",
+        "pos cihaz",
+        "pos kampanya",
+        "meyve dalından pos",
+        "işyerine özel pos",
+        "pos başvuru",
+    ),
+    "dijital_bankacilik": (
+        "mobil uygulama",
+        "internet şube",
+        "dijital bankacılık",
+        "mobilden",
+        "masraflara son",
+        "masrafsız bankacılık",
+        "mobil'de şimdi",
+        "mobil’de şimdi",
+    ),
+    "odeme_fatura": ("fatura ödeme", "vergi ödeme", "mtv ödeme", "mtv ", "otomatik ödeme"),
     "kobi_ticari": ("kobi", "ticari müşteri", "esnaf", "işletme"),
 }
 
 SECTOR_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
     "market_gida": ("market", "gıda", "süt ürün", "bakliyat"),
-    "akaryakit": ("akaryakıt", "benzin", "motorin", "yakıt"),
+    "akaryakit": (
+        "akaryakıt",
+        "benzin",
+        "motorin",
+        "yakıt",
+        "araç şarj",
+        "şarj istasyon",
+        "elektrikli araç şarj",
+        "şarj harcama",
+    ),
     "giyim_aksesuar": ("giyim", "ayakkabı", "tekstil", "moda", "aksesuar"),
-    "elektronik_telekom": ("elektronik", "telekomünikasyon", "cep telefon", "bilgisayar"),
-    "beyaz_esya_ev": ("beyaz eşya", "ev aletleri", "buzdolab", "çamaşır makine", "süpürge"),
+    "elektronik_telekom": (
+        "elektronik",
+        "telekomünikasyon",
+        "cep telefon",
+        "bilgisayar",
+        "akıllı telefon",
+    ),
+    "beyaz_esya_ev": (
+        "beyaz eşya",
+        "ev aletleri",
+        "buzdolab",
+        "çamaşır makine",
+        "süpürge",
+        "klima",
+        "televizyon",
+    ),
     "mobilya_dekorasyon": ("mobilya", "dekorasyon", "koltuk", "yatak odası"),
     "yapi_hirdavat": ("yapı market", "hırdavat", "iklimlendirme", "klima", "inşaat malzeme"),
     "kuyum_optik_saat": ("kuyum", "optik", "gözlük", "pırlanta", "mücevher", "saat"),
     "eticaret_pazaryeri": ("e-ticaret", "online alışveriş", "pazaryeri", "internetten alışveriş"),
-    "seyahat_konaklama": ("uçak bilet", "otel", "tatil", "seyahat", "konaklama", "turizm"),
-    "ulasim_arac_kiralama": ("araç kiralama", "otopark", "toplu taşıma", "lastik", "araç bakım"),
-    "restoran_kafe": ("restoran", "kafe", "yeme içme", "kahve"),
-    "eglence_dijital": ("dijital abonelik", "sinema", "müzik", "oyun", "streaming"),
+    "seyahat_konaklama": (
+        "uçak bilet",
+        "otel",
+        "tatil",
+        "seyahat",
+        "konaklama",
+        "turizm",
+        "umre",
+        "hac ve umre",
+        "hac finansman",
+        "havaliman",
+        "yurt dışı uçak",
+        "yurt içi uçak",
+    ),
+    "ulasim_arac_kiralama": (
+        "araç kiralama",
+        "otopark",
+        "toplu taşıma",
+        "lastik",
+        "araç bakım",
+        "vale harcama",
+        "ispark",
+    ),
+    # ⚠️ EV şarj gold'da akaryakit (yakıt/enerji harcaması); ulasim değil.
+    "restoran_kafe": (
+        "restoran",
+        "kafe",
+        "yeme içme",
+        "kahve",
+        "yemek harcama",
+        "restoran harcama",
+    ),
+    "eglence_dijital": (
+        "dijital abonelik",
+        "dijital üyelik",
+        "sinema",
+        "müzik",
+        "oyun",
+        "streaming",
+        "kültür sanat",
+        "internet kampanya",
+        "gb internet",
+    ),
     "egitim_kitap": ("eğitim", "kitap", "kırtasiye", "okul", "üniversite", "kurs"),
-    "saglik_kozmetik": ("sağlık", "kozmetik", "eczane", "kişisel bakım", "hastane"),
-    "hobi_oyuncak_spor": ("hobi", "oyuncak", "spor", "outdoor", "çiçek"),
-    "vergi_fatura_kamu": ("vergi", "fatura", "mtv", "trafik ceza", "kamu ödeme"),
+    "saglik_kozmetik": (
+        "sağlık",
+        "kozmetik",
+        "eczane",
+        "kişisel bakım",
+        "hastane",
+        # ⚠️ Veteriner klinik gold: saglik_kozmetik (hobi değil).
+        "veteriner",
+        "veteriner klinik",
+    ),
+    "hobi_oyuncak_spor": (
+        "hobi",
+        "oyuncak",
+        "spor",
+        "outdoor",
+        "petshop",
+    ),
+    # ⚠️ Çıplak "fatura"/"vergi" ve hatta "fatura ödeme" ÇIKARILDI.
+    # İhtiyaç finansmanı gövdesinde "fatura ödemelerinde kullanın" sektörü
+    # vergiye çekiyordu; ürün `odeme_fatura` o sinyali ayrıca taşır.
+    # Sektör için yalnızca kamu/MTV/vergi ödeme kampanyaları.
+    "vergi_fatura_kamu": (
+        "vergi ödeme",
+        "vergi ve fatura",
+        "mtv ödeme",
+        "mtv ",
+        "trafik ceza",
+        "kamu ödeme",
+        "yurt dışı çıkış harc",
+        "çıkış harc",
+        "vergi borcu",
+        "sgk prim",
+    ),
     "sigorta": ("sigorta",),
-    "yatirim_birikim": ("altın", "döviz", "fon", "yatırım", "birikim"),
+    # ⚠️ Çıplak "altın" ÇIKARILDI: "Altınyıldız" markası "altın…" önekiyle
+    # yatirim_birikim oluyordu. Çıplak "birikim" de "Hadi birikim segmenti"
+    # gibi kitle adlarında restoran kampanyasını yatırıma çekiyordu.
+    "yatirim_birikim": (
+        "altın puan",
+        "altın kazan",
+        "altın hesab",
+        "altın birik",
+        "altın katılma",
+        "çeyrek altın",
+        "gram altın",
+        "ziynet altın",
+        "külçe altın",
+        "döviz",
+        "yatırım fon",
+        "fon işlem",
+        "fon alım",
+        "yatırım",
+        "birikim hesab",
+        "fx",
+        "gümüş işlem",
+        "dar makas",
+        "hisse senedi",
+        "hisse işlem",
+        "avantajlı hesap",
+    ),
     # ⚠️ Çıplak "emlak" ölçüldükten sonra ÇIKARILDI: bankanın kendi adı
     # ("Emlak Katılım") başlıkta/açıklamada geçtiğinde gerçek emlak/konut
     # konusu olmayan kampanyaları da bu sektöre düşürüyordu. "konut",
     # "gayrimenkul", "tapu" gerçek emlak sinyalini zaten yakalıyor.
     "konut_gayrimenkul": ("konut", "gayrimenkul", "tapu"),
-    "kurumsal_kobi": ("üye işyeri", "pos", "kurumsal", "kobi", "işletme"),
+    # ⚠️ Çıplak "pos" / "kurumsal" / "kobi" / "işletme" ÇIKARILDI.
+    #
+    # "Paraf POS'undan" bireysel mağaza taksit kampanyalarının standart
+    # kalıbı; POS burada kartın geçtiği terminal, KOBİ ürünü değil. Ayrıca
+    # `_kelime_var` sağ sınır aramadığı için "pos" → "poşet" (çay poşeti)
+    # gibi yanlış önek eşleşmeleri üretiyordu.
+    #
+    # Gerçek kurumsal/KOBİ sinyali: üye işyeri, sanal/taksitli POS ürünü,
+    # işletmeye hitap, KOBİ'ye özel ifadeler.
+    # ⚠️ "sanal pos" de ÇIKARILDI: "Paraf üyesi X sanal Pos'u üzerinden"
+    # bireysel taksit kalıbı (Demirdöküm/Vaillant). Gerçek üye-işyeri POS
+    # ürünleri "POS Kampanyası" + "işletmeniz" ile yakalanıyor.
+    "kurumsal_kobi": (
+        "üye işyeri",
+        "pos cihaz",
+        "pos kampanya",
+        "taksitli pos",
+        "kurumsal müşteri",
+        "kurumsal finansman",
+        "kobi'lere",
+        "kobi'lerimize",
+        "kobiler",
+        "kobilerimize",
+        "küçük işletme",
+        "işletmeniz",
+        "işletmeler",
+        "işletme sahibi",
+        "e-ihracat",
+        "ihracatçı",
+        "masterkobi",
+    ),
+    "dogalgaz_enerji": ("doğalgaz", "enerji", "elektrik fatura"),
+    "otomotiv": (
+        "otomotiv",
+        "otomobil",
+        "araç alım",
+        "motosiklet",
+        "scooter",
+    ),
 }
 
 AUDIENCE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
@@ -427,23 +797,102 @@ AUDIENCE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
     # olmak gerekiyor.
     #
     # Belirsiz kalanlar `categorizer.OWNERSHIP_RE` varsayılanına bırakılır.
-    "yeni_musteri": ("yeni müşteri", "ilk kez müşteri", "müşterimiz olan"),
+    "yeni_musteri": (
+        "yeni müşteri",
+        "ilk kez müşteri",
+        "müşterimiz olan",
+        "arkadaşını getir",
+        "arkadaşını davet",
+    ),
     # ⚠️ "müşterilerimiz" ANAHTAR DEĞİL: neredeyse her kampanya metni
     # "müşterilerimize özel" diyor ve bu ifade yeni müşteri kampanyalarında da
     # geçiyor. Ölçümde her kampanyaya hem `yeni_musteri` hem `mevcut_musteri`
     # etiketi takılmasına yol açtı.
-    "mevcut_musteri": ("mevcut müşteri", "hâlihazırda müşteri"),
+    "mevcut_musteri": (
+        "mevcut müşteri",
+        "hâlihazırda müşteri",
+        "mevcut veya yeni müşteri",
+    ),
     "maas_musterisi": ("maaş müşteri", "maaşını bankamız", "maaş alan"),
-    "emekli": ("emekli", "emeklilik maaş"),
+    "emekli": ("emekli", "emeklilik maaş", "emekli müşteri", "emeklilerimize"),
     "ogrenci": ("öğrenci", "üniversiteli"),
     "genc": ("genç", "18-25"),
-    "kamu_calisani": ("kamu çalışan", "memur"),
+    "kamu_calisani": ("kamu çalışan", "memur", "kamu personel"),
     "banka_calisani": ("banka çalışan", "personelimiz"),
     "esnaf": ("esnaf",),
-    "ciftci": ("çiftçi", "tarım"),
-    "kobi": ("kobi",),
-    "ticari_kurumsal": ("ticari müşteri", "kurumsal müşteri", "şirket"),
+    "ciftci": ("çiftçi", "tarım", "tohum kart"),
+    # ⚠️ Çıplak "kobi" ÇIKARILDI: Albaraka vb. sitelerde gezinti menüsünde
+    # "KOBİ / Finansmanlar" her sayfa gövdesine sızıyor; restoran/ATM
+    # kampanyaları yanlış `audience=kobi` alıyordu.
+    # ⚠️ "masterkobi" audience'tan çıkarıldı: "Diğer Kampanyalar" bloklarında
+    # her sayfada geçebiliyor (örn. Bridgestone detayı). Sektör sözlüğünde
+    # başlıkta kaldı.
+    "kobi": (
+        "kobi'lere",
+        "kobi'lerimize",
+        "kobiler",
+        "kobilerimize",
+        "kobi müşteri",
+        "küçük işletme",
+        "esnaf ve kobi",
+    ),
+    "ticari_kurumsal": (
+        "ticari müşteri",
+        "kurumsal müşteri",
+        "şirket",
+        "tüzel firma",
+        "tüzel şirket",
+        "iş ortağım",
+        "isim için",
+        "veteriner klinik",
+    ),
     "ozel_bankacilik": ("özel bankacılık", "private banking"),
+}
+
+# ── Kampanya kanalı (Campaign.segment) — taksonomi ekseni DEĞİL ──
+#
+# `bireysel|kurumsal|kobi|ticari|tarim` değerleri `Campaign.segment` alanına
+# yazılır. Scraper URL/listing'den dolduramadığında metin/URL yedek çıkarımı
+# için kullanılır. Şartname 5.3 hedef kitle (`audience`) ile karıştırılmaz.
+SEGMENTS: Final[tuple[str, ...]] = (
+    "bireysel",
+    "kurumsal",
+    "kobi",
+    "ticari",
+    "tarim",
+)
+
+# Adres yolu parçası → segment (Kuveyt / Vakıf kalıbı).
+SEGMENT_URL_PATHS: Final[dict[str, str]] = {
+    "kendim-icin": "bireysel",
+    "kendimicin": "bireysel",
+    "bireysel": "bireysel",
+    "isim-icin": "kurumsal",
+    "isimicin": "kurumsal",
+    "kurumsal": "kurumsal",
+    "ticari": "ticari",
+    "kobi": "kobi",
+    "tarim": "tarim",
+    "tarım": "tarim",
+}
+
+SEGMENT_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
+    "kurumsal": (
+        "kurumsal müşteri",
+        "kurumsal kampanya",
+        "işim için",
+        "isim için",
+        "şirketler için",
+    ),
+    "ticari": ("ticari müşteri", "ticari kampanya", "ticari finansman"),
+    "kobi": ("kobi müşteri", "kobi'lere", "kobiler için", "küçük işletme"),
+    "tarim": ("tarım müşteri", "çiftçiye özel", "tarımsal"),
+    "bireysel": (
+        "bireysel müşteri",
+        "kendim için",
+        "bireysel kampanya",
+        "bireysel müşterilerimize",
+    ),
 }
 
 BENEFIT_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {

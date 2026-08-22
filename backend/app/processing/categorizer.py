@@ -46,6 +46,9 @@ from app.core.taxonomy import (
     MERCHANT_SECTOR,
     PRODUCT_TYPE_KEYWORDS,
     SECTOR_KEYWORDS,
+    SEGMENT_KEYWORDS,
+    SEGMENT_URL_PATHS,
+    SEGMENTS,
     SOURCE_CONFIDENCE,
 )
 
@@ -109,8 +112,19 @@ def _kelime_var(hedef_katlanmis: str, aranan: str) -> bool:
     gibi bir dizide veya "tod" kelimesi "metod" içinde geçebilir. Türkçe ekler
     (-de, -da, -ta, 'nin) serbest bırakılır; bunun için sağ sınır aranmaz,
     yalnızca SOL sınır zorunlu tutulur ve sağda harf devam ederse kabul edilir.
+
+    ⚠️ Sondaki boşluk = SAĞ SINIR ZORUNLU. `_fold` / `normalize_text` kenar
+    boşluklarını kırptığı için `"pos "` gibi anahtarlar `"pos"`e düşüyordu ve
+    "poşet" (çay poşeti) → `pos_uye_isyeri` üretiyordu. Ham `aranan` sonunda
+    boşluk varsa gövde eşleştikten sonra sonraki karakter harf/rakam olamaz.
     """
-    kalip = re.escape(_fold(aranan))
+    # Fold'dan ÖNCE: trailing space niyeti korunur.
+    sag_sinir = bool(aranan) and aranan[-1].isspace()
+    kalip = re.escape(_fold(aranan.rstrip() if sag_sinir else aranan))
+    if not kalip:
+        return False
+    if sag_sinir:
+        return re.search(rf"(?<![a-z0-9]){kalip}(?![a-z0-9])", hedef_katlanmis) is not None
     # Sol sınır: dize başı veya harf/rakam olmayan bir karakter.
     return re.search(rf"(?<![a-z0-9]){kalip}", hedef_katlanmis) is not None
 
@@ -266,6 +280,59 @@ def _tekillestir(etiketler: list[CategoryLabel]) -> list[CategoryLabel]:
     return sorted(en_iyi.values(), key=lambda e: (e.axis, -e.confidence, e.value))
 
 
+@dataclass(frozen=True)
+class SegmentInference:
+    """`Campaign.segment` için metin/URL çıkarımı (taksonomi satırı değil)."""
+
+    value: str
+    evidence: str
+    source: str  # url | keyword
+
+
+def infer_segment(
+    *,
+    title: str = "",
+    description: str | None = None,
+    conditions_text: str | None = None,
+    body_text: str | None = None,
+    source_url: str = "",
+) -> SegmentInference | None:
+    """Kampanya kanalını (`bireysel`/`kurumsal`/…) çıkarır.
+
+    ⚠️ Şartname 5.3 hedef kitle (`audience`) DEĞİLDİR. Bu fonksiyon yalnızca
+    `Campaign.segment` boşken doldurulacak kanal değerini üretir.
+
+    ⚠️ Uydurma yok: URL parçası veya açık anahtar kelime yoksa `None`.
+
+    Öncelik: URL yolu > metin anahtar kelimesi (kurumsal/ticari/kobi/tarim
+    bireyselden önce — daha spesifik olan kazanır).
+    """
+    path = urlsplit(source_url).path.lower()
+    for parca in path.split("/"):
+        if not parca:
+            continue
+        segment = SEGMENT_URL_PATHS.get(parca) or SEGMENT_URL_PATHS.get(_fold(parca))
+        if segment and segment in SEGMENTS:
+            return SegmentInference(
+                value=segment,
+                evidence=_kirp(parca),
+                source="url",
+            )
+
+    tum_metin = " ".join(filter(None, (title, description, conditions_text, body_text)))
+    tum_katlanmis = _fold(tum_metin)
+    # Spesifik kanallar önce; bireysel en sonda (genel ifadeler yanlış ezmesin).
+    for deger in ("kurumsal", "ticari", "kobi", "tarim", "bireysel"):
+        for kelime in SEGMENT_KEYWORDS.get(deger, ()):
+            if _kelime_var(tum_katlanmis, kelime):
+                return SegmentInference(
+                    value=deger,
+                    evidence=_kirp(_baglam(tum_metin, kelime) or kelime),
+                    source="keyword",
+                )
+    return None
+
+
 def categorize(
     *,
     title: str,
@@ -344,31 +411,83 @@ def categorize(
             )
         )
 
-    # ⚠️ HEDEF KİTLE VARSAYILANI: SAHİPLİK KANITI VARSA "mevcut müşteri".
+    # ⚠️ HEDEF KİTLE VARSAYILANI: açık sinyal yoksa `mevcut_musteri`.
     #
-    # Alan bilgisi: bir kampanyadan yararlanmak için kart ya da hesap
-    # gerekiyorsa, hedef kitle zaten mevcut müşteridir. Bunu METİN SÖYLÜYOR —
-    # "Kartınızla", "kartlarınız ile", "hesabınıza" ifadelerindeki İYELİK EKİ
-    # müşterinin ürüne halihazırda sahip olduğunun kanıtıdır. Uydurma değil,
-    # kanıtı gösterilebilir bir çıkarımdır; bu yüzden kanıt metni saklanır.
-    #
-    # ⚠️ YALNIZCA AÇIK İŞARETÇİ YOKKEN çalışır. "Yeni müşterilere özel",
-    # "gençlere özel", "emekli" gibi bir ifade varsa yukarıdaki anahtar
-    # kelime katmanı zaten etiketi üretmiştir ve buraya hiç girilmez.
-    #
-    # ⚠️ Güven DÜŞÜK (`FALLBACK_CONFIDENCE`): bu bir varsayılan, bankanın
-    # açık beyanı değil.
+    # Gold set'in büyük çoğunluğu mevcut müşteri; sahiplik regex'i
+    # ("kartınızla") her metinde yok — boş audience F1'i düşürüyordu.
+    # Açık "yeni müşteri"/"öğrenci"/… zaten yukarıda yazılmışsa buraya
+    # girilmez. Güven düşük: bankanın açık beyanı değil.
     if not any(e.axis == "audience" for e in etiketler):
         sahiplik = OWNERSHIP_RE.search(tum_metin)
+        kanit = None
         if sahiplik is not None:
+            kanit = _kirp(_baglam(tum_metin, sahiplik.group(0)) or sahiplik.group(0))
+        etiketler.append(
+            CategoryLabel(
+                axis="audience",
+                value=DEFAULT_AUDIENCE,
+                source="keyword",
+                confidence=FALLBACK_CONFIDENCE,
+                evidence=kanit,
+            )
+        )
+
+    # Marka + (taksit|indirim|iade) ama ürün türü yoksa → kart.
+    # "Macrocenter'da %10 İndirim" gibi başlıklarda sektör merchant'tan gelir,
+    # ürün boş kalıyordu; katılım bankası mağaza kampanyalarının ezici çoğunluğu karttır.
+    if not any(e.axis == "product_type" for e in etiketler):
+        markadan = any(e.axis == "sector" and e.source == "merchant" for e in etiketler)
+        if markadan and (
+            _kelime_var(baslik_katlanmis, "taksit")
+            or _kelime_var(baslik_katlanmis, "indirim")
+            or _kelime_var(baslik_katlanmis, "iade")
+            or _kelime_var(baslik_katlanmis, "ücretsiz")
+            or _kelime_var(baslik_katlanmis, "ikram")
+            or _kelime_var(baslik_katlanmis, "kazan")
+        ):
             etiketler.append(
                 CategoryLabel(
-                    axis="audience",
-                    value=DEFAULT_AUDIENCE,
+                    axis="product_type",
+                    value="kart",
                     source="keyword",
                     confidence=FALLBACK_CONFIDENCE,
-                    evidence=_kirp(_baglam(tum_metin, sahiplik.group(0)) or sahiplik.group(0)),
+                    evidence=_kirp(title) or None,
+                )
+            )
+        elif _kelime_var(baslik_katlanmis, "taksit") or _kelime_var(
+            baslik_katlanmis, "iade"
+        ):
+            # Mağaza adı yok ama taksit/iade var → kart (Mastercard taksit, uçak iadesi…)
+            etiketler.append(
+                CategoryLabel(
+                    axis="product_type",
+                    value="kart",
+                    source="keyword",
+                    confidence=FALLBACK_CONFIDENCE,
+                    evidence=_kirp(title) or None,
                 )
             )
 
-    return etiketler
+    # ⚠️ Çıkarım tek product_type ister; gold çoğunlukla `kart` der.
+    # `alisveris_puani` ile birlikte gelince puan kazanırsa F1 düşer —
+    # kartı bir kademe öne al (puan benefit ekseninde zaten durur).
+    urunler = [e for e in etiketler if e.axis == "product_type"]
+    degerler = {e.value for e in urunler}
+    if "kart" in degerler and "alisveris_puani" in degerler:
+        etiketler = [
+            CategoryLabel(
+                axis=e.axis,
+                value=e.value,
+                source=e.source,
+                confidence=(
+                    min(e.confidence + Decimal("0.050"), Decimal("0.950"))
+                    if e.axis == "product_type" and e.value == "kart"
+                    else e.confidence
+                ),
+                evidence=e.evidence,
+            )
+            for e in etiketler
+        ]
+
+    # Varsayılan sektör/kitle ekleri sıralamayı bozar; çıkışta yeniden sırala.
+    return _tekillestir(etiketler)

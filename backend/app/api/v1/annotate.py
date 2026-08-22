@@ -9,6 +9,7 @@ eklemeden çözülemez.
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from pathlib import Path
 from typing import Any, Final
@@ -55,12 +56,31 @@ def _key_to_id(session: DbSession) -> dict[str, int]:
     return {campaign_key(kod, slug): cid for cid, kod, slug in satirlar}
 
 
+def _version_suffix_match(hedef_slug: str, aday_slug: str) -> bool:
+    """Yeniden kazımada eklenen `-3` / `_1` sürüm ekini tolere eder.
+
+    ⚠️ Miktar farkı olan slug'ları EŞLEŞTİRMEZ:
+    `...idealfitte-1000-...` ≠ `...idealfitte-3000-...`
+    Yalnızca bir slug diğerinin üzerine `[-_]\\d+` eklenmişse kabul edilir.
+    """
+    if hedef_slug == aday_slug:
+        return True
+    if re.fullmatch(re.escape(hedef_slug) + r"[-_]\d+", aday_slug):
+        return True
+    if re.fullmatch(re.escape(aday_slug) + r"[-_]\d+", hedef_slug):
+        return True
+    return False
+
+
 def _resolve_id(session: DbSession, kayit: dict[str, Any]) -> int | None:
     """Örneklem kaydını GÜNCEL kampanya kimliğine çözer.
 
-    ⚠️ Önce `campaign_key`, sonra `campaign_id`. Kimlik autoincrement olduğu
-    için veri yeniden kazındığında değişir; yalnızca id'ye güvenilirse arayüz
-    YANLIŞ kampanyayı gösterir ve etiketler yanlış kayda yazılır.
+    ⚠️ Önce `campaign_key`, sonra güvenli sürüm-eki eşleşmesi, en son
+    (yalnızca anahtarsız eski örneklemde) `campaign_id`.
+
+    ⚠️ Anahtar var ama kampanya yoksa id'ye DÜŞÜLMEZ — başka kampanyayı
+    göstermek yanlış gold üretir. Yeniden kazımada slug'a eklenen `-N`
+    eki için tek güvenli bulanık eşleşme yapılır.
 
     Args:
         session: Veritabanı oturumu.
@@ -71,11 +91,27 @@ def _resolve_id(session: DbSession, kayit: dict[str, Any]) -> int | None:
     """
     anahtar = kayit.get("campaign_key")
     if anahtar:
-        cid = _key_to_id(session).get(str(anahtar))
+        harita = _key_to_id(session)
+        cid = harita.get(str(anahtar))
         if cid is not None:
             return cid
-        # Anahtar var ama kampanya yok: yeniden kazımada düşmüş olabilir.
-        # id'ye DÜŞÜLMEZ — başka bir kampanyayı göstermek yanlış veri üretir.
+
+        # bank_code:slug → sürüm ekiyle yeniden kazınmış olabilir.
+        parca = str(anahtar).split(":", 1)
+        if len(parca) != 2:
+            return None
+        banka_kodu, hedef_slug = parca
+        adaylar = [
+            (cid, slug)
+            for key, cid in harita.items()
+            if key.startswith(f"{banka_kodu}:")
+            for slug in (key.split(":", 1)[1],)
+        ]
+        eslesen = [
+            cid for cid, slug in adaylar if _version_suffix_match(hedef_slug, slug)
+        ]
+        if len(eslesen) == 1:
+            return eslesen[0]
         return None
 
     # Eski biçimli örneklem (anahtarsız): id ile devam edilir.
@@ -122,8 +158,12 @@ def read_fields() -> dict[str, dict[str, Any]]:
 def read_progress(session: DbSession) -> ProgressOut:
     """Kaç kampanyanın etiketlendiğini ve kör/ön-doldurmalı dağılımını verir."""
     ilerleme = gold_progress(session)
+    orneklem = load_sample(SAMPLE_PATH)
+    erisilebilir = sum(1 for kayit in orneklem if _resolve_id(session, kayit) is not None)
     return ProgressOut(
-        sample_size=len(load_sample(SAMPLE_PATH)),
+        sample_size=len(orneklem),
+        reachable_campaigns=erisilebilir,
+        orphan_campaigns=len(orneklem) - erisilebilir,
         annotated_campaigns=ilerleme.annotated_campaigns,
         total_annotations=ilerleme.total_annotations,
         blind_campaigns=ilerleme.blind_campaigns,
@@ -149,16 +189,26 @@ def read_next(
     atlanırsa kör alt küme eksik kalır ve yanlılık ölçümü yapılamaz.
 
     """
-    sorgu = select(GoldAnnotation.campaign_id).distinct()
+    # Hem güncel campaign_id hem campaign_key ile bak: silme sonrası
+    # campaign_id NULL kalan satırlar "etiketlenmemiş" sanılmasın.
+    id_sorgu = select(GoldAnnotation.campaign_id).where(
+        GoldAnnotation.campaign_id.isnot(None)
+    )
+    key_sorgu = select(GoldAnnotation.campaign_key)
     if annotator:
-        sorgu = sorgu.where(GoldAnnotation.annotator == annotator)
-    etiketli = set(session.scalars(sorgu))
+        id_sorgu = id_sorgu.where(GoldAnnotation.annotator == annotator)
+        key_sorgu = key_sorgu.where(GoldAnnotation.annotator == annotator)
+    etiketli_id = set(session.scalars(id_sorgu.distinct()))
+    etiketli_key = set(session.scalars(key_sorgu.distinct()))
 
     for kayit in load_sample(SAMPLE_PATH):
         if method and kayit.get("method") != method:
             continue
         cid = _resolve_id(session, kayit)
-        if cid is None or cid in etiketli:
+        if cid is None or cid in etiketli_id:
+            continue
+        anahtar = kayit.get("campaign_key")
+        if anahtar and str(anahtar) in etiketli_key:
             continue
         return _build(session, cid, annotator=annotator)
 
@@ -245,11 +295,19 @@ def save_annotations(
         # sanılır ve değerlendirmede "sistem kaçırdı" olarak görünür.
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Tanımsız alan: {bilinmeyen}")
 
+    # Kampanya silinip yeniden kazınınca id değişir; UNIQUE (campaign_key,
+    # field_name, annotator) eski satırlarda kalır (campaign_id SET NULL).
+    # Yalnızca campaign_id ile bakmak INSERT → 500 IntegrityError üretir.
+    banka = session.get(Bank, kampanya.bank_id)
+    if banka is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Banka bulunamadı: {kampanya.bank_id}")
+    anahtar = campaign_key(banka.code, kampanya.external_slug)
+
     mevcut = {
         kayit.field_name: kayit
         for kayit in session.scalars(
             select(GoldAnnotation).where(
-                GoldAnnotation.campaign_id == campaign_id,
+                GoldAnnotation.campaign_key == anahtar,
                 GoldAnnotation.annotator == payload.annotator,
             )
         )
@@ -260,12 +318,16 @@ def save_annotations(
         kayit = mevcut.get(alan_adi)
         if kayit is None:
             kayit = GoldAnnotation(
-                campaign_key=campaign_key(kampanya.bank.code, kampanya.external_slug),
+                campaign_key=anahtar,
                 campaign_id=campaign_id,
                 field_name=alan_adi,
                 annotator=payload.annotator,
             )
             session.add(kayit)
+        else:
+            # Öksüz satırı yeni kampanya id'sine yeniden bağla.
+            kayit.campaign_id = campaign_id
+            kayit.reanchor_method = kayit.reanchor_method or "slug"
 
         birim = alan.unit or unit_of(alan_adi)
         # ⚠️ `oto-kanit` işareti, kanıtın betikle bağlandığını (insan
@@ -306,8 +368,11 @@ def _build(
 
     campaign, bank, clean_text = satir
     ornek = _sample_index(session).get(campaign_id, {})
+    anahtar = campaign_key(bank.code, campaign.external_slug)
 
-    mevcut_sorgu = select(GoldAnnotation).where(GoldAnnotation.campaign_id == campaign_id)
+    # Yeniden kazıma sonrası eski satırlar campaign_id=NULL kalabilir; UI'nin
+    # önceden kaydedilmiş etiketleri görmesi için anahtarla da bakılır.
+    mevcut_sorgu = select(GoldAnnotation).where(GoldAnnotation.campaign_key == anahtar)
     if annotator:
         mevcut_sorgu = mevcut_sorgu.where(GoldAnnotation.annotator == annotator)
     mevcut = list(session.scalars(mevcut_sorgu.order_by(GoldAnnotation.field_name)))

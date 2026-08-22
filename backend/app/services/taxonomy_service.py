@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.core.taxonomy import FALLBACK_SECTOR
 from app.db.models import Bank, Campaign, CampaignCategory
 from app.logging_config import get_logger
-from app.processing.categorizer import categorize
+from app.processing.categorizer import categorize, infer_segment
 
 logger = get_logger(__name__)
 
@@ -39,6 +39,8 @@ class TaxonomyResult:
     """Yalnızca `sector='genel'` alan kampanya sayısı."""
 
     missing_product_type: int = 0
+    segments_filled: int = 0
+    """Boş `Campaign.segment` alanının doldurulduğu kayıt sayısı."""
 
     @property
     def fallback_ratio(self) -> float:
@@ -63,13 +65,14 @@ def categorize_campaigns(session: Session, *, bank_code: str | None = None) -> T
     sonuc = TaxonomyResult()
 
     for campaign in session.scalars(statement):
+        body_text = campaign.source_document.clean_text if campaign.source_document else None
         etiketler = categorize(
             title=campaign.title,
             description=campaign.description,
             conditions_text=campaign.conditions_text,
             # ⚠️ Kampanyaların %46'sında `conditions_text` boş; gövde metni
             # olmadan yalnızca başlıktan sınıflandırılıyorlardı.
-            body_text=campaign.source_document.clean_text if campaign.source_document else None,
+            body_text=body_text,
             source_url=campaign.source_url,
             bank_category=campaign.bank_category,
         )
@@ -92,6 +95,19 @@ def categorize_campaigns(session: Session, *, bank_code: str | None = None) -> T
             sonuc.by_source[etiket.source] += 1
             sonuc.by_value.setdefault(etiket.axis, Counter())[etiket.value] += 1
 
+        # Segment scraper alanıdır; doluysa dokunulmaz. Boşsa URL/metinden doldurulur.
+        if not campaign.segment:
+            cikarim = infer_segment(
+                title=campaign.title,
+                description=campaign.description,
+                conditions_text=campaign.conditions_text,
+                body_text=body_text,
+                source_url=campaign.source_url,
+            )
+            if cikarim is not None:
+                campaign.segment = cikarim.value
+                sonuc.segments_filled += 1
+
         sonuc.campaigns += 1
         sonuc.labels += len(etiketler)
 
@@ -109,6 +125,7 @@ def categorize_campaigns(session: Session, *, bank_code: str | None = None) -> T
         etiket=sonuc.labels,
         genel_orani=round(sonuc.fallback_ratio, 3),
         urun_turu_yok=sonuc.missing_product_type,
+        segment_doldurulan=sonuc.segments_filled,
     )
     return sonuc
 
@@ -138,6 +155,7 @@ def build_report(sonuc: TaxonomyResult) -> str:
         f"- Sektörü çıkarılamayan (`genel`): **{sonuc.fallback_only}** "
         f"(%{100 * sonuc.fallback_ratio:.1f})",
         f"- Ürün türü etiketi olmayan: **{sonuc.missing_product_type}**",
+        f"- Boş segment doldurulan: **{sonuc.segments_filled}**",
         "",
         "## Kanıt kaynağına göre dağılım",
         "",
