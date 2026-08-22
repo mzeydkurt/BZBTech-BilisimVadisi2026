@@ -18,7 +18,7 @@ yanıtta döner; "8 sonuç bulundu" demek ile "2 kayıt kâr payı süzgecine ta
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Final
 
 from app.logging_config import get_logger
@@ -201,9 +201,7 @@ def _gevsetme_onerileri(corpus: Corpus, plan: QueryPlan) -> tuple[RelaxationHint
     tum_docs = list(corpus.docs.values())
 
     for eksen in list(plan.axis_filters):
-        kalan_eksenler = {
-            ad: degerler for ad, degerler in plan.axis_filters.items() if ad != eksen
-        }
+        kalan_eksenler = {ad: degerler for ad, degerler in plan.axis_filters.items() if ad != eksen}
         gevsek = replace(plan, axis_filters=kalan_eksenler)
         kalan, _ = _suzgecten_gecir(tum_docs, gevsek)
         if kalan:
@@ -345,13 +343,17 @@ def search(
         )
     )
 
+    secilen = tuple(vuruslar[:limit])
     return SearchResult(
-        hits=tuple(vuruslar[:limit]),
+        hits=secilen,
         filters=rapor,
         lexical_used=bool(sozcuksel),
         semantic_used=bool(anlamsal_sira),
         corpus_size=corpus.size,
         semantic_note=anlamsal_not,
+        # ⚠️ Yalnızca sonuç boşken hesaplanır: her sorguda süzgeç
+        # kombinasyonlarını denemek gereksiz iş olur.
+        relaxation_hints=() if secilen else _gevsetme_onerileri(corpus, plan),
     )
 
 

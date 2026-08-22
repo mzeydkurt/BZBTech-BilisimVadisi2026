@@ -1,7 +1,7 @@
 """Anlamsal arama — gömme vektörleri üzerinde kosinüs benzerliği.
 
-`embeddings` tablosu şemada zaten var (Sprint 3A'da açıldı, boş bırakıldı) ve vektörler `LargeBinary` olarak
-saklanıyor. 1.253 kart × 768 boyut = ~3,8 MB; bu boyutta kaba kuvvet
+`embeddings` tablosu şemada zaten var (Sprint 3A'da açıldı, boş bırakıldı) ve
+vektörler `LargeBinary` olarak saklanıyor. 1.253 kart × 768 boyut = ~3,8 MB; bu boyutta kaba kuvvet
 (brute-force) tarama tam isabetlidir ve yaklaşık komşuluk dizini (FAISS,
 hnswlib) eklemek yeni bağımlılık ve lisans riski demektir.
 
