@@ -269,6 +269,25 @@ class TestDonemDenetimi:
 
         assert (kabul, neden) == (False, "gelecek_asiri")
 
+    def test_bugunden_once_biten_kampanya_reddedilir(self) -> None:
+        """Kesin süresi dolmuş kampanya yeni yazılmaz (`bitis_gecmis`)."""
+        donem = _govdeden("Kampanya 01.01.2026 - 31.07.2026 tarihleri arasında geçerlidir.")
+        kabul, neden = donem_gecerli_mi(donem, min_yil=2025, bugun=self.BUGUN)
+
+        assert (kabul, neden) == (False, "bitis_gecmis")
+
+    def test_bugun_biten_kampanya_kabul_edilir(self) -> None:
+        """Bitiş == bugün hâlâ geçerlidir (expired için end < bugün gerekir)."""
+        donem = PeriodResult(
+            date(2026, 8, 1),
+            date(2026, 8, 17),
+            "exact",
+            evidence_text="01.08.2026 - 17.08.2026",
+            source=PeriodSource.BODY,
+        )
+
+        assert donem_gecerli_mi(donem, min_yil=2025, bugun=self.BUGUN) == (True, None)
+
     def test_tarihsiz_kampanya_reddedilmez(self) -> None:
         """⚠️ "Tarih yok" bir kusur değildir; kampanya veri setinde KALIR."""
         donem = _govdeden("Detaylı bilgi için şubelerimize başvurabilirsiniz.")
