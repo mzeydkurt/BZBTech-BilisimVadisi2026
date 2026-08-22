@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Bank, Campaign, CampaignCategory, CampaignMetric, EntityCard
@@ -87,17 +87,50 @@ _METRIC_FIELDS: Final[tuple[str, ...]] = (
 )
 
 _cache: Corpus | None = None
+_cache_fingerprint: tuple[int, int, int] | None = None
 
 
 def invalidate_corpus() -> None:
-    """Önbelleği düşürür.
+    """Önbelleği elle düşürür.
 
-    `siniflandir`, `cikarim`, `kart-uret` gibi veriyi değiştiren komutlardan
-    sonra çağrılır. Düşürülmezse arama, süreç yeniden başlatılana kadar eski
-    kart metinlerini kullanmaya devam eder.
+    Normalde gerekmez — parmak izi denetimi (`_parmak_izi`) veri değişikliğini
+    kendiliğinden yakalar. Testlerde ve veri yolunu doğrudan değiştiren
+    betiklerde açık düşürme kullanılabilir.
     """
-    global _cache
+    global _cache, _cache_fingerprint
     _cache = None
+    _cache_fingerprint = None
+
+
+def _parmak_izi(session: Session) -> tuple[int, int, int]:
+    """Gövdenin değişip değişmediğini anlatan ucuz imza.
+
+    ⚠️ ÖNBELLEK KOŞULSUZ TUTULAMAZ. Süreç ömrü boyunca saklanan bir gövde,
+    `kart-uret` ya da `siniflandir` çalıştıktan sonra ESKİ metinlerle arama
+    yapmaya devam eder ve bunu hiçbir yerde bildirmez. Aynı sorun testlerde de
+    çıkıyor: bir testin kurduğu gövde, farklı bir veritabanı kullanan sonraki
+    teste sızıyor.
+
+    Üç sayaç yeterli: kart sayısı içerik değişimini, en büyük kart kimliği
+    ekleme/silmeyi, kampanya sayısı ise kartsız kampanya durumunu yakalar.
+    Üçü de indeksten okunur; ölçülen maliyet milisaniyenin altında.
+    """
+    kart_adedi = (
+        session.scalar(
+            select(func.count())
+            .select_from(EntityCard)
+            .where(EntityCard.entity_type == CAMPAIGN_ENTITY)
+        )
+        or 0
+    )
+    en_buyuk_kart = (
+        session.scalar(
+            select(func.max(EntityCard.id)).where(EntityCard.entity_type == CAMPAIGN_ENTITY)
+        )
+        or 0
+    )
+    kampanya_adedi = session.scalar(select(func.count()).select_from(Campaign)) or 0
+    return int(kart_adedi), int(en_buyuk_kart), int(kampanya_adedi)
 
 
 def _metrikler(metric: CampaignMetric | None) -> dict[str, Decimal]:
@@ -131,8 +164,9 @@ def build_corpus(session: Session) -> Corpus:
     Returns:
         Kampanya belgeleri ve kurulu BM25 dizini.
     """
-    global _cache
-    if _cache is not None:
+    global _cache, _cache_fingerprint
+    imza = _parmak_izi(session)
+    if _cache is not None and _cache_fingerprint == imza:
         return _cache
 
     kartlar = {
@@ -191,5 +225,6 @@ def build_corpus(session: Session) -> Corpus:
         doc.campaign_id: f"{doc.title}\n{doc.bank_name}\n{doc.card_text}" for doc in docs.values()
     }
     _cache = Corpus(docs=docs, index=Bm25Index(gövde))
+    _cache_fingerprint = imza
     logger.info("arama_govdesi_kuruldu", kampanya=len(docs), kartsiz=kartsiz)
     return _cache
