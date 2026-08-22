@@ -705,12 +705,16 @@ def donem_gecerli_mi(
         Red nedenleri:
             "ters_aralik"      — bitiş, başlangıçtan önce
             "bitis_esigi_alti" — kampanya `min_yil`'dan ÖNCE bitmiş
+            "bitis_gecmis"     — bitiş tarihi bugünden önce (kesin süresi dolmuş)
             "yil_esigi_alti"   — bitiş YOK ve başlangıç `min_yil`'dan eski
             "gelecek_asiri"    — bitiş, bugünden 3 yıldan fazla ileride
 
     ⚠️ Eşik BİTİŞ tarihine uygulanır, başlangıca değil: uzun vadeli kampanyalar
     yıllar önce başlayıp hâlâ sürebiliyor (Kuveyt Türk #299 2024-06-21 →
     2027-12-31 bugün canlı). Başlangıç yalnızca bitiş hiç bilinmiyorsa ölçüt olur.
+
+    ⚠️ `end is None` reddedilmez: tarihi bulunamayan kampanya veri setinde kalır
+    (`unknown`); "süresi dolmuş" ile karıştırılmaz.
     """
     esik = date(min_yil, 1, 1)
 
@@ -720,6 +724,9 @@ def donem_gecerli_mi(
     if period.end is not None:
         if period.end < esik:
             return False, "bitis_esigi_alti"
+        # Kesin süresi dolmuş: yeni kayıt yazılmaz; mevcut varsa `_expire_if_exists`.
+        if period.end < bugun:
+            return False, "bitis_gecmis"
         if period.end.year > bugun.year + 3:
             return False, "gelecek_asiri"
     elif period.start is not None and period.start < esik:
