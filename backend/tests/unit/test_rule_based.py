@@ -349,6 +349,51 @@ def test_ust_sinir_alt_sinir_uretmez() -> None:
     assert _deger(metin, "max_spend_try") == "100000"
     assert _deger(metin, "min_spend_try") is None
     assert _deger(metin, "financing_amount_min") is None
+    assert _deger(metin, "financing_amount_max") is None
+
+
+def test_taksit_finansman_limiti_uretmez() -> None:
+    """Kart taksiti finansman tavanı değildir."""
+    metin = "TROY kartınızla 50.000 TL - 150.000 TL arası alışverişlerinizde 9 taksit."
+
+    assert _deger(metin, "max_spend_try") == "150000"
+    assert _deger(metin, "financing_amount_max") is None
+
+
+def test_finansman_cumlesinde_limit_yazilir() -> None:
+    """Gerçek finansman bağlamında aralık limit olarak kalır."""
+    metin = "Konut finansmanında 50.000 TL - 2.000.000 TL arası kullandırım."
+
+    assert _deger(metin, "financing_amount_min") == "50000"
+    assert _deger(metin, "financing_amount_max") == "2000000"
+
+
+def test_indirim_yuzdesi_kar_payi_yazilmaz() -> None:
+    """'%10 oranlı nakit iade' kâr payı değildir."""
+    metin = "Seçili üye işyerlerinde %10 oranlı nakit iade kazanın."
+
+    assert _deger(metin, "profit_rate_pct") is None
+
+
+def test_iki_oranda_kar_payi_kanitlisi_kalir() -> None:
+    """İki sayı varsa yalnızca 'kâr payı' kanıtlı olan yazılır."""
+    metin = "Kâr payı oranı %7,50, kampanyalı alternatif oran %12,50 olarak uygulanır."
+
+    assert _deger(metin, "profit_rate_pct") == "7.50"
+
+
+def test_iki_belirsiz_oran_yazilmaz() -> None:
+    """İki oran da 'kâr payı' demiyorsa birini seçmek FP üretir."""
+    metin = "Özel oranlı finansman %7,50, kampanyalı oran %12,50 ile sunulur."
+
+    assert _deger(metin, "profit_rate_pct") is None
+
+
+def test_ucret_alinmaz_has_no_fee_yazar() -> None:
+    """Gold'daki kaçırılan masrafsızlık ifadeleri."""
+    metin = "Kampanya kapsamında tahsis ücreti alınmaz, dosya masrafı yoktur."
+
+    assert _deger(metin, "has_no_fee") == "true"
 
 
 # ── Katılma hesabı paylaşım oranı ─────────────────────────

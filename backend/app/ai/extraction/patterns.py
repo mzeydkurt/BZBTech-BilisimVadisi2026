@@ -114,6 +114,14 @@ VAGUE_RATE: Final[re.Pattern[str]] = re.compile(
     rf"avantaj[lı]{{1,2}}\s*{_KAR}\s*{_PAYI}|[öo]zel\s*oran[lı]{{1,2}}", re.IGNORECASE
 )
 
+# "%20 indirim" / "%80 LTV" / "%10 nakit iade" kâr payı değildir.
+# Eşleşme penceresinde bunlar varsa ve "kâr payı" yoksa aday elenir.
+RATE_TRAP: Final[re.Pattern[str]] = re.compile(
+    r"indirim|nakit\s*iade|teminat|pe[şs]inat"
+    r"|enerji\s*s[ıi]n[ıi]f|\bLTV\b|kredi\s*oran",
+    re.IGNORECASE,
+)
+
 # ── Taksit ────────────────────────────────────────────────
 # ⚠️ "4 aya varan TAKSİT" taksit sayısıdır, VADE DEĞİLDİR. Vade kalıbı
 # "taksit" kelimesi geçen eşleşmeleri dışlar.
@@ -155,8 +163,13 @@ MAX_SPEND: Final[re.Pattern[str]] = re.compile(
 # ⚠️ FİNANSMAN BAĞLAMI. Aynı aralık ifadesi hem harcama eşiği hem finansman
 # limiti olabiliyor; ayrımı çevredeki kelime yapar. Bağlam yoksa yalnızca
 # harcama alanları doldurulur — finansman limiti UYDURULMAZ.
+#
+# ⚠️ `taksit` ve çıplak `kredi` BİLEREK YOK. Kart kampanyasında "6 taksit" +
+# "100.000 TL'ye kadar" geçince tutar finansman tavanı yazılıyordu (gold'da
+# `financing_amount_max` FP'nin büyük kısmı). Gerçek limit `FINANCING_AMOUNT`
+# kalıbıyla ("… kadar finansman") zaten yakalanır.
 FINANCING_CONTEXT: Final[re.Pattern[str]] = re.compile(
-    r"finansman|taksit|kredi|[öo]deme\s*kolayl[ıi][ğg][ıi]", re.IGNORECASE
+    r"finansman|[öo]deme\s*kolayl[ıi][ğg][ıi]", re.IGNORECASE
 )
 
 # Ödül adları. "nakit ödül" (Hayat Finans) eskiden listede yoktu.
@@ -218,10 +231,19 @@ FILE_FEE: Final[re.Pattern[str]] = re.compile(
     r"dosya\s*masraf[ıi]\s*[:\-]?\s*[\d.,]+\s*(?:TL|₺)", re.IGNORECASE
 )
 
+# Olumsuz çekim: "alınmaktadır" (ücret VAR) eşleşmesin.
+_ALINMAZ = r"(?:al[ıi]nmaz|al[ıi]nmamakta|al[ıi]nmayacak)"
+
 # "masrafsız" · "dosya masrafı alınmamaktadır" · "ücret alınmaz"
+# · "tahsis ücreti yok" · "masraf alınmamaktadır"
 NO_FEE: Final[re.Pattern[str]] = re.compile(
-    r"masrafs[ıi]z|dosya\s*masraf[ıi]\s*al[ıi]n[mM][aA]"
-    r"|[üu]cret\s*al[ıi]nm[aa]z|komisyon\s*(?:yok|al[ıi]nm[aa]z)|s[ıi]f[ıi]r\s*komisyon",
+    rf"masrafs[ıi]z"
+    rf"|dosya\s*masraf[ıi]\s*(?:{_ALINMAZ}|yok|talep\s*edilmez)"
+    rf"|tahsis\s*[üu]creti\s*(?:{_ALINMAZ}|yok)"
+    rf"|[üu]cret\s*{_ALINMAZ}"
+    rf"|masraf\s*(?:{_ALINMAZ}|yok)"
+    rf"|komisyon\s*(?:yok|{_ALINMAZ})"
+    rf"|s[ıi]f[ıi]r\s*(?:komisyon|masraf|[üu]cret)",
     re.IGNORECASE,
 )
 

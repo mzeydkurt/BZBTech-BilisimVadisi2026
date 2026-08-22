@@ -99,14 +99,49 @@ def _yakinda(metin: str, bas: int, son: int, *, kelimeler: tuple[str, ...]) -> b
     return any(kelime in pencere for kelime in kelimeler)
 
 
+def _oran_tuzak(metin: str, bas: int, son: int) -> bool:
+    """Eşleşme indirim / iade / LTV ise kâr payı sayılmaz.
+
+    Pencere `PROXIMITY_CHARS` ile aynı: sayı komşu kelimeyle bağlanır.
+    Pencere içinde 'kâr payı' geçiyorsa tuzak yutulur — cümle gerçekten
+    oranı anlatıyordur.
+    """
+    pencere = metin[max(0, bas - p.PROXIMITY_CHARS) : son + p.PROXIMITY_CHARS]
+    if p.RATE_TRAP.search(pencere) is None:
+        return False
+    return not _yakinda(metin, bas, son, kelimeler=("kâr payı", "kar payi", "kâr payi"))
+
+
 def _rate_fields(metin: str) -> list[ExtractedField]:
     """Kâr payı oranını çıkarır."""
     bulunan: list[ExtractedField] = []
 
     for eslesme in p.PROFIT_RATE.finditer(metin):
+        if _oran_tuzak(metin, eslesme.start(), eslesme.end()):
+            continue
         oran = parse_rate(eslesme.group())
-        if oran is not None:
-            bulunan.append(_field("profit_rate_pct", oran, metin, eslesme.start(), eslesme.end()))
+        if oran is None:
+            continue
+        # LTV / teminat payı (tipik %70–90) kâr payı gibi yazılırdı.
+        if oran >= 50 and not _yakinda(
+            metin, eslesme.start(), eslesme.end(), kelimeler=("kâr payı", "kar payi", "kâr payi")
+        ):
+            continue
+        bulunan.append(_field("profit_rate_pct", oran, metin, eslesme.start(), eslesme.end()))
+
+    # ⚠️ İki FARKLI oran varsa hangisinin kâr payı olduğu belirsizdir.
+    # İkisini de yazmak merger'ın birini seçmesine bırakır ve gold'da
+    # 10 FP üretiyordu (7.5 vs 12.5). Tek değer 'kâr payı' kanıtlıysa o kalır.
+    degerler = {alan.value_normalized for alan in bulunan}
+    if len(degerler) > 1:
+        kar_payili = [
+            alan
+            for alan in bulunan
+            if "kâr payı" in alan.evidence_text.casefold()
+            or "kar payi" in alan.evidence_text.casefold()
+        ]
+        kar_deger = {alan.value_normalized for alan in kar_payili}
+        bulunan = kar_payili[:1] if len(kar_deger) == 1 else []
 
     # ⚠️ "vade farksız" oranın SIFIR olduğunu söyler; bilinmeyen değildir.
     if not bulunan:
