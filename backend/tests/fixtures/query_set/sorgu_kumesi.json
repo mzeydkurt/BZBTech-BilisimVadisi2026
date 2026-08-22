@@ -1,0 +1,201 @@
+{
+  "aciklama": "Kanıtlı Arama sorgu kümesi. Her kayıt bir Türkçe soru ve o sorudan çıkarılması BEKLENEN yapısal süzgeçleri içerir. Sorgular gerçek veri setinde (608 kampanya / 10 banka) karşılığı olacak biçimde yazıldı. Gold set'ten TÜRETİLMEDİ; ölçüm sızıntısı olmaması için ayrı tutuluyor.",
+  "alanlar": {
+    "soru": "kullanıcının yazdığı metin",
+    "intent": "search | aggregate | compare",
+    "bank_codes": "beklenen banka kodları (sırasız)",
+    "axis": "eksen -> beklenen değerler",
+    "numeric": "[alan, işleç, değer] üçlüleri",
+    "statuses": "beklenen durum süzgeçleri",
+    "not": "sorgunun neyi sınadığı"
+  },
+  "sorgular": [
+    {
+      "soru": "Kuveyt Türk'te market kampanyası var mı?",
+      "intent": "search",
+      "bank_codes": ["kuveyt_turk"],
+      "axis": {"sector": ["market_gida"]},
+      "not": "Banka + sektör. Bugünkü ILIKE tasarımı bu soruda 0 sonuç döndürüyor."
+    },
+    {
+      "soru": "KT'de akaryakıt indirimi olan kampanyalar",
+      "intent": "search",
+      "bank_codes": ["kuveyt_turk"],
+      "axis": {"sector": ["akaryakit"], "benefit": ["indirim"]},
+      "not": "Kısaltılmış banka adı (KT) tanınmalı."
+    },
+    {
+      "soru": "Vakıf Katılım TROY kart kampanyaları",
+      "intent": "search",
+      "bank_codes": ["vakif_katilim"],
+      "axis": {"product_type": ["kart"]},
+      "not": "Marka/kart adı serbest terim olarak BM25'e gitmeli."
+    },
+    {
+      "soru": "Ziraat Katılım'da hâlâ geçerli olan kampanyalar",
+      "intent": "search",
+      "bank_codes": ["ziraat_katilim"],
+      "statuses": ["active"],
+      "not": "Durum süzgeci. `unknown` kampanyalar buraya SIZMAMALI."
+    },
+    {
+      "soru": "Tarihi belli olmayan kampanyaları göster",
+      "intent": "search",
+      "statuses": ["unknown"],
+      "not": "`unknown` ile `expired` ayrımı — CLAUDE.md kuralı."
+    },
+    {
+      "soru": "Süresi dolmuş konut finansmanı kampanyaları",
+      "intent": "search",
+      "axis": {"product_type": ["konut_finansmani"]},
+      "statuses": ["expired"],
+      "not": "Durum + ürün türü."
+    },
+    {
+      "soru": "Kâr payı oranı %2'nin altında olan finansman kampanyaları",
+      "intent": "search",
+      "axis": {"product_type": ["finansman"]},
+      "numeric": [["profit_rate_pct", "lte", "2"]],
+      "not": "SERT sayısal kapı. %4,20'lik kampanya metni ne kadar benzerse benzesin dönmemeli."
+    },
+    {
+      "soru": "36 aydan uzun vadeli konut finansmanı",
+      "intent": "search",
+      "axis": {"product_type": ["konut_finansmani"]},
+      "numeric": [["term_months_max", "gte", "36"]],
+      "not": "Vade kısıtı; '36' sayısı tutar alanına YAZILMAMALI."
+    },
+    {
+      "soru": "1000 TL üzeri harcamayla ödül veren kampanyalar",
+      "intent": "search",
+      "numeric": [["min_spend_try", "gte", "1000"]],
+      "not": "Tutar kısıtı; işaretçi 'harcama'."
+    },
+    {
+      "soru": "En az 250 TL ödül veren market kampanyaları",
+      "intent": "search",
+      "axis": {"sector": ["market_gida"]},
+      "numeric": [["reward_amount_try", "gte", "250"]],
+      "not": "'en az' hem toplama işaretçisi hem kısıt yönü — kısıt kazanmalı çünkü sayı var."
+    },
+    {
+      "soru": "Hangi bankada en düşük kâr payı oranı var?",
+      "intent": "aggregate",
+      "not": "Toplama niyeti. 608 kampanyanın gerçek asgarisi SQL ile bulunmalı; getirilen 8 kartın asgarisi DEĞİL."
+    },
+    {
+      "soru": "En yüksek ödül veren kampanya hangisi?",
+      "intent": "aggregate",
+      "not": "Toplama — reward_amount_try maksimumu."
+    },
+    {
+      "soru": "En uzun vadeli finansman hangi bankada?",
+      "intent": "aggregate",
+      "axis": {"product_type": ["finansman"]},
+      "not": "Toplama + eksen süzgeci birlikte."
+    },
+    {
+      "soru": "Kaç tane taşıt finansmanı kampanyası var?",
+      "intent": "aggregate",
+      "axis": {"product_type": ["tasit_finansmani"]},
+      "not": "Sayma niyeti."
+    },
+    {
+      "soru": "Albaraka'da kaç kampanya var?",
+      "intent": "aggregate",
+      "bank_codes": ["albaraka"],
+      "not": "Sayma + banka."
+    },
+    {
+      "soru": "Kuveyt Türk ile Albaraka'yı karşılaştır",
+      "intent": "compare",
+      "bank_codes": ["kuveyt_turk", "albaraka"],
+      "not": "İki banka + karşılaştırma işaretçisi."
+    },
+    {
+      "soru": "Emeklilere özel kampanyalar",
+      "intent": "search",
+      "axis": {"audience": ["emekli"]},
+      "not": "Hedef kitle ekseni."
+    },
+    {
+      "soru": "Öğrencilere yönelik kart kampanyaları",
+      "intent": "search",
+      "axis": {"audience": ["ogrenci"], "product_type": ["kart"]},
+      "not": "Hedef kitle + ürün türü."
+    },
+    {
+      "soru": "Yeni müşteri olanlara verilen avantajlar",
+      "intent": "search",
+      "axis": {"audience": ["yeni_musteri"]},
+      "not": "'Müşteri Ol' gürültüsü sözlükten çıkarılmıştı; yeni_musteri yalnızca açık ifadeyle gelmeli."
+    },
+    {
+      "soru": "Nakit iade veren kampanyalar",
+      "intent": "search",
+      "axis": {"benefit": ["nakit_iade"]},
+      "not": "Fayda ekseni."
+    },
+    {
+      "soru": "Vade farksız taksit imkânı sunan kampanyalar",
+      "intent": "search",
+      "axis": {"benefit": ["vade_farksiz_taksit"]},
+      "not": "İki kelimelik fayda değeri; 'taksit' tek başına da eşleşiyor, ikisi birlikte dönebilir."
+    },
+    {
+      "soru": "Masrafsız konut finansmanı var mı?",
+      "intent": "search",
+      "axis": {"product_type": ["konut_finansmani"], "benefit": ["masrafsiz"]},
+      "not": "Dolaylı ifade — 'masrafsız' fayda sözlüğünde."
+    },
+    {
+      "soru": "Araba almak istiyorum, hangi kampanyalar uygun?",
+      "intent": "search",
+      "not": "Taksonomi terimi YOK. Anlamsal kanalın taşıt finansmanını bulması bekleniyor; kural katmanı boş dönebilir ve bu KABUL EDİLİR."
+    },
+    {
+      "soru": "Evlenecek çiftlere uygun bir şey var mı?",
+      "intent": "search",
+      "not": "Sözlükte karşılığı olmayan soru. Sonuç boşsa EmptyState — hata DEĞİL."
+    },
+    {
+      "soru": "Faiz oranı en düşük kredi hangisi?",
+      "intent": "aggregate",
+      "not": "YASAKLI TERİM sınaması: 'faiz' ve 'kredi' uyarı üretmeli, sorgu yine de çalışmalı."
+    },
+    {
+      "soru": "Türkiye Finans'ın ihtiyaç finansmanı oranları",
+      "intent": "search",
+      "bank_codes": ["turkiye_finans"],
+      "axis": {"product_type": ["ihtiyac_finansmani"]},
+      "not": "Yapısal oran tablosu olan tek banka."
+    },
+    {
+      "soru": "Dünya Katılım'da elektronik alışverişine kampanya",
+      "intent": "search",
+      "bank_codes": ["dunya_katilim"],
+      "axis": {"sector": ["elektronik_telekom"]},
+      "not": "robots.txt nedeniyle metni çekilmemiş banka — kart var, gövde yok. Sonuç azlığı beklenen."
+    },
+    {
+      "soru": "Adil Katılım kampanyaları",
+      "intent": "search",
+      "bank_codes": ["adil_katilim"],
+      "not": "Kampanyası OLMAYAN banka. 'veri yok' bulgusu olarak dönmeli, uydurma sonuç DEĞİL."
+    },
+    {
+      "soru": "T.O.M. Katılım'da dijital bankacılık kampanyası",
+      "intent": "search",
+      "bank_codes": ["tom_bank"],
+      "axis": {"product_type": ["dijital_bankacilik"]},
+      "not": "Noktalı banka adı (T.O.M.) tanınmalı."
+    },
+    {
+      "soru": "12 taksit yapan giyim kampanyası",
+      "intent": "search",
+      "axis": {"sector": ["giyim_aksesuar"], "benefit": ["taksit"]},
+      "numeric": [],
+      "not": "'12 taksit' bir kısıt DEĞİL betimleme — yön işaretçisi yok, sayısal kapı üretilmemeli."
+    }
+  ]
+}
