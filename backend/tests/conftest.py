@@ -10,29 +10,31 @@ import os
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-import httpx
-import pytest
-from sqlalchemy import Engine, create_engine
-from sqlalchemy.orm import Session
-from sqlalchemy.pool import StaticPool
-
-from app.processing.cleaner import clean_html, extract_title
-from app.scrapers.base import BaseScraper
-from app.scrapers.models import RawCampaign
-
-# Ayarlar içe aktarılmadan ÖNCE ortam değişkenleri sabitlenir; testler geliştirici
-# makinesindeki .env dosyasından etkilenmemelidir.
+# ⚠️ ORTAM DEĞİŞKENLERİ `app.*` İÇE AKTARMALARINDAN ÖNCE SABİTLENİR.
+# Bu blok aşağı alınamaz: `app` paketinin içe aktarılması `get_settings()`i
+# çağırıyor ve sonuç `lru_cache` ile önbelleğe giriyor. Blok import'ların
+# ALTINDA dururken atamalar hiçbir işe yaramıyordu — ölçüldü:
+# içe aktarma sonrası `get_settings.cache_info()` → hits=1, misses=1.
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("AIRGAP_MODE", "false")
 
 # ⚠️ `setdefault` DEĞİL, doğrudan atama. Testler ASLA gerçek bir modele
 # gitmemelidir: `.env` içinde `LLM_PROVIDER=local` bırakıldığında
-# `/api/v1/extract` hibrit testi Ollama'ya çıkıyor, ağ koruması onu kesiyor
-# ve test "ürün hatası" gibi görünen bir yapılandırma hatasıyla kırılıyordu.
-# Ölçüm sabit olmalı; sağlayıcı seçimi geliştiricinin .env dosyasına
-# bırakılamaz.
+# `/api/v1/extract` hibrit testleri Ollama'ya çıkıyor, ağ koruması onları
+# kesiyor ve sonuç "ürün hatası" gibi görünen bir yapılandırma hatası oluyordu.
+# Sağlayıcı seçimi geliştiricinin .env dosyasına bırakılamaz; ölçüm sabit olmalı.
 os.environ["LLM_PROVIDER"] = "mock"
+
+import httpx  # noqa: E402
+import pytest  # noqa: E402
+from sqlalchemy import Engine, create_engine  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+
+from app.processing.cleaner import clean_html, extract_title  # noqa: E402
+from app.scrapers.base import BaseScraper  # noqa: E402
+from app.scrapers.models import RawCampaign  # noqa: E402
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
