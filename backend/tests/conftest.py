@@ -26,15 +26,15 @@ os.environ.setdefault("AIRGAP_MODE", "false")
 # Sağlayıcı seçimi geliştiricinin .env dosyasına bırakılamaz; ölçüm sabit olmalı.
 os.environ["LLM_PROVIDER"] = "mock"
 
-import httpx  # noqa: E402
-import pytest  # noqa: E402
-from sqlalchemy import Engine, create_engine  # noqa: E402
-from sqlalchemy.orm import Session  # noqa: E402
-from sqlalchemy.pool import StaticPool  # noqa: E402
+import httpx
+import pytest
+from sqlalchemy import Engine, create_engine
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
-from app.processing.cleaner import clean_html, extract_title  # noqa: E402
-from app.scrapers.base import BaseScraper  # noqa: E402
-from app.scrapers.models import RawCampaign  # noqa: E402
+from app.processing.cleaner import clean_html, extract_title
+from app.scrapers.base import BaseScraper
+from app.scrapers.models import RawCampaign
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
