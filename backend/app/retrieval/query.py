@@ -294,6 +294,48 @@ def _kelime_var(hedef: str, aranan: str) -> bool:
     return re.search(rf"(?<![a-z0-9]){re.escape(_fold(aranan))}", hedef) is not None
 
 
+def _karsilastirma_maskele(katlanmis: str) -> str:
+    """Karşılaştırma işaretçilerini ve sayıları maskeler.
+
+    BİR SİMGENİN İKİ ROLÜ OLAMAZ — ÖLÇÜLDÜ. Taksonomi sözlüğünde `altın`
+    anahtar kelimesi var (sektör `yatirim_birikim`) ve eşleşme sağ sınır
+    aramadığı için **"%2'nin altında"** ifadesindeki `altında` sözcüğüne
+    uyuyor. Sonuç: "Kâr payı oranı %2'nin altında olan finansman kampanyaları"
+    sorgusuna `sector=yatirim_birikim` süzgeci ekleniyor, o süzgeç 7 finansman
+    kampanyasının tamamını eliyor ve yanıt **0 sonuç** oluyor. Veri setinde
+    koşulu sağlayan 2 kampanya VAR; hata mesajı yok, yalnızca boş liste.
+
+    Türkçede `altın`+`da` gerçekten geçerli bir çekimdir, bu yüzden ek denetimi
+    sorunu çözmez. Çözüm rol ayrımı: bir sözcük karşılaştırma yönü olarak
+    okunduysa, taksonomi eşleşmesine artık girmez.
+
+    Maskeleme boşlukla yapılır; konumlar korunur, böylece sayısal kısıtların
+    pencere hesapları etkilenmez.
+    """
+    maske = list(katlanmis)
+
+    def sil(baslangic: int, bitis: int) -> None:
+        for i in range(baslangic, min(bitis, len(maske))):
+            maske[i] = " "
+
+    for isaretci, _yon in COMPARISON_MARKERS:
+        kalip = _fold(isaretci)
+        if not kalip:
+            continue
+        baslangic = 0
+        while True:
+            yer = katlanmis.find(kalip, baslangic)
+            if yer == -1:
+                break
+            sil(yer, yer + len(kalip))
+            baslangic = yer + len(kalip)
+
+    for eslesme in _SAYI_RE.finditer(katlanmis):
+        sil(eslesme.start(), eslesme.end())
+
+    return "".join(maske)
+
+
 def _banka_kodlari(katlanmis: str) -> list[QuerySignal]:
     """Sorgudaki banka adlarını kodlara çevirir.
 
@@ -528,7 +570,9 @@ def parse_query(raw: str) -> QueryPlan:
     katlanmis = _fold(raw)
 
     banka_sinyalleri = _banka_kodlari(katlanmis)
-    eksen_sinyalleri = _eksen_suzgecleri(katlanmis)
+    # ⚠️ Taksonomi eşleşmesi MASKELENMİŞ metin üzerinde yapılır: karşılaştırma
+    # işaretçileri ve sayılar çıkarılır (bkz. `_karsilastirma_maskele`).
+    eksen_sinyalleri = _eksen_suzgecleri(_karsilastirma_maskele(katlanmis))
     durum_sinyalleri = _durumlar(katlanmis)
     kisitlar = _sayisal_kisitlar(katlanmis)
     toplama = _toplama(katlanmis)

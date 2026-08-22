@@ -76,6 +76,26 @@ class FilterReport:
 
 
 @dataclass(frozen=True)
+class RelaxationHint:
+    """Tek bir süzgeç kaldırılsa kaç sonuç çıkardı?
+
+    ⚠️ SÜZGEÇ SESSİZCE GEVŞETİLMEZ. "KT'de akaryakıt indirimi olan
+    kampanyalar" sorgusunda Kuveyt Türk'ün 3 akaryakıt kampanyası VAR ama
+    hiçbiri `benefit=indirim` etiketi taşımıyor; kesişim boş. Sonucu kendi
+    başına gevşetip 3 kaydı göstermek, kullanıcının sormadığı bir soruyu
+    yanıtlamak olur. Boş göstermek ise "banka bunu yapmıyor" izlenimi verir.
+
+    Üçüncü yol: boş sonuç `EmptyState` olarak kalır, yanında hangi süzgecin
+    kaldırılmasıyla kaç sonuç çıkacağı YAZILIR. Kararı kullanıcı verir.
+    """
+
+    kind: str
+    value: str
+    label: str
+    hit_count: int
+
+
+@dataclass(frozen=True)
 class SearchResult:
     """Erişim katmanının tam çıktısı."""
 
@@ -86,6 +106,8 @@ class SearchResult:
     corpus_size: int
     # Anlamsal kanal neden kullanılmadı — arayüzde bildirilir.
     semantic_note: str | None = None
+    # Yalnızca `hits` boşken doldurulur.
+    relaxation_hints: tuple[RelaxationHint, ...] = ()
 
 
 def _kisit_gecti(doc: CampaignDoc, kisit: NumericConstraint) -> bool | None:
@@ -163,6 +185,68 @@ def _suzgecten_gecir(
     )
 
 
+def _gevsetme_onerileri(corpus: Corpus, plan: QueryPlan) -> tuple[RelaxationHint, ...]:
+    """Tek bir süzgeç kaldırılsa kaç sonuç çıkacağını hesaplar.
+
+    Yalnızca **birer birer** kaldırma denenir; iki süzgeci birden kaldırmak
+    sorguyu tanınmaz hâle getirir. Sonuç üretmeyen öneri listeye girmez.
+    """
+    etiketler = {
+        "product_type": "Ürün türü",
+        "sector": "Sektör",
+        "audience": "Hedef kitle",
+        "benefit": "Fayda",
+    }
+    oneriler: list[RelaxationHint] = []
+    tum_docs = list(corpus.docs.values())
+
+    for eksen in list(plan.axis_filters):
+        kalan_eksenler = {
+            ad: degerler for ad, degerler in plan.axis_filters.items() if ad != eksen
+        }
+        gevsek = replace(plan, axis_filters=kalan_eksenler)
+        kalan, _ = _suzgecten_gecir(tum_docs, gevsek)
+        if kalan:
+            oneriler.append(
+                RelaxationHint(
+                    kind=eksen,
+                    value=", ".join(plan.axis_filters[eksen]),
+                    label=etiketler.get(eksen, eksen),
+                    hit_count=len(kalan),
+                )
+            )
+
+    for kisit in plan.numeric:
+        gevsek = replace(plan, numeric=tuple(k for k in plan.numeric if k is not kisit))
+        kalan, _ = _suzgecten_gecir(tum_docs, gevsek)
+        if kalan:
+            oneriler.append(
+                RelaxationHint(
+                    kind="numeric",
+                    value=f"{kisit.field} {kisit.op} {kisit.value}",
+                    label="Sayısal kısıt",
+                    hit_count=len(kalan),
+                )
+            )
+
+    if plan.statuses:
+        gevsek = replace(plan, statuses=())
+        kalan, _ = _suzgecten_gecir(tum_docs, gevsek)
+        if kalan:
+            oneriler.append(
+                RelaxationHint(
+                    kind="status",
+                    value=", ".join(plan.statuses),
+                    label="Durum",
+                    hit_count=len(kalan),
+                )
+            )
+
+    # En çok sonuç açan öneri başa.
+    oneriler.sort(key=lambda oneri: -oneri.hit_count)
+    return tuple(oneriler)
+
+
 def search(
     plan: QueryPlan,
     corpus: Corpus,
@@ -204,13 +288,21 @@ def search(
         anlamsal = store.search(query_vector, limit=CHANNEL_CANDIDATES)
         anlamsal_sira = {vurus.doc_id: sira for sira, vurus in enumerate(anlamsal, start=1)}
 
-    # ⚠️ HİÇBİR KANAL ADAY ÜRETMEDİYSE gövdenin tamamı süzgece verilir.
-    # "Ziraat Katılım'da hâlâ geçerli kampanyalar" sorgusunda arama terimi
-    # yoktur — sorgu tamamen süzgeçten oluşur. Boş liste döndürmek, süzgecin
-    # gerçekten sonuç vermediği izlenimini yaratırdı.
-    aday_kimlikleri = set(sozcuksel_sira) | set(anlamsal_sira)
-    if not aday_kimlikleri:
-        if not plan.has_filters:
+    # ⚠️ SÜZGEÇ VARSA GÖVDENİN TAMAMINA UYGULANIR, ADAY HAVUZUNA DEĞİL —
+    # ÖLÇÜLDÜ. Önce en ilgili 120 kaydı alıp sonra süzgeçlemek, süzgeç
+    # seçiciyse listeyi BOŞALTIYOR: "Kuveyt Türk'te market kampanyası var mı?"
+    # sorusunda 120 adayın hiçbiri hem Kuveyt Türk hem market olmadığı için
+    # sonuç 0 dönüyordu — oysa veri setinde o kampanyalar VAR. Kullanıcı bunu
+    # "banka bu kampanyayı yapmıyor" diye okur; hata mesajı yoktur.
+    #
+    # Süzgeç bir KAPIDIR: önce kapıdan geçenler belirlenir, sonra aralarında
+    # sıralama yapılır. Sıralamaya girmemiş (kanal adayı olmayan) kayıtlar
+    # puan 0 ile listede kalır ve durum sırasına göre dizilir.
+    if plan.has_filters:
+        adaylar = list(corpus.docs.values())
+    else:
+        aday_kimlikleri = set(sozcuksel_sira) | set(anlamsal_sira)
+        if not aday_kimlikleri:
             return SearchResult(
                 hits=(),
                 filters=FilterReport(candidates_before=0, candidates_after=0),
@@ -219,9 +311,7 @@ def search(
                 corpus_size=corpus.size,
                 semantic_note=anlamsal_not,
             )
-        aday_kimlikleri = set(corpus.docs)
-
-    adaylar = [corpus.docs[kimlik] for kimlik in aday_kimlikleri if kimlik in corpus.docs]
+        adaylar = [corpus.docs[kimlik] for kimlik in aday_kimlikleri if kimlik in corpus.docs]
     kalan, rapor = _suzgecten_gecir(adaylar, plan)
 
     vuruslar: list[SearchHit] = []
