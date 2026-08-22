@@ -1,19 +1,28 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { ExternalLink, X } from "lucide-react";
 
-import { CategoryBadges } from "@/components/campaigns/CategoryBadges";
 import { StatusBadge } from "@/components/campaigns/StatusBadge";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { formatDateTime, formatText } from "@/lib/format";
+import { taxonomyAxisLabel, taxonomyLabel } from "@/lib/taxonomy";
 import { cn } from "@/lib/utils";
 import { useCampaign } from "@/hooks/useCampaigns";
+import type { CampaignCategory } from "@/types/api";
 
 interface EvidenceDrawerProps {
   /** `null` iken çekmece kapalıdır. */
   campaignId: number | null;
   onClose: () => void;
 }
+
+const SOURCE_LABELS: Record<string, string> = {
+  url: "adres yolundan (bankanın verisi)",
+  bank_category: "bankanın kendi etiketi",
+  merchant: "marka eşleşmesi",
+  keyword: "anahtar kelime",
+  llm: "yapay zekâ çıkarımı",
+};
 
 /**
  * Bir kampanyanın kanıt izini gösteren sağdan kayan çekmece.
@@ -70,6 +79,33 @@ export function EvidenceDrawer({ campaignId, onClose }: EvidenceDrawerProps) {
                   </div>
                 </div>
 
+                <section>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-text-500">
+                    Kanal ve banka etiketi
+                  </h4>
+                  <dl className="mt-2 space-y-2 text-sm">
+                    <div className="flex gap-2">
+                      <dt className="w-28 shrink-0 text-text-500">Segment</dt>
+                      <dd className="text-text-900">
+                        {campaign.segment ? taxonomyLabel(campaign.segment) : "—"}
+                        {campaign.segment && (
+                          <span className="ml-1 text-xs text-text-500">
+                            (scraper / sınıflandırma)
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="w-28 shrink-0 text-text-500">Banka kategorisi</dt>
+                      <dd className="text-text-900">
+                        {campaign.bank_category
+                          ? formatText(campaign.bank_category)
+                          : "Kaynakta yok"}
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
+
                 {campaign.description && (
                   <section>
                     <h4 className="text-xs font-semibold uppercase tracking-wide text-text-500">
@@ -104,11 +140,20 @@ export function EvidenceDrawer({ campaignId, onClose }: EvidenceDrawerProps) {
 
                 <section>
                   <h4 className="text-xs font-semibold uppercase tracking-wide text-text-500">
-                    Sınıflandırma
+                    Sınıflandırma (nasıl anladık)
                   </h4>
-                  <div className="mt-1">
-                    <CategoryBadges categories={campaign.categories} max={20} />
-                  </div>
+                  {campaign.categories.length === 0 ? (
+                    <p className="mt-1 text-sm text-text-500">Sınıflandırma henüz çalıştırılmadı.</p>
+                  ) : (
+                    <ul className="mt-2 space-y-3">
+                      {campaign.categories.map((category) => (
+                        <ClassificationEvidenceRow
+                          key={`${category.axis}-${category.value}`}
+                          category={category}
+                        />
+                      ))}
+                    </ul>
+                  )}
                 </section>
 
                 {campaign.conditions_text && (
@@ -180,5 +225,36 @@ export function EvidenceDrawer({ campaignId, onClose }: EvidenceDrawerProps) {
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+function ClassificationEvidenceRow({ category }: { category: CampaignCategory }) {
+  const weak = Number(category.confidence) < 0.5;
+  return (
+    <li
+      className={cn(
+        "rounded border px-3 py-2",
+        weak ? "border-dashed border-border" : "border-border bg-surface-50",
+      )}
+    >
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
+        <span className="text-text-500">{taxonomyAxisLabel(category.axis)}</span>
+        <span className="font-medium text-text-900">{taxonomyLabel(category.value)}</span>
+      </div>
+      <p className="mt-1 text-xs text-text-500">
+        {SOURCE_LABELS[category.source] ?? category.source}
+        {" · güven "}
+        {Number(category.confidence).toFixed(2)}
+      </p>
+      {category.evidence ? (
+        <p className="mt-1 text-sm text-text-900">“{category.evidence}”</p>
+      ) : (
+        <p className="mt-1 text-sm text-text-500">
+          {category.value === "genel"
+            ? "Sektör sinyali bulunamadı; düşük güvenli genel etiket."
+            : "Kanıt metni yok."}
+        </p>
+      )}
+    </li>
   );
 }

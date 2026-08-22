@@ -24,9 +24,12 @@ export const TAXONOMY_LABELS: Record<string, string> = {
   saglik_kozmetik: "Sağlık ve Kozmetik",
   hobi_oyuncak_spor: "Hobi ve Spor",
   vergi_fatura_kamu: "Vergi ve Fatura",
+  sigorta: "Sigorta",
   yatirim_birikim: "Yatırım",
   konut_gayrimenkul: "Konut",
   kurumsal_kobi: "Kurumsal / KOBİ",
+  dogalgaz_enerji: "Doğalgaz / Enerji",
+  otomotiv: "Otomotiv",
   genel: "Genel",
   // product_type
   finansman: "Finansman",
@@ -38,7 +41,6 @@ export const TAXONOMY_LABELS: Record<string, string> = {
   yeni_musteri: "Yeni Müşteri",
   yatirim_urunu: "Yatırım Ürünü",
   birikim_katilma_hesabi: "Katılma Hesabı",
-  sigorta: "Sigorta",
   pos_uye_isyeri: "POS / Üye İşyeri",
   dijital_bankacilik: "Dijital Bankacılık",
   odeme_fatura: "Ödeme ve Fatura",
@@ -59,6 +61,20 @@ export const TAXONOMY_LABELS: Record<string, string> = {
   altin_katilma_hesabi: "Altın Katılma Hesabı",
   ara_donem_kar_odemeli: "Ara Ödemeli Katılma Hesabı",
   devlet_katkili_hesap: "Devlet Katkılı Hesap",
+  // audience (şartname 5.3)
+  mevcut_musteri: "Mevcut Müşteri",
+  maas_musterisi: "Maaş Müşterisi",
+  emekli: "Emekli",
+  ogrenci: "Öğrenci",
+  genc: "Genç",
+  kamu_calisani: "Kamu Çalışanı",
+  banka_calisani: "Banka Çalışanı",
+  esnaf: "Esnaf",
+  ciftci: "Çiftçi",
+  kobi: "KOBİ",
+  ticari_kurumsal: "Ticari / Kurumsal",
+  ozel_bankacilik: "Özel Bankacılık",
+  herkes: "Herkes",
   // benefit
   nakit_iade: "Nakit İade",
   puan_mil: "Puan / Mil",
@@ -71,9 +87,69 @@ export const TAXONOMY_LABELS: Record<string, string> = {
   avantajli_kar_payi: "Avantajlı Kâr Payı",
   hediye_urun: "Hediye Ürün",
   cekilis: "Çekiliş",
+  // Campaign.segment (kanal — audience değil)
+  bireysel: "Bireysel",
+  kurumsal: "Kurumsal",
+  ticari: "Ticari",
+  tarim: "Tarım",
+};
+
+/** Filtre açılır listelerinde kullanılan sık sektörler. */
+export const SECTOR_FILTER_OPTIONS: string[] = [
+  "market_gida",
+  "akaryakit",
+  "giyim_aksesuar",
+  "elektronik_telekom",
+  "beyaz_esya_ev",
+  "mobilya_dekorasyon",
+  "yapi_hirdavat",
+  "eticaret_pazaryeri",
+  "seyahat_konaklama",
+  "ulasim_arac_kiralama",
+  "restoran_kafe",
+  "eglence_dijital",
+  "vergi_fatura_kamu",
+  "yatirim_birikim",
+  "otomotiv",
+  "kurumsal_kobi",
+  "genel",
+];
+
+/** Filtre açılır listelerinde kullanılan sık ürün türleri. */
+export const PRODUCT_TYPE_FILTER_OPTIONS: string[] = [
+  "kart",
+  "finansman",
+  "ihtiyac_finansmani",
+  "birikim_katilma_hesabi",
+  "yatirim_urunu",
+  "yeni_musteri",
+  "pos_uye_isyeri",
+  "dijital_bankacilik",
+  "alisveris_finansmani",
+  "kobi_ticari",
+];
+
+export const SEGMENT_FILTER_OPTIONS: string[] = [
+  "bireysel",
+  "kurumsal",
+  "kobi",
+  "ticari",
+  "tarim",
+];
+
+const AXIS_LABELS: Record<string, string> = {
+  product_type: "Ürün türü",
+  sector: "Sektör",
+  audience: "Hedef kitle",
+  benefit: "Fayda",
 };
 
 /** Taksonomi slug'ını Türkçe okunur etikete çevirir; karşılığı yoksa slug'ı olduğu gibi döner. */
 export function taxonomyLabel(value: string): string {
   return TAXONOMY_LABELS[value] ?? value;
+}
+
+/** Taksonomi eksen adını Türkçe gösterir. */
+export function taxonomyAxisLabel(axis: string): string {
+  return AXIS_LABELS[axis] ?? axis;
 }

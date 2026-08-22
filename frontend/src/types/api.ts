@@ -79,6 +79,18 @@ export interface RadarScore {
   measured_axes: number;
 }
 
+export interface TaxonomyCount {
+  value: string;
+  count: number;
+}
+
+export interface BankCoverage {
+  bank_code: string;
+  bank_name: string;
+  active: number;
+  total: number;
+}
+
 export interface StatsResponse {
   total_banks: number;
   banks_with_data: number;
@@ -90,11 +102,16 @@ export interface StatsResponse {
   products_total: number;
   rates_total: number;
   limits_total: number;
+  /** Sınıflandırma kapsamı (%): en az bir taksonomi etiketi olan kök kampanya oranı. */
   ai_coverage_pct: number;
   green_campaigns_count: number;
+  ending_soon_count: number;
   campaigns_by_bank: BankCampaignCount[];
   campaigns_by_category: CategoryCount[];
   sector_distribution: SectorCount[];
+  audience_distribution: TaxonomyCount[];
+  benefit_distribution: TaxonomyCount[];
+  active_by_bank: BankCoverage[];
   radar_scores: RadarScore[];
   last_scrape_at: string | null;
 }

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { CampaignFilters, type FilterState } from "@/components/campaigns/CampaignFilters";
 import { CampaignTable } from "@/components/campaigns/CampaignTable";
@@ -8,13 +9,31 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { useBanks } from "@/hooks/useBanks";
 import { useCampaigns } from "@/hooks/useCampaigns";
-import type { CampaignQuery } from "@/types/api";
+import type { CampaignQuery, CampaignStatus } from "@/types/api";
 
 const PAGE_SIZE = 25;
-const EMPTY_FILTERS: FilterState = { banks: [], status: "all", q: "", includeExpired: false };
+const STATUS_VALUES: CampaignStatus[] = ["active", "upcoming", "expired", "unknown"];
+
+const EMPTY_FILTERS: FilterState = {
+  banks: [],
+  status: "all",
+  q: "",
+  includeExpired: false,
+  sector: "all",
+  productType: "all",
+  segment: "all",
+};
+
+function filtersFromSearch(params: URLSearchParams): FilterState {
+  const raw = params.get("status");
+  const status =
+    raw && (STATUS_VALUES as string[]).includes(raw) ? (raw as CampaignStatus) : "all";
+  return { ...EMPTY_FILTERS, status };
+}
 
 export function CampaignsPage() {
-  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+  const [searchParams] = useSearchParams();
+  const [filters, setFilters] = useState<FilterState>(() => filtersFromSearch(searchParams));
   const [sort, setSort] = useState<NonNullable<CampaignQuery["sort"]>>("title");
   const [order, setOrder] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(1);
@@ -28,6 +47,9 @@ export function CampaignsPage() {
       status: filters.status === "all" ? undefined : filters.status,
       q: filters.q || undefined,
       include_expired: filters.includeExpired || undefined,
+      sector: filters.sector === "all" ? undefined : filters.sector,
+      product_type: filters.productType === "all" ? undefined : filters.productType,
+      segment: filters.segment === "all" ? undefined : filters.segment,
       sort,
       order,
       page,

@@ -11,6 +11,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatNumber } from "@/lib/format";
+import {
+  PRODUCT_TYPE_FILTER_OPTIONS,
+  SEGMENT_FILTER_OPTIONS,
+  SECTOR_FILTER_OPTIONS,
+  taxonomyLabel,
+} from "@/lib/taxonomy";
 import { cn } from "@/lib/utils";
 import type { Bank, CampaignStatus } from "@/types/api";
 
@@ -20,6 +26,9 @@ export interface FilterState {
   q: string;
   /** Varsayılan false: süresi kesin dolmuş kampanyalar gizlenir (KAPI 5). */
   includeExpired: boolean;
+  sector: string | "all";
+  productType: string | "all";
+  segment: string | "all";
 }
 
 interface CampaignFiltersProps {
@@ -35,6 +44,8 @@ const STATUS_OPTIONS: { value: CampaignStatus | "all"; label: string }[] = [
   { value: "expired", label: "Süresi Doldu" },
   { value: "unknown", label: "Tarih Yok" },
 ];
+
+const ALL = "all";
 
 export function CampaignFilters({ banks, value, onChange }: CampaignFiltersProps) {
   // Arama kutusu her tuş vuruşunda istek atmasın diye geciktirilir.
@@ -58,7 +69,24 @@ export function CampaignFilters({ banks, value, onChange }: CampaignFiltersProps
   };
 
   const hasActiveFilter =
-    value.banks.length > 0 || value.status !== "all" || value.q !== "" || value.includeExpired;
+    value.banks.length > 0 ||
+    value.status !== ALL ||
+    value.q !== "" ||
+    value.includeExpired ||
+    value.sector !== ALL ||
+    value.productType !== ALL ||
+    value.segment !== ALL;
+
+  const clearFilters = () =>
+    onChange({
+      banks: [],
+      status: "all",
+      q: "",
+      includeExpired: false,
+      sector: ALL,
+      productType: ALL,
+      segment: ALL,
+    });
 
   return (
     <div className="rounded-lg border border-border bg-surface p-4">
@@ -105,6 +133,72 @@ export function CampaignFilters({ banks, value, onChange }: CampaignFiltersProps
           </Select>
         </div>
 
+        <div className="w-48">
+          <label htmlFor="campaign-sector" className="mb-1 block text-sm text-text-500">
+            Sektör
+          </label>
+          <Select
+            value={value.sector}
+            onValueChange={(next) => onChange({ ...value, sector: next })}
+          >
+            <SelectTrigger id="campaign-sector">
+              <SelectValue placeholder="Tüm sektörler" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Tüm sektörler</SelectItem>
+              {SECTOR_FILTER_OPTIONS.map((slug) => (
+                <SelectItem key={slug} value={slug}>
+                  {taxonomyLabel(slug)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="w-48">
+          <label htmlFor="campaign-product-type" className="mb-1 block text-sm text-text-500">
+            Ürün türü
+          </label>
+          <Select
+            value={value.productType}
+            onValueChange={(next) => onChange({ ...value, productType: next })}
+          >
+            <SelectTrigger id="campaign-product-type">
+              <SelectValue placeholder="Tüm ürün türleri" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Tüm ürün türleri</SelectItem>
+              {PRODUCT_TYPE_FILTER_OPTIONS.map((slug) => (
+                <SelectItem key={slug} value={slug}>
+                  {taxonomyLabel(slug)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="w-40">
+          <label htmlFor="campaign-segment" className="mb-1 block text-sm text-text-500">
+            Segment
+          </label>
+          <Select
+            value={value.segment}
+            onValueChange={(next) => onChange({ ...value, segment: next })}
+          >
+            <SelectTrigger id="campaign-segment">
+              <SelectValue placeholder="Tüm segmentler" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Tüm segmentler</SelectItem>
+              {SEGMENT_FILTER_OPTIONS.map((slug) => (
+                <SelectItem key={slug} value={slug}>
+                  {taxonomyLabel(slug)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="flex items-center gap-2 pb-2">
           <input
             id="campaign-include-expired"
@@ -119,11 +213,7 @@ export function CampaignFilters({ banks, value, onChange }: CampaignFiltersProps
         </div>
 
         {hasActiveFilter && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onChange({ banks: [], status: "all", q: "", includeExpired: false })}
-          >
+          <Button variant="ghost" size="sm" onClick={clearFilters}>
             <X className="h-4 w-4" aria-hidden="true" />
             Temizle
           </Button>
@@ -135,7 +225,6 @@ export function CampaignFilters({ banks, value, onChange }: CampaignFiltersProps
         <div className="flex flex-wrap gap-2">
           {banks.map((bank) => {
             const selected = value.banks.includes(bank.code);
-            // Kampanyası olmayan bankalar gizlenmez; devre dışı gösterilir.
             const disabled = bank.campaign_count === 0;
 
             return (
