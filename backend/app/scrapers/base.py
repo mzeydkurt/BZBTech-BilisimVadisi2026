@@ -43,7 +43,7 @@ from app.scrapers.models import (
     RawProduct,
     ScrapeRunResult,
 )
-from app.services.campaign_service import compute_status
+from app.services.campaign_service import compute_status, today_tr
 from app.utils.hashing import canonicalize_url, sha256_text, url_hash
 from app.utils.slugify import slug_from_url_path
 
@@ -468,6 +468,22 @@ class BaseScraper(ABC):
         dry_run: bool,
     ) -> None:
         """Tek bir adresi çeker, kaydeder ve kampanyaya dönüştürür."""
+        # Liste kartında bitiş tarihi geçmişse detay HTTP'si atlanır.
+        if hint.end_date_hint is not None and hint.end_date_hint < today_tr():
+            result.campaigns_skipped += 1
+            slug = slug_from_url_path(hint.url)
+            logger.info(
+                "kampanya_atlandi",
+                url=hint.url,
+                banka=self.bank_code,
+                slug=slug,
+                neden="bitis_gecmis_hint",
+                bitis=str(hint.end_date_hint),
+            )
+            if slug:
+                self._expire_if_exists(session, bank, slug, dry_run=dry_run)
+            return
+
         fetch = self.fetcher.fetch(hint.url)
         result.urls_fetched += 1
         recorded_urls.add(hint.url)
