@@ -70,10 +70,11 @@ export function OverviewPage() {
           tone="upcoming"
         />
         <StatCard
-          label="Süresi Dolan"
-          value={stats.expired_campaigns}
+          label="Tarihsiz"
+          value={stats.unknown_status_campaigns}
           icon={TimerOff}
-          tone="expired"
+          hint="Bitiş tarihi olmayan"
+          tone="unknown"
         />
       </div>
 
