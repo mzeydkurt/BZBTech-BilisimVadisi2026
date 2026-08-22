@@ -43,7 +43,9 @@ class UnderstoodFilter(BaseModel):
     nasıl anladığını görmezse yanlış anlaşılmayı fark edemez ve düzeltemez.
     """
 
-    kind: str = Field(description="bank | product_type | sector | audience | benefit | status | numeric")
+    kind: str = Field(
+        description="bank | product_type | sector | audience | benefit | status | numeric"
+    )
     value: str
     label: str = Field(description="Arayüzde gösterilecek Türkçe eksen adı")
     display: str = Field(description="Değerin Türkçe karşılığı")
