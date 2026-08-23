@@ -264,6 +264,29 @@ def envanter_uygula() -> int:
     return _calistir([_python(), "-m", "scripts.apply_inventory", *_ek_argumanlar()], cwd=BACKEND)
 
 
+def hesaplayici_sorgula() -> int:
+    """Oranı boş finansman ürünlerinde hesaplayıcıya örnek tutar sorar.
+
+    ⚠️ AĞA ÇIKAR (Playwright). Çıktılar `is_binding=False`; bağlayıcı teklif
+    sanılmaz. Banka başına sınırlı sorgu.
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.probe_calculators", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
+def hesaplayici_hedef_sorgula() -> int:
+    """Belirli banka hesaplayıcı URL'lerinden tüm ürün varyantlarını sorgular.
+
+    ⚠️ AĞA ÇIKAR (Playwright). Kuveyt/Albaraka/TF/Vakıf vb. dropdown'daki
+    her finansman türü max tutar/vade ile denenir; `is_binding=False` yazar.
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.probe_calculator_targets", *_ek_argumanlar()],
+        cwd=BACKEND,
+    )
+
+
 def geri_doldur() -> int:
     """Bankanın kendi kategori etiketini arşivlenmiş HTML'den geri doldurur.
 
@@ -284,6 +307,14 @@ def yeniden_isle() -> int:
     """
     return _calistir(
         [_python(), "-m", "scripts.reprocess_clean_text", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
+def urun_aciklama_doldur() -> int:
+    """Finansman ürün açıklamalarını arşiv clean_text'ten doldurur (ağa çıkmaz)."""
+    return _calistir(
+        [_python(), "-m", "scripts.backfill_product_descriptions", *_ek_argumanlar()],
+        cwd=BACKEND,
     )
 
 
@@ -680,6 +711,10 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "yeniden-isle": (yeniden_isle, "Temiz metni arşivden yeniden üretir (ağa çıkmaz)"),
     "urun-kazi": (urun_kazi, "Ürün/finansman limit, varyant ve oranlarını çeker"),
     "urun-kazi-deneme": (urun_kazi_deneme, "Ürün kazımasını yazmadan dener"),
+    "urun-aciklama-doldur": (
+        urun_aciklama_doldur,
+        "Finansman açıklamalarını arşivden doldurur (ağa çıkmaz)",
+    ),
     "urun-esle": (urun_esle, "Kampanyaları ürünlerle eşleştirir (ağa çıkmaz)"),
     "urun-dogrula": (urun_dogrula, "Ürün ve oran kapsamasını doğrular ve rapor üretir"),
     "siniflandir": (siniflandir, "Kampanyaları dört eksende sınıflandırır (ağa çıkmaz)"),
@@ -691,6 +726,14 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "tkbb-yukle": (tkbb_yukle, "TKBB Veri Peteği'nin elle doğrulanmış verisini yükler"),
     "tkbb-cek": (tkbb_cek, "TKBB Veri Peteği'ni Playwright ile canlı çeker (KAPI 4.3)"),
     "envanter-uygula": (envanter_uygula, "Hesaplayıcı envanterini ürün limitlerine uygular"),
+    "hesaplayici-sorgula": (
+        hesaplayici_sorgula,
+        "Oranı boş ürünlerde hesaplayıcıya örnek tutar sorar (Playwright)",
+    ),
+    "hesaplayici-hedef-sorgula": (
+        hesaplayici_hedef_sorgula,
+        "Verilen banka hesaplayıcı URL'lerinden tüm ürün varyantlarını sorgular",
+    ),
     "cikarim": (cikarim, "Kampanya metinlerinden bilgi çıkarır (ağa çıkmaz)"),
     "degerlendir": (degerlendir, "Gold set'e karşı F1 ölçer (ağa çıkmaz)"),
     "ablation": (ablation, "Üç kipi karşılaştırır, ablasyon tablosunu üretir"),
