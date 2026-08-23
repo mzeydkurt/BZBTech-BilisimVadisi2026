@@ -22,8 +22,10 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
-# ── Veri (ham HTML arşivi ve SQLite dosyası repoya girmez) ─
-backend/data/app.db
+# ── Veri (ham HTML arşivi; WAL/SHM commit edilmez) ─────────
+# app.db repoya girer (paylaşılabilir snapshot). Yazma sırasında oluşan
+# -wal/-shm/-journal dosyaları git'e eklenmez.
+# backend/data/app.db
 backend/data/app.db-journal
 backend/data/app.db-wal
 backend/data/app.db-shm
@@ -33,6 +35,13 @@ backend/data/exports/*
 # Göç ve sıfırlama öncesi alınan SQLite kopyaları (dosya başına ~10-20 MB).
 backend/data/backups/
 backend/data/app.db.bak*
+
+# ── Yerel debug / probe çıktıları (commit edilmez) ────────
+backend/_*.py
+backend/_*.json
+backend/_*.txt
+backend/probe_hedef_sonuc.json
+backend/data/debug/
 
 # ── Ortam ─────────────────────────────────────────────────
 .env
