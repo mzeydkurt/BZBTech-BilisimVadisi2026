@@ -101,6 +101,12 @@ _NAV_KIRINTISI: Final[tuple[str, ...]] = (
     "albaraka mobil",
     "elİs işlem",
     "elis islem",
+    # Albaraka sayfa kabuğu — ürün tanıtımı değil, site menüsü.
+    "tümü tümü tarım",
+    "tumu tumu tarim",
+    "doğrudan borçlandırma albaraka bayi",
+    "dogrudan borclandirma albaraka bayi",
+    "ticari ve kurumsal finansmanlar ticari nakdi",
 )
 
 _CUMLE_SONU = re.compile(r"[.!?…][\"”')\]]?\s*$")

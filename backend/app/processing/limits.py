@@ -26,6 +26,7 @@ from typing import Final
 
 from app.core.normalization.money import parse_money, parse_money_range
 from app.core.normalization.rate import parse_rate
+from app.core.normalization.term import parse_term_months
 from app.core.normalization.text import ascii_fold_tr, lower_tr, normalize_text
 
 # Yalnızca ÜST sınır bildiren ifadeler ("50.000 TL'ye kadar").
@@ -351,14 +352,22 @@ def extract_limits_from_text(text: str | None) -> ProductLimits:
 
     en_az, en_cok = parse_amount_limit(text)
     vadeler = parse_allowed_terms(text)
+    vade_min, vade_max = parse_term_months(text)
     ltv = parse_ltv(text)
+
+    # Liste varsa o öncelikli; yoksa "120 aya kadar" gibi aralık.
+    if vadeler:
+        term_min = min(vadeler)
+        term_max = max(vadeler)
+    else:
+        term_min, term_max = vade_min, vade_max
 
     limitler = ProductLimits(
         amount_min=en_az,
         amount_max=en_cok,
         allowed_terms=vadeler,
-        term_months_min=min(vadeler) if vadeler else None,
-        term_months_max=max(vadeler) if vadeler else None,
+        term_months_min=term_min,
+        term_months_max=term_max,
         ltv_max_pct=ltv,
         source="text",
         evidence=normalize_text(text)[:300],
@@ -366,6 +375,45 @@ def extract_limits_from_text(text: str | None) -> ProductLimits:
     # Hiçbir alan dolmadıysa kaynağı "yok" olarak işaretle: sahte bir
     # `text` kaynağı, veri varmış izlenimi yaratır.
     return limitler if not limitler.is_empty else ProductLimits()
+
+
+def extract_profit_rate_from_text(text: str | None) -> tuple[Decimal | None, str | None]:
+    """Tanıtım metninde açıkça yazılmış aylık kâr oranını yakalar.
+
+    ⚠️ Yalnızca kâr/oran bağlamı olan ifadeler. Kampanya '%20 indirim'
+    gibi yüzdeler oran sayılmaz. Uydurma yok.
+    """
+    if not text:
+        return None, None
+    katlanmis = _fold(text)
+
+    if re.search(
+        r"(sifir|0)\s*(kar\s*oran|kar\s*payi|kar\s*orani)|"
+        r"kar\s*(oran|payi)\w*\s*(sifir|%?\s*0([.,]0+)?\b)|"
+        r"vade\s*farksiz",
+        katlanmis,
+    ):
+        return Decimal("0"), "sıfır kâr / vade farksız ifadesi"
+
+    # "aylık kâr oranı %3,75" · "kâr payı oranı %4"
+    for kalip in (
+        r"aylik\s+kar\s+(oran|payi)\w*\s*%?\s*([\d]+[.,]\d+|\d+)",
+        r"kar\s+(oran|payi)\w*\s*%?\s*([\d]+[.,]\d+|\d+)",
+        r"%\s*([\d]+[.,]\d+|\d+)\s*(aylik\s+)?(kar|kar\s+payi)",
+    ):
+        m = re.search(kalip, katlanmis)
+        if not m:
+            continue
+        ham = next((g for g in m.groups() if g and re.search(r"\d", g)), None)
+        if not ham:
+            continue
+        oran = parse_rate(ham) or parse_rate(f"%{ham}")
+        if oran is None:
+            continue
+        # Aylık oran bandı; yıllık maliyet (%50+) elenir.
+        if Decimal("0") <= oran <= Decimal("15"):
+            return oran, m.group(0)[:120]
+    return None, None
 
 
 def rate_from_percent_text(text: str | None) -> Decimal | None:
