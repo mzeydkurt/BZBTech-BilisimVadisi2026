@@ -83,6 +83,13 @@ TAXONOMY_FIELDS: Final[dict[str, str]] = {
     "target_customer": "audience",
 }
 
+# Çıkarımda yer tutucu / varsayılandan özgül etiket seçilir. Aksi hâlde
+# `mevcut_musteri@0.30` ile `yeni_musteri@0.70` aynı eksende ilk gelen kazanır.
+_AUDIENCE_SPECIFICITY: Final[dict[str, int]] = {
+    "herkes": 0,
+    "mevcut_musteri": 1,
+}
+
 
 @dataclass
 class ExtractionSummary:
@@ -158,6 +165,27 @@ def _campaigns(
     return [(kampanya, metin) for kampanya, metin in session.execute(sorgu) if metin.strip()]
 
 
+def _taxonomy_pick(adaylar: list[CampaignCategory]) -> CampaignCategory | None:
+    """Bir eksende gösterilecek tek etiketi seçer.
+
+    `herkes` elenir. Özgül kitle (`yeni_musteri`, `kobi`, …) varsayılan
+    `mevcut_musteri`'den önce gelir; eşitlikte güven ve kaynak (url > diğer)
+    karar verir.
+    """
+    adaylar = [a for a in adaylar if not (a.axis == "audience" and a.value == "herkes")]
+    if not adaylar:
+        return None
+
+    def _anahtar(kayit: CampaignCategory) -> tuple[int, float, int]:
+        ozgul = 2
+        if kayit.axis == "audience":
+            ozgul = _AUDIENCE_SPECIFICITY.get(kayit.value, 2)
+        kaynak = 2 if kayit.source in {"url", "bank_category"} else 1
+        return (ozgul, float(kayit.confidence or 0), kaynak)
+
+    return max(adaylar, key=_anahtar)
+
+
 def _taxonomy_fields(session: Session, campaign: Campaign) -> list[ExtractedField]:
     """Taksonomi etiketlerini çıkarım kaydına çevirir (Katman 1).
 
@@ -165,18 +193,20 @@ def _taxonomy_fields(session: Session, campaign: Campaign) -> list[ExtractedFiel
     dayanarak dolduruldu; güveni oradaki değerden alınır ve
     `extraction_method='table'` ile işaretlenir.
 
-    ⚠️ Bir eksende birden çok etiket varsa EN YÜKSEK GÜVENLİ olan seçilir:
-    çıkarım şeması alan başına tek değer bekliyor.
+    ⚠️ Bir eksende birden çok etiket varsa özgül + yüksek güvenli olan
+    seçilir: çıkarım şeması alan başına tek değer bekliyor.
     """
-    satirlar = session.execute(
-        select(CampaignCategory)
-        .where(CampaignCategory.campaign_id == campaign.id)
-        .order_by(CampaignCategory.confidence.desc())
-    ).scalars()
+    gruplar: dict[str, list[CampaignCategory]] = {}
+    for kayit in session.scalars(
+        select(CampaignCategory).where(CampaignCategory.campaign_id == campaign.id)
+    ):
+        gruplar.setdefault(kayit.axis, []).append(kayit)
 
     secilen: dict[str, CampaignCategory] = {}
-    for kayit in satirlar:
-        secilen.setdefault(kayit.axis, kayit)
+    for eksen, adaylar in gruplar.items():
+        kazanan = _taxonomy_pick(adaylar)
+        if kazanan is not None:
+            secilen[eksen] = kazanan
 
     kayitlar: list[ExtractedField] = []
     for alan_adi, eksen in TAXONOMY_FIELDS.items():
@@ -519,10 +549,6 @@ async def _process_campaign(
     bulunan_alanlar: set[str] = set()
 
     if mode in RULE_MODES:
-        for alan in _taxonomy_fields(session, kampanya):
-            bulgular.append(alan)
-            bulunan_alanlar.add(alan.field_name)
-
         for alan in extract_rule_based(metin):
             bulgular.append(alan)
             bulunan_alanlar.add(alan.field_name)
@@ -555,6 +581,14 @@ async def _process_campaign(
             sayac=sayac,
             use_cache=use_cache,
         )
+        session.flush()
+
+    # ⚠️ Taksonomi SINIFLANDIRMADAN SONRA taşınır. Aksi hâlde LLM etiketleri
+    # `campaign_categories`'e yazılır ama çıkarım / F1 eski kural satırını görür.
+    if mode in RULE_MODES:
+        for alan in _taxonomy_fields(session, kampanya):
+            bulgular.append(alan)
+            bulunan_alanlar.add(alan.field_name)
 
     # ── KAPI A7 — halüsinasyon guard'ı ────────────────────
     guard = guard_fields(bulgular, metin)

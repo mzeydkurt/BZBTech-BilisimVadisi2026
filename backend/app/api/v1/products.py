@@ -141,4 +141,14 @@ def get_product(product_id: int, db: DbSession) -> ProductDetailOut:
         cikti.source_url = urun.source_document.url
         cikti.source_fetched_at = urun.source_document.fetched_at.isoformat()
     cikti.variants = [_urun_cikti(v) for v in urun.variants]
+
+    from app.services.bddk_api import (
+        bank_limit_deviations_for_product,
+        bddk_out_for_product_type,
+    )
+
+    cikti.bddk_limits = bddk_out_for_product_type(urun.product_type)
+    cikti.bank_limit_deviations = bank_limit_deviations_for_product(
+        urun.product_type, list(urun.limits)
+    )
     return cikti

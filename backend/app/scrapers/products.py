@@ -10,10 +10,11 @@ VERİ KAYNAĞI HİYERARŞİSİ (güçlüden zayıfa):
     2. html_attr     hesaplayıcı FORM ENVANTERİ      (oran değil, varyant+limit)
     3. text          serbest metinden limit çıkarımı güven 0.750
 
-⚠️ Hesaplayıcı SORGULANMAZ. Form envanteri, bankanın yayımladığı yapısal
-limittir (dropdown = varyant, slider min/max = tutar, vade seçici = izinli
-vadeler) ve hesaplayıcıya tek istek atmadan elde edilir; bu yüzden
-`is_binding=True` kalır. Sorgulama yapılırsa `is_binding=False` olur.
+⚠️ Hesaplayıcı SORGULANMAZ (varsayılan kazıma). Form envanteri, bankanın
+yayımladığı yapısal limittir ve hesaplayıcıya tek istek atmadan elde edilir;
+bu yüzden `is_binding=True` kalır. Oranı boş ürünler için ayrı komut
+`python dev.py hesaplayici-sorgula` örnek tutarla sorgu atar →
+`is_binding=False`.
 """
 
 from __future__ import annotations

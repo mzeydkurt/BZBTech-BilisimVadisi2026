@@ -183,11 +183,11 @@ class BaseScraper(ABC):
             for yol, urun_turu, _ in self.product_pages
         ]
 
-    def product_description(self, body_text: str, title: str) -> str | None:  # noqa: ARG002
+    def product_description(self, body_text: str, title: str) -> str | None:
         """Ürün sayfasının açıklama metni.
 
-        Varsayılan `None`: boilerplate'i açıklama sanmaktansa alanı boş
-        bırakmak doğrudur. Gövdesi düzenli olan banka override eder.
+        Varsayılan: boilerplate'siz gövde çıkarımı. Gövdesi düzenli olmayan
+        sayfada None döner — menüyü açıklama sanmamak için. Banka override eder.
 
         Args:
             body_text: Sayfanın temizlenmiş metni.
@@ -196,7 +196,9 @@ class BaseScraper(ABC):
         Returns:
             Açıklama veya None.
         """
-        return None
+        from app.processing.product_description import extract_product_description
+
+        return extract_product_description(body_text, title)
 
     def collateral_for(self, url: str) -> str | None:
         """Adresin whitelist'teki teminat türünü döndürür.

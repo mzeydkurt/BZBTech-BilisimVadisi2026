@@ -25,13 +25,14 @@ from typing import Final
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Bank, Campaign, CampaignCategory, CampaignMetric, EntityCard
+from app.db.models import Bank, Campaign, CampaignCategory, CampaignMetric, EntityCard, Product
 from app.logging_config import get_logger
 from app.retrieval.lexical import Bm25Index
 
 logger = get_logger(__name__)
 
 CAMPAIGN_ENTITY: Final[str] = "campaign"
+PRODUCT_ENTITY: Final[str] = "product"
 
 
 @dataclass(frozen=True)
@@ -54,11 +55,26 @@ class CampaignDoc:
 
 
 @dataclass(frozen=True)
+class ProductDoc:
+    """Finansman ürünü arama belgesi."""
+
+    product_id: int
+    bank_code: str
+    bank_name: str
+    name: str
+    product_type: str | None
+    card_text: str
+    source_url: str | None
+
+
+@dataclass(frozen=True)
 class Corpus:
     """Aranabilir gövde ve kurulu BM25 dizini."""
 
     docs: dict[int, CampaignDoc]
     index: Bm25Index
+    product_docs: dict[int, ProductDoc] | None = None
+    product_index: Bm25Index | None = None
 
     @property
     def size(self) -> int:
@@ -87,7 +103,7 @@ _METRIC_FIELDS: Final[tuple[str, ...]] = (
 )
 
 _cache: Corpus | None = None
-_cache_fingerprint: tuple[int, int, int] | None = None
+_cache_fingerprint: tuple[int, ...] | None = None
 
 
 def invalidate_corpus() -> None:
@@ -102,7 +118,7 @@ def invalidate_corpus() -> None:
     _cache_fingerprint = None
 
 
-def _parmak_izi(session: Session) -> tuple[int, int, int]:
+def _parmak_izi(session: Session) -> tuple[int, int, int, int]:
     """Gövdenin değişip değişmediğini anlatan ucuz imza.
 
     ⚠️ ÖNBELLEK KOŞULSUZ TUTULAMAZ. Süreç ömrü boyunca saklanan bir gövde,
@@ -111,9 +127,7 @@ def _parmak_izi(session: Session) -> tuple[int, int, int]:
     çıkıyor: bir testin kurduğu gövde, farklı bir veritabanı kullanan sonraki
     teste sızıyor.
 
-    Üç sayaç yeterli: kart sayısı içerik değişimini, en büyük kart kimliği
-    ekleme/silmeyi, kampanya sayısı ise kartsız kampanya durumunu yakalar.
-    Üçü de indeksten okunur; ölçülen maliyet milisaniyenin altında.
+    Dört sayaç: kampanya kartı, en büyük kart id, kampanya sayısı, ürün kartı.
     """
     kart_adedi = (
         session.scalar(
@@ -130,7 +144,15 @@ def _parmak_izi(session: Session) -> tuple[int, int, int]:
         or 0
     )
     kampanya_adedi = session.scalar(select(func.count()).select_from(Campaign)) or 0
-    return int(kart_adedi), int(en_buyuk_kart), int(kampanya_adedi)
+    urun_kart = (
+        session.scalar(
+            select(func.count())
+            .select_from(EntityCard)
+            .where(EntityCard.entity_type == PRODUCT_ENTITY)
+        )
+        or 0
+    )
+    return int(kart_adedi), int(en_buyuk_kart), int(kampanya_adedi), int(urun_kart)
 
 
 def _metrikler(metric: CampaignMetric | None) -> dict[str, Decimal]:
@@ -224,7 +246,46 @@ def build_corpus(session: Session) -> Corpus:
     gövde = {
         doc.campaign_id: f"{doc.title}\n{doc.bank_name}\n{doc.card_text}" for doc in docs.values()
     }
-    _cache = Corpus(docs=docs, index=Bm25Index(gövde))
+
+    # Finansman ürün kartları — kampanya gövdesinden AYRI indekslenir
+    # (kimlik çakışması olmasın diye). Chat finansman sorularında buraya bakar.
+    urun_kartlari = {
+        kart.entity_id: kart.card_text
+        for kart in session.scalars(
+            select(EntityCard).where(EntityCard.entity_type == PRODUCT_ENTITY)
+        )
+    }
+    product_docs: dict[int, ProductDoc] = {}
+    for urun, banka in session.execute(
+        select(Product, Bank).join(Bank, Bank.id == Product.bank_id)
+    ).all():
+        kart_metni = urun_kartlari.get(urun.id)
+        if not kart_metni:
+            continue
+        product_docs[urun.id] = ProductDoc(
+            product_id=urun.id,
+            bank_code=banka.code,
+            bank_name=banka.name,
+            name=urun.name,
+            product_type=urun.product_type,
+            card_text=kart_metni,
+            source_url=None,
+        )
+    urun_govde = {
+        d.product_id: f"{d.name}\n{d.bank_name}\n{d.card_text}" for d in product_docs.values()
+    }
+
+    _cache = Corpus(
+        docs=docs,
+        index=Bm25Index(gövde),
+        product_docs=product_docs or None,
+        product_index=Bm25Index(urun_govde) if urun_govde else None,
+    )
     _cache_fingerprint = imza
-    logger.info("arama_govdesi_kuruldu", kampanya=len(docs), kartsiz=kartsiz)
+    logger.info(
+        "arama_govdesi_kuruldu",
+        kampanya=len(docs),
+        urun=len(product_docs),
+        kartsiz=kartsiz,
+    )
     return _cache

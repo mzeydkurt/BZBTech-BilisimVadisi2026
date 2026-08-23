@@ -255,13 +255,17 @@ def build_glossary_card(term: GlossaryTerm) -> str:
 
 
 def build_product_card(session: Session, product: Product) -> str:
-    """Ürünü karta çevirir."""
+    """Ürünü karta çevirir — açıklama, oran bantları, BDDK tavanı dahil."""
+    from app.services.bddk_limits_service import get_canonical_limits
+
     banka = session.get(Bank, product.bank_id)
     banka_adi = banka.name if banka else "Bilinmeyen banka"
 
     satirlar = [f"{banka_adi} — {product.name}"]
+    if product.product_type:
+        satirlar.append(f"Finansman türü: {product.product_type.replace('_', ' ')}.")
     if product.description:
-        satirlar.append(product.description.strip())
+        satirlar.append(product.description.strip()[:800])
 
     sinirlar = []
     if product.amount_min is not None and product.amount_max is not None:
@@ -273,6 +277,38 @@ def build_product_card(session: Session, product: Product) -> str:
         sinirlar.append(f"{product.term_months_max} aya kadar vade")
     if sinirlar:
         satirlar.append(_bas_harf_buyut(", ".join(sinirlar)) + ".")
+
+    # Oran özetleri (en fazla 3 satır)
+    oran_ozetleri: list[str] = []
+    for oran in list(product.rates)[:3]:
+        if oran.profit_rate_pct is None:
+            continue
+        parca = f"kâr payı %{_sayi_metni(str(oran.profit_rate_pct))}"
+        if oran.term_months is not None:
+            parca = f"{oran.term_months} ay · {parca}"
+        if oran.allocation_fee_pct is not None:
+            parca += f", tahsis %{_sayi_metni(str(oran.allocation_fee_pct))}"
+        if oran.annual_cost_pct is not None:
+            parca += f", yıllık maliyet %{_sayi_metni(str(oran.annual_cost_pct))}"
+        if not oran.is_binding:
+            parca += " (hesaplayıcı tahmini)"
+        oran_ozetleri.append(parca)
+    if oran_ozetleri:
+        satirlar.append("Oranlar: " + "; ".join(oran_ozetleri) + ".")
+
+    bddk = get_canonical_limits(product_type=product.product_type)
+    if bddk is not None:
+        satirlar.append(
+            f"BDDK yasal tavan ({bddk.family}): {bddk.legal_reference}."
+        )
+        if bddk.family == "ihtiyac" and bddk.bands:
+            ozet = ", ".join(
+                f"{b.label} → {b.max_term_months} ay" for b in bddk.bands if b.max_term_months
+            )
+            if ozet:
+                satirlar.append(f"İhtiyaç vade tavanları: {ozet}.")
+        if bddk.second_home_note:
+            satirlar.append(bddk.second_home_note)
 
     if not product.is_binding:
         satirlar.append(NON_BINDING_NOTICE)
@@ -296,14 +332,23 @@ def build_product_rate_card(session: Session, rate: ProductRate) -> str:
         parcalar.append(f"kâr payı oranı %{_sayi_metni(str(rate.profit_rate_pct))}")
     if rate.allocation_fee_pct is not None:
         parcalar.append(f"tahsis ücreti %{_sayi_metni(str(rate.allocation_fee_pct))}")
+    if rate.annual_cost_pct is not None:
+        parcalar.append(f"yıllık maliyet oranı %{_sayi_metni(str(rate.annual_cost_pct))}")
+    if rate.amount_min is not None or rate.amount_max is not None:
+        parcalar.append(
+            f"tutar {_sayi_metni(str(rate.amount_min or ''))}-"
+            f"{_sayi_metni(str(rate.amount_max or ''))} TL"
+        )
     if parcalar:
         satirlar.append(_bas_harf_buyut(", ".join(parcalar)) + ".")
 
     if rate.variant:
         satirlar.append(f"Varyant: {rate.variant}.")
+    if rate.rate_source:
+        satirlar.append(f"Kaynak: {rate.rate_source}.")
 
     # ⚠️ Hesaplayıcıdan türetilmiş oran bağlayıcı değildir.
-    if urun is not None and not urun.is_binding:
+    if (urun is not None and not urun.is_binding) or not rate.is_binding:
         satirlar.append(NON_BINDING_NOTICE)
 
     return "\n".join(satirlar)

@@ -12,6 +12,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.bddk import BankLimitDeviationOut, BddkCanonicalLimitsOut
+
 
 class ProductRateOut(BaseModel):
     """Tek bir oran satırı.
@@ -51,6 +53,7 @@ class ProductRateOut(BaseModel):
     data_source: str = Field(
         default="bank_site", description="bank_site | tkbb_veripetegi — KATİP KAPI 4"
     )
+    is_binding: bool = True
 
 
 class ProductLimitOut(BaseModel):
@@ -133,3 +136,11 @@ class ProductDetailOut(ProductOut):
     source_url: str | None = Field(default=None, description="Oranın okunduğu banka sayfası")
     source_fetched_at: str | None = None
     variants: list[ProductOut] = Field(default_factory=list)
+    bddk_limits: BddkCanonicalLimitsOut | None = Field(
+        default=None,
+        description="Bu ürün türüne ait BDDK yasal tavanları (banka LTV matrisi değil)",
+    )
+    bank_limit_deviations: list[BankLimitDeviationOut] = Field(
+        default_factory=list,
+        description="Banka LTV satırlarının BDDK tavandan sapma / ikinci-konut uyarıları",
+    )
