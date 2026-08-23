@@ -166,6 +166,8 @@ PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
     (f"{_K}/kredi-kartlari/ozel-kredi-karti", "kart", "yok"),
     (f"{_K}/banka-kartlari/hicaz-kart", "kart", "yok"),
     (f"{_K}/banka-kartlari/7-24-albaraka-banka-karti", "kart", "yok"),
+    # ── Ürün ve hizmet ücretleri — tahsis oranları (konut/taşıt/ihtiyaç) ──
+    ("/tr/urun-ve-hizmet-ucretleri", "finansman", None),
 )
 
 
@@ -382,12 +384,12 @@ class AlbarakaScraper(BaseScraper):
         return None
 
     def parse_products(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawProduct]:
-        """Genel ayrıştırıcıyı çalıştırır; Togg'a marka, Dijital Araç'a ebeveyn ekler.
-
-        ⚠️ Mevcut doğru oran verisini DEĞİŞTİRMEZ — yalnızca `brand`/
-        `parent_external_key` gibi KATİP KAPI 1'de eklenen alanları doldurur.
-        """
+        """Genel ayrıştırıcıyı çalıştırır; ücret sayfası için özel ayrıştırıcıya döner."""
+        from app.processing.fee_page_parsers import parse_albaraka_ucret_page
         from app.scrapers.products import product_external_key
+
+        if urlsplit(url).path.rstrip("/") == "/tr/urun-ve-hizmet-ucretleri":
+            return parse_albaraka_ucret_page(html, url)
 
         urunler = super().parse_products(html, url, hint)
         yol = urlsplit(url).path.rstrip("/")

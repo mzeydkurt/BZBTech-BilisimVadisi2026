@@ -153,10 +153,10 @@ _SEKME_URUN_TURU: Final[dict[str, str]] = {
     "Taşıt Finansmanı": "tasit_finansmani",
 }
 
-# Yalnızca bu önekle başlayan "Masraf Adı" satırları kâr oranıdır; Tahsis
-# Ücreti / Ekspertiz Ücreti / İpotek Tesis Ücreti / Hayat Sigortası / DASK /
-# Konut Sigortası / Yıllık Maliyet Oranı / Erken Kapama Komisyonu gibi hizmet
-# ücreti satırları bu önekle eşleşmediği için kendiliğinden atlanır.
+# Yalnızca bu önekle başlayan "Masraf Adı" satırları kâr oranıdır. Aynı
+# tabloda Tahsis Ücreti ve Yıllık Maliyet Oranı satırları da vardır;
+# bunlar ilgili kâr oranı satırına `allocation_fee_pct` / `annual_cost_pct`
+# olarak birleştirilir (ayrı oran satırı açılmaz).
 _KAR_ORANI_ONEKLERI: Final[tuple[str, ...]] = ("kâr oran", "kar oran")
 
 # "(1-60 ay vade)" / "Oranı(1-120 ay vade)" (araya boşluksuz) biçimlerini yakalar.
@@ -451,12 +451,16 @@ def _tl_sayi(ham: str) -> Decimal:
 
 
 def _oran_decimal(ham: str) -> Decimal | None:
-    """`"4,99 %"` gibi bir oranı `Decimal("4.99")`'a çevirir; ayrıştırılamazsa None."""
-    temiz = ham.strip().replace("%", "").strip().replace(".", "").replace(",", ".")
-    try:
-        return Decimal(temiz)
-    except InvalidOperation:
+    """`"4,99 %"` / `"0.50 %"` / `"3,19"` gibi hücreyi ondalığa çevirir."""
+    from app.core.normalization.money import parse_decimal_tr
+    from app.core.normalization.rate import parse_rate
+
+    metin = ham.strip()
+    if not metin:
         return None
+    if "%" in metin or "yüzde" in metin.casefold():
+        return parse_rate(metin)
+    return parse_decimal_tr(metin)
 
 
 def _panel_adi_ve_tutar_bandi(baslik: str) -> tuple[str, Decimal | None, Decimal | None]:
@@ -483,6 +487,67 @@ def _kar_orani_satiri_mi(masraf_adi: str) -> bool:
     return normalized.startswith(_KAR_ORANI_ONEKLERI)
 
 
+def _tahsis_satiri_mi(masraf_adi: str) -> bool:
+    return "tahsis" in masraf_adi.strip().lower()
+
+
+def _yillik_maliyet_satiri_mi(masraf_adi: str) -> bool:
+    normalized = masraf_adi.strip().lower()
+    return "yıllık maliyet" in normalized or "yillik maliyet" in normalized
+
+
+def _vade_araligi(masraf_adi: str) -> tuple[int, int] | None:
+    eslesme = _VADE_RE.search(masraf_adi)
+    if eslesme is None:
+        return None
+    return int(eslesme.group(1)), int(eslesme.group(2))
+
+
+def _panel_masraf_haritasi(
+    satirlar: list[Tag],
+    *,
+    satir_testi,
+) -> dict[tuple[int, int] | None, Decimal]:
+    """Paneldeki tahsis / YMO satırlarını vade aralığına göre indeksler."""
+    harita: dict[tuple[int, int] | None, Decimal] = {}
+    for satir in satirlar:
+        hucreler = satir.find_all("td")
+        if len(hucreler) < 6:
+            continue
+        masraf_adi = collapse_whitespace(hucreler[0].get_text())
+        if not masraf_adi or not satir_testi(masraf_adi):
+            continue
+        deger = _oran_decimal(hucreler[2].get_text()) or _oran_decimal(hucreler[4].get_text())
+        if deger is None:
+            continue
+        harita[_vade_araligi(masraf_adi)] = deger
+    return harita
+
+
+def _masraf_eslestir(
+    vade: tuple[int, int] | None,
+    harita: dict[tuple[int, int] | None, Decimal],
+) -> Decimal | None:
+    """Kâr oranı satırının vadesine uygun tahsis/YMO değerini bul."""
+    if not harita:
+        return None
+    if vade is not None and vade in harita:
+        return harita[vade]
+    if vade is not None:
+        vade_min, vade_max = vade
+        for aralik, deger in harita.items():
+            if aralik is None:
+                continue
+            alt, ust = aralik
+            if alt <= vade_min and vade_max <= ust:
+                return deger
+            if alt <= vade_max <= ust:
+                return deger
+    if len(harita) == 1:
+        return next(iter(harita.values()))
+    return harita.get(None)
+
+
 def _panel_urunu_olustur(
     *, sekme_urun_turu: str, panel_baslik: str, panel_index: int, satirlar: list[Tag], url: str
 ) -> RawProduct | None:
@@ -493,6 +558,8 @@ def _panel_urunu_olustur(
         yalnızca hizmet ücreti içeriyor demektir — atlanır, hata sayılmaz).
     """
     baslik, tutar_min, tutar_max = _panel_adi_ve_tutar_bandi(panel_baslik)
+    tahsis_haritasi = _panel_masraf_haritasi(satirlar, satir_testi=_tahsis_satiri_mi)
+    ymo_haritasi = _panel_masraf_haritasi(satirlar, satir_testi=_yillik_maliyet_satiri_mi)
     oranlar: list[RawProductRate] = []
 
     for satir in satirlar:
@@ -504,6 +571,7 @@ def _panel_urunu_olustur(
             continue
 
         vade_eslesme = _VADE_RE.search(masraf_adi)
+        vade_araligi = _vade_araligi(masraf_adi)
         asgari = _oran_decimal(hucreler[2].get_text())
         azami = _oran_decimal(hucreler[4].get_text())
         aciklama = collapse_whitespace(hucreler[5].get_text())
@@ -513,15 +581,24 @@ def _panel_urunu_olustur(
             )
             continue
 
+        tahsis = _masraf_eslestir(vade_araligi, tahsis_haritasi)
+        ymo = _masraf_eslestir(vade_araligi, ymo_haritasi)
+        kanit = (
+            f"{masraf_adi} — Asgari {hucreler[2].get_text().strip()}, "
+            f"Azami {hucreler[4].get_text().strip()}. {aciklama}".strip()
+        )
+        if tahsis is not None:
+            kanit += f" Tahsis ücreti %{tahsis}."
+        if ymo is not None:
+            kanit += f" Yıllık maliyet oranı %{ymo}."
+
         oranlar.append(
             RawProductRate(
                 rate_source="html_table",
                 rate_type="financing_rate",
-                # ⚠️ Gözlemde asgari == azami her satırda; farklı olsalar bile
-                # `ProductRate.profit_rate_pct` tek değer taşıdığı için asgari
-                # alınır — azami her iki alanda da `evidence_text`'te BİREBİR
-                # görünür kalır.
                 profit_rate_pct=asgari if asgari is not None else azami,
+                allocation_fee_pct=tahsis,
+                annual_cost_pct=ymo,
                 term_months=int(vade_eslesme.group(2)) if vade_eslesme else None,
                 term_label=(
                     f"{vade_eslesme.group(1)}-{vade_eslesme.group(2)} ay vade"
@@ -530,11 +607,7 @@ def _panel_urunu_olustur(
                 ),
                 amount_min=tutar_min,
                 amount_max=tutar_max,
-                # ⚠️ Kaynak hücreleri zaten "%" işaretini içeriyor ("3,49 %");
-                # ayrıca "%" eklemek "Asgari %3,49 %" gibi çift işarete yol
-                # açardı — kanıt metni birebir olmalı, gürültülü değil.
-                evidence_text=f"{masraf_adi} — Asgari {hucreler[2].get_text().strip()}, "
-                f"Azami {hucreler[4].get_text().strip()}. {aciklama}".strip(),
+                evidence_text=kanit,
             )
         )
 
@@ -560,10 +633,10 @@ def _parse_fee_rate_page(html: str, url: str) -> list[RawProduct]:
     """`/urun-ve-hizmet-ucretleri/bireysel-krediler` sayfasını ayrıştırır.
 
     Üç Bootstrap sekmesi (İhtiyaç/Konut/Taşıt Finansmanı) × akordeon paneli
-    × "Kâr oranı (N-M ay vade)" satırları. Hizmet ücreti satırları (Tahsis
-    Ücreti, Ekspertiz Ücreti, İpotek Tesis Ücreti, Hayat/Konut Sigortası,
-    DASK, Yıllık Maliyet Oranı, Erken Kapama Komisyonu) `_kar_orani_satiri_mi`
-    ile elenir — bilinçli olarak yazılmaz (KATİP: yalnızca kâr oranı istendi).
+    × "Kâr oranı (N-M ay vade)" satırları. Aynı paneldeki Tahsis Ücreti ve
+    Yıllık Maliyet Oranı satırları eşleşen kâr oranı satırına birleştirilir.
+    Diğer hizmet ücreti satırları (Ekspertiz, İpotek, sigorta, erken kapama)
+    atlanır.
 
     Args:
         html: Sayfanın ham HTML'i.

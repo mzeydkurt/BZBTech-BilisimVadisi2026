@@ -70,7 +70,7 @@ from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.scrapers.base import BaseScraper
-from app.scrapers.models import DiscoveredUrl, RawCampaign
+from app.scrapers.models import DiscoveredUrl, RawCampaign, RawProduct
 from app.utils.slugify import slug_from_url_path
 from app.utils.urls import is_same_site
 
@@ -345,3 +345,12 @@ class TurkiyeFinansScraper(BaseScraper):
                 continue
             return aday[:max_length]
         return None
+
+    def parse_products(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawProduct]:
+        """Genel ayrıştırıcıyı çalıştırır; ücret sayfası için özel ayrıştırıcıya döner."""
+        from app.processing.fee_page_parsers import parse_turkiye_finans_ucret_page
+
+        yol = urlsplit(url).path.rstrip("/")
+        if yol.endswith("/Sayfalar/urun-hizmet-ucretleri.aspx"):
+            return parse_turkiye_finans_ucret_page(html, url)
+        return super().parse_products(html, url, hint)

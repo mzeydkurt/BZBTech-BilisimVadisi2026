@@ -109,6 +109,7 @@ PRODUCT_PAGES: Final[tuple[tuple[str, str, str | None], ...]] = (
     # `parse_products()` override'ı `interest_free_benevolent_loan` ekler.
     ("/krediler/hayat-finans-egitim-finansmani-sistemi", "egitim_finansmani", "yok"),
     ("/krediler/bana-bunu-al", "ihtiyac_finansmani", "yok"),
+    ("/urun-ve-hizmet-ucretleri", "ihtiyac_finansmani", "yok"),
 )
 
 
@@ -333,14 +334,12 @@ class HayatFinansScraper(BaseScraper):
         return None
 
     def parse_products(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawProduct]:
-        """Genel ayrıştırıcıyı çalıştırır, Eğitim Finansmanı'na özel oranı ekler.
+        """Genel ayrıştırıcıyı çalıştırır; ücret sayfası ve Eğitim Finansmanı özel durumları."""
+        from app.processing.fee_page_parsers import parse_hayat_ucret_page
 
-        ⚠️ Eğitim Finansmanı Sistemi sayfasında oran TABLOSU YOK (vade
-        farksız — Dünya Katılım'ın Karz-ı Hasen'i ile aynı mantık). Genel
-        ayrıştırıcı bu sayfadan hiçbir `ProductRate` üretmez; bu override
-        `rate_type='interest_free_benevolent_loan'`, `profit_rate_pct=NULL`
-        satırını ekler.
-        """
+        if urlsplit(url).path.rstrip("/") == "/urun-ve-hizmet-ucretleri":
+            return parse_hayat_ucret_page(html, url)
+
         urunler = super().parse_products(html, url, hint)
         egitim_yolu = "/krediler/hayat-finans-egitim-finansmani-sistemi"
         if urlsplit(url).path.rstrip("/").lower() != egitim_yolu:
