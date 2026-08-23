@@ -21,6 +21,8 @@ Keşif komutları (gerçek banka sitelerine istek atar, Playwright ister):
     python dev.py kesif-endpoint                      # kampanya listesi JSON uçları
     python dev.py kesif-hesaplayici                   # hesaplayıcı form envanteri
     python dev.py kesif-hesaplayici --banka ziraat_katilim --kuru
+    python dev.py kesif-hesaplayici-api               # XHR/fetch endpoint keşfi (tüm bankalar)
+    python dev.py kesif-hesaplayici-api --banka kuveyt_turk
 
 Komut listesi için:
     python dev.py
@@ -242,6 +244,18 @@ def kesif_endpoint() -> int:
     )
 
 
+def kesif_hesaplayici_api() -> int:
+    """Hesaplayıcı sayfalarında XHR/fetch endpoint keşfi (tüm bankalar).
+
+    Config: `backend/data/config/calculator_banks.json`
+    Ham kayıt: `backend/data/debug/network/<bank>/<tarih>/`
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.discover_calculator_apis", *_ek_argumanlar()],
+        cwd=BACKEND,
+    )
+
+
 def kesif_hesaplayici() -> int:
     """Hesaplayıcı formlarını envanterler.
 
@@ -272,6 +286,19 @@ def hesaplayici_sorgula() -> int:
     """
     return _calistir(
         [_python(), "-m", "scripts.probe_calculators", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
+def hesaplayici_api_sorgula() -> int:
+    """Doğrulanmış banka hesaplama API'lerini httpx ile sorgular.
+
+    ⚠️ AĞA ÇIKAR. Playwright gerekmez.
+    Albaraka, Vakıf, Hayat, Emlak, Kuveyt, Türkiye Finans.
+    Çıktılar `is_binding=False`.
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.probe_calculator_apis", *_ek_argumanlar()],
+        cwd=BACKEND,
     )
 
 
@@ -314,6 +341,22 @@ def urun_aciklama_doldur() -> int:
     """Finansman ürün açıklamalarını arşiv clean_text'ten doldurur (ağa çıkmaz)."""
     return _calistir(
         [_python(), "-m", "scripts.backfill_product_descriptions", *_ek_argumanlar()],
+        cwd=BACKEND,
+    )
+
+
+def finansman_metin_zenginlestir() -> int:
+    """Oranı/limiti boş finansmanları metinden doldurur veya pasife alır (ağa çıkmaz)."""
+    return _calistir(
+        [_python(), "-m", "scripts.enrich_no_data_financing", *_ek_argumanlar()],
+        cwd=BACKEND,
+    )
+
+
+def finansman_aile_orani() -> int:
+    """Partner/niş ürünlere aile oranını miras bırakır (ağa çıkmaz, bağlayıcı değil)."""
+    return _calistir(
+        [_python(), "-m", "scripts.inherit_family_rates", *_ek_argumanlar()],
         cwd=BACKEND,
     )
 
@@ -715,6 +758,14 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
         urun_aciklama_doldur,
         "Finansman açıklamalarını arşivden doldurur (ağa çıkmaz)",
     ),
+    "finansman-metin-zenginlestir": (
+        finansman_metin_zenginlestir,
+        "Boş finansman limit/oranını metinden doldurur veya pasife alır",
+    ),
+    "finansman-aile-orani": (
+        finansman_aile_orani,
+        "Partner/niş ürünlere aile oranını miras bırakır (bağlayıcı değil)",
+    ),
     "urun-esle": (urun_esle, "Kampanyaları ürünlerle eşleştirir (ağa çıkmaz)"),
     "urun-dogrula": (urun_dogrula, "Ürün ve oran kapsamasını doğrular ve rapor üretir"),
     "siniflandir": (siniflandir, "Kampanyaları dört eksende sınıflandırır (ağa çıkmaz)"),
@@ -734,6 +785,10 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
         hesaplayici_hedef_sorgula,
         "Verilen banka hesaplayıcı URL'lerinden tüm ürün varyantlarını sorgular",
     ),
+    "hesaplayici-api-sorgula": (
+        hesaplayici_api_sorgula,
+        "Doğrulanmış finansman API'lerini httpx ile sorgular (Albaraka/Vakıf)",
+    ),
     "cikarim": (cikarim, "Kampanya metinlerinden bilgi çıkarır (ağa çıkmaz)"),
     "degerlendir": (degerlendir, "Gold set'e karşı F1 ölçer (ağa çıkmaz)"),
     "ablation": (ablation, "Üç kipi karşılaştırır, ablasyon tablosunu üretir"),
@@ -742,6 +797,10 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "kesif-hesaplayici": (
         kesif_hesaplayici,
         "Hesaplayıcı formlarını envanterler (Playwright)",
+    ),
+    "kesif-hesaplayici-api": (
+        kesif_hesaplayici_api,
+        "Hesaplayıcı XHR/fetch endpoint keşfi (tüm bankalar)",
     ),
     "disa-aktar": (disa_aktar, "Veri setini kararlı anahtarlarla dışa aktarır"),
     "disa-aktar-dogrula": (disa_aktar_dogrula, "Dışa aktarmayı doğrular ve damgalar"),
