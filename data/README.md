@@ -16,7 +16,7 @@ hangi kararların bilinçli alındığını** anlatır.
 | `products` | 222 | |
 | `product_rates` | 253 | 5 bankadan yapısal oran |
 | `calculator_inventory` | 10 | 6 bankanın hesaplayıcı form envanteri |
-| `calculator_probes` | **0** | Hesaplayıcılar SORGULANMADI |
+| `calculator_probes` | **0*** | `python dev.py hesaplayici-sorgula` ile doldurulur; `is_binding=False` |
 | `source_documents` | 2981 | Her çekimin indeksi |
 | `gold_annotations` | 1100 | 50 kampanya, elle etiketlenmiş cevap anahtarı |
 | `entity_cards` | 608 | |
@@ -94,9 +94,14 @@ birinde vade seçici var, o da birleşik bir liste (1-60) — hiçbir ürünün 
 sınırı değil. Bunun yerine seçenek etiketlerindeki ürüne özel sınırlar
 `term_months_min/max` alanlarına yazıldı (`TAŞIT FINANSMANI(1-48 AY)` → 48).
 
-**3. Hesaplayıcılar sorgulanmadı.** `calculator_probes` = 0. Form envanteri
-bankanın yayımladığı yapısal limittir ve tek istek atmadan okunur; bu yüzden
-`is_binding=True` kalır.
+**3. Hesaplayıcılar varsayılan olarak sorgulanmadı.** Form envanteri
+bankanın yayımladığı yapısal limittir. Oranı boş finansman ürünleri için
+`python dev.py hesaplayici-sorgula` örnek tutarla sorgu atar; sonuçlar
+`is_binding=False` ve UI'da "tahmini" rozetiyle gösterilir.
+
+**3b. BDDK tavanları** `backend/data/seed/bddk_finansman_limitleri.json`
+kanonundadır (ihtiyaç vade 11152, konut LTV 11364, taşıt 10099). Banka HTML
+LTV matrisi bundan ayrıdır; ikinci-konut (%75 indirim) açıkça işaretlenir.
 
 **4. Dünya Katılım'ın 48 kampanyası çekilmedi.** `robots.txt` engelliyor.
 Ayrıntı: [`robots_report.md`](robots_report.md).
@@ -136,6 +141,7 @@ python dev.py baslat            # migrate + seed
 python dev.py scrape            # kampanyalar (AĞA ÇIKAR)
 python dev.py urun-kazi         # ürün/finansman (AĞA ÇIKAR)
 python dev.py kesif-hesaplayici # hesaplayıcı envanteri (AĞA ÇIKAR, Playwright)
+python dev.py hesaplayici-sorgula # örnek tutarla oran sorgusu (AĞA ÇIKAR)
 python dev.py envanter-uygula   # envanteri ürün limitlerine bağla
 python dev.py siniflandir       # taksonomi
 python dev.py cikarim --sadece-kural
