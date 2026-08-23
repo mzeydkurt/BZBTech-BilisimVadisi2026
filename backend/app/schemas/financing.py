@@ -20,6 +20,10 @@ class FinancingResponse(BaseModel):
         default_factory=list,
         description="Ne oran ne limit bilgisi yayımlanmış ürünler ({banka} — {ürün adı})",
     )
+    products_with_limits_only: list[str] = Field(
+        default_factory=list,
+        description="Limiti var, oranı yok ({banka} — {ürün adı})",
+    )
     coverage_note: str
     bddk_limits: BddkCanonicalLimitsOut | None = Field(
         default=None,
