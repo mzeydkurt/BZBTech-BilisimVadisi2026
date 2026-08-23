@@ -69,6 +69,27 @@ class TestFinansmanlarUcu:
 
         assert any("Gayrimenkul Finansmanı" in item for item in veri["no_data_products"])
         assert veri["coverage_note"]
+        assert "products_with_limits_only" in veri
+
+    def test_limiti_olan_oransiz_ayri_listede(
+        self, seeded_session: Session, api_client: httpx.Client
+    ) -> None:
+        urun = _urun_ekle(
+            seeded_session,
+            banka_kodu="albaraka",
+            ad="Jet Finansman Test",
+            urun_turu="ihtiyac_finansmani",
+        )
+        urun.amount_min = Decimal("1000")
+        urun.amount_max = Decimal("50000")
+        urun.term_months_max = 36
+        seeded_session.flush()
+
+        veri = api_client.get("/api/v1/financing").json()
+
+        assert any("Jet Finansman Test" in item for item in veri["products_with_limits_only"])
+        assert not any("Jet Finansman Test" in item for item in veri["no_data_products"])
+        assert "yalnızca limit" in veri["coverage_note"]
 
     def test_karz_i_hasen_kar_paysiz_isaretlenir(
         self, seeded_session: Session, api_client: httpx.Client

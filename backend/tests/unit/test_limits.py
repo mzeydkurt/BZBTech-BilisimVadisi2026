@@ -178,6 +178,37 @@ class TestMetindenLimitToplama:
         assert limitler.evidence
         assert "milyon" in limitler.evidence
 
+    def test_vade_araligi_metinden_okunur(self) -> None:
+        """`parse_term_months` artık extract_limits'e bağlı."""
+        limitler = extract_limits_from_text(
+            "6292 sayılı kanun kapsamındaki 2B araziler için finansman; "
+            "geri ödemelerinizi 60 aya kadar taksitlendirebilirsiniz."
+        )
+        assert limitler.term_months_max == 60
+        assert limitler.source == "text"
+
+
+class TestMetindenOran:
+    def test_sifir_kar_yakalanir(self) -> None:
+        from app.processing.limits import extract_profit_rate_from_text
+
+        oran, _ = extract_profit_rate_from_text(
+            "Gönlüne Göre Konut Finansmanı ile müşterilerimiz sıfır kâr oranı ile..."
+        )
+        assert oran == Decimal("0")
+
+    def test_aylik_kar_orani(self) -> None:
+        from app.processing.limits import extract_profit_rate_from_text
+
+        oran, _ = extract_profit_rate_from_text("Aylık kâr oranı %3,75 olarak uygulanır.")
+        assert oran == Decimal("3.75")
+
+    def test_indirim_yuzdesi_oran_degil(self) -> None:
+        from app.processing.limits import extract_profit_rate_from_text
+
+        oran, _ = extract_profit_rate_from_text("Mağazada %20 indirim kampanyası.")
+        assert oran is None
+
 
 # ── Para birimi işareti taşımayan aralık (gerçek veri regresyonu) ──
 

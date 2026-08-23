@@ -417,6 +417,7 @@ export interface FinancingQuery {
 export interface FinancingResponse {
   financing: ProductOut[];
   no_data_products: string[];
+  products_with_limits_only: string[];
   coverage_note: string;
   bddk_limits: BddkCanonicalLimitsOut | null;
   bddk_limits_by_family: Record<string, BddkCanonicalLimitsOut>;
