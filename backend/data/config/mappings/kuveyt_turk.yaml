@@ -1,0 +1,37 @@
+# Kuveyt Türk — doğrulanmış alan eşlemesi (network discovery 2026-08-23)
+# Endpoint URL oturuma göre değişebilir (ck0d84?…); method POST + gövde sabit.
+
+profit_rate_monthly:
+  - Meta.ProfitRate
+annual_simple_profit_rate:
+  - Meta.AnnualSimpleProfitRate
+monthly_cost_pct:
+  - Meta.MonthlyCost
+annual_cost_pct:
+  - Meta.YearlyCost
+monthly_installment:
+  - Meta.InstallmentPayment
+total_payment:
+  - Meta.TotalAmount
+allocation_fee:
+  - Meta.AllocationAmount
+loan_amount:
+  - Meta.LoanAmount
+term_months:
+  - Meta.InstallmentCount
+survey_fee:
+  - Meta.SurveyFee
+hypothec_fee:
+  - Meta.HypothecFee
+
+# Request gövdesi (gözlemlenen):
+#   p1: ürün kodu
+#   p2: tutar
+#   p3: vade (ay)
+#   p4/p5: kanal (örn. ECOMMERCE)
+#   p8: ürün adı (Türkçe)
+request:
+  amount: p2
+  term: p3
+  product_code: p1
+  product_name: p8

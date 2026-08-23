@@ -1,0 +1,176 @@
+# Kaynak: calculator_banks.json (config_loader JSON okur).
+# Ana sayfa widget'ları (surface: home) Ziraat/Hayat tarzı gömülü finansman
+# hesaplayıcıları için taranır. "Kredi Hesapla" = finansman (katılım terminolojisi).
+
+banks:
+  - code: albaraka
+    name: Albaraka Türk
+    home_url: https://www.albaraka.com.tr/tr
+    calculators:
+      - label: Ana sayfa
+        url: https://www.albaraka.com.tr/tr
+        strategy: discover
+        surface: home
+      - label: Birleşik finansman hesaplama
+        url: https://www.albaraka.com.tr/tr/hesaplama-araclari/finansman-hesaplama/ihtiyac-finansmani-hesaplama
+        strategy: albaraka_json
+        product_hint: ihtiyac_finansmani
+        surface: calculator
+      - label: Konut finansmanı ürün sayfası
+        url: https://www.albaraka.com.tr/tr/bireysel/finansmanlar/konut-finansmani
+        strategy: discover
+        product_hint: konut_finansmani
+        surface: product
+      - label: Taşıt finansmanı ürün sayfası
+        url: https://www.albaraka.com.tr/tr/bireysel/finansmanlar/tasit-finansmani/tasit-finansmani
+        strategy: discover
+        product_hint: tasit_finansmani
+        surface: product
+      - label: İhtiyaç finansmanı ürün sayfası
+        url: https://www.albaraka.com.tr/tr/bireysel/finansmanlar/ihtiyac
+        strategy: discover
+        product_hint: ihtiyac_finansmani
+        surface: product
+
+  - code: kuveyt_turk
+    name: Kuveyt Türk
+    home_url: https://www.kuveytturk.com.tr
+    calculators:
+      - label: Ana sayfa
+        url: https://www.kuveytturk.com.tr
+        strategy: discover
+        surface: home
+      - label: Finansman hesaplama aracı
+        url: https://www.kuveytturk.com.tr/hesaplama-araclari/finansman-hesaplama
+        strategy: kuveyt_product_dropdown
+        surface: calculator
+      - label: Konut finansmanı ürün sayfası
+        url: https://www.kuveytturk.com.tr/kendim-icin/finansmanlar/konut-finansmanlari/konut-finansmani
+        strategy: discover
+        product_hint: konut_finansmani
+        surface: product
+      - label: Finansmanlar listesi
+        url: https://www.kuveytturk.com.tr/kendim-icin/finansmanlar
+        strategy: discover
+        surface: product
+
+  - code: turkiye_finans
+    name: Türkiye Finans
+    home_url: https://www.turkiyefinans.com.tr
+    calculators:
+      - label: Ana sayfa
+        url: https://www.turkiyefinans.com.tr
+        strategy: discover
+        surface: home
+      - label: Finansman ödeme planı
+        url: https://www.turkiyefinans.com.tr/tr-tr/hesaplama-araclari/Sayfalar/finansman-odeme-plani.aspx
+        strategy: turkiye_finans_type
+        surface: calculator
+      - label: İhtiyaç finansmanı
+        url: https://www.turkiyefinans.com.tr/tr-tr/bireysel/ihtiyac-finansmani/Sayfalar/ihtiyac-finansmani.aspx
+        strategy: discover
+        product_hint: ihtiyac_finansmani
+        surface: product
+
+  - code: ziraat_katilim
+    name: Ziraat Katılım
+    home_url: https://www.ziraatkatilim.com.tr
+    calculators:
+      - label: Ana sayfa — finansman hesapla widget
+        url: https://www.ziraatkatilim.com.tr
+        strategy: ziraat_product_dropdown
+        surface: home
+      - label: Konut / gayrimenkul finansmanı
+        url: https://www.ziraatkatilim.com.tr/bireysel/finansman-urunleri/konut-gayrimenkul-finansmani
+        strategy: ziraat_product_dropdown
+        product_hint: konut_finansmani
+        product_filter: [konut, arsa, işyeri, isyeri, kentsel]
+        surface: product
+      - label: Taşıt finansmanı
+        url: https://www.ziraatkatilim.com.tr/bireysel/finansman-urunleri/tasit-finansmani
+        strategy: ziraat_product_dropdown
+        product_hint: tasit_finansmani
+        surface: product
+      - label: İhtiyaç finansmanı
+        url: https://www.ziraatkatilim.com.tr/bireysel/finansman-urunleri/ihtiyac-finansmani
+        strategy: ziraat_product_dropdown
+        product_hint: ihtiyac_finansmani
+        surface: product
+
+  - code: vakif_katilim
+    name: Vakıf Katılım
+    home_url: https://www.vakifkatilim.com.tr/tr
+    calculators:
+      - label: Ana sayfa
+        url: https://www.vakifkatilim.com.tr/tr
+        strategy: discover
+        surface: home
+      - label: Finansman hesaplama
+        url: https://www.vakifkatilim.com.tr/tr/yardimci-sayfalar/hesaplama-araclari/finansman-hesaplama
+        strategy: vakif_loan_type
+        surface: calculator
+      - label: İhtiyaç finansmanı ürün sayfası
+        url: https://www.vakifkatilim.com.tr/tr/kendim-icin/finansmanlar/ihtiyac-finansmani
+        strategy: discover
+        product_hint: ihtiyac_finansmani
+        surface: product
+
+  - code: emlak_katilim
+    name: Emlak Katılım
+    home_url: https://www.emlakkatilim.com.tr/tr
+    calculators:
+      - label: Ana sayfa
+        url: https://www.emlakkatilim.com.tr/tr
+        strategy: discover
+        surface: home
+      - label: Finansmanlar listesi
+        url: https://www.emlakkatilim.com.tr/tr/bireysel/finansmanlar
+        strategy: emlak_listing
+        surface: product
+
+  - code: dunya_katilim
+    name: Dünya Katılım
+    home_url: https://dunyakatilim.com.tr
+    calculators:
+      - label: Ana sayfa
+        url: https://dunyakatilim.com.tr
+        strategy: discover
+        surface: home
+      - label: Gömülü finansman hesaplayıcı (tüm ürünler)
+        url: https://dunyakatilim.com.tr/kendim-icin/finansmanlar/konut-finansmanlari/konut-finansmani
+        strategy: dunya_embedded
+        surface: product
+      - label: Araç finansmanı (keşif)
+        url: https://dunyakatilim.com.tr/kendim-icin/finansmanlar/arac-finansmanlari/arac-finansmani
+        strategy: discover
+        product_hint: tasit_finansmani
+        surface: product
+      - label: İhtiyaç finansmanı (keşif)
+        url: https://www.dunyakatilim.com.tr/kendim-icin/finansmanlar/ihtiyac-finansmani
+        strategy: discover
+        product_hint: ihtiyac_finansmani
+        surface: product
+
+  - code: hayat_finans
+    name: Hayat Finans
+    home_url: https://hayatfinans.com.tr/
+    notes: Ana sayfada 'Kredi Hesapla' = finansman hesaplayıcı (terminoloji: finansman).
+    calculators:
+      - label: Ana sayfa — Kredi/Finansman hesapla widget
+        url: https://hayatfinans.com.tr/
+        strategy: hayat_home
+        surface: home
+      - label: www ana sayfa (yönlendirme olabilir)
+        url: https://www.hayatfinans.com.tr/
+        strategy: discover
+        surface: home
+
+  - code: adil_katilim
+    name: Adil Katılım
+    home_url: https://www.adilkatilim.com.tr
+    notes: Ticari faaliyet yok; hesaplayıcı beklenmez — ana sayfa yine taranır.
+    calculators:
+      - label: Ana sayfa
+        url: https://www.adilkatilim.com.tr
+        strategy: discover
+        surface: home

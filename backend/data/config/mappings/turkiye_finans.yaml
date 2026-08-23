@@ -1,0 +1,15 @@
+# Türkiye Finans — GetFinanceCalculatorCreditTypeItems
+# FinanceCalculatorCreditList[].Value = aylık kâr oranı (%)
+# FinanceCalculatorCreditList[].Cost ≈ yıllık maliyet oranı
+# FinanceCalculatorCreditList[].Min/Max = vade bandı (ay)
+
+profit_rate_monthly:
+  - FinanceCalculatorCreditList.Value
+annual_cost_pct:
+  - FinanceCalculatorCreditList.Cost
+allocation_fee_rate:
+  - AllocationFee
+product_code:
+  - Code
+product_title:
+  - Title

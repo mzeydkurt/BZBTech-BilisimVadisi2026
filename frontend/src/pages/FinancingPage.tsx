@@ -77,10 +77,26 @@ export function FinancingPage() {
 
           <ProductTable products={data.financing} />
 
+          {data.products_with_limits_only.length > 0 && (
+            <details className="rounded-lg border border-border bg-surface p-4 text-sm">
+              <summary className="cursor-pointer font-medium text-text-900">
+                Yalnızca limit (oran yok) — {data.products_with_limits_only.length} ürün
+              </summary>
+              <p className="mt-2 text-text-500">
+                Tutar/vade bilgisi var; kâr payı oranı banka sayfasında yayımlanmamış.
+              </p>
+              <ul className="mt-2 list-inside list-disc space-y-1 text-text-500">
+                {data.products_with_limits_only.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+
           {data.no_data_products.length > 0 && (
             <details className="rounded-lg border border-border bg-surface p-4 text-sm">
               <summary className="cursor-pointer font-medium text-text-900">
-                Oran/limit yayımlanmayan {data.no_data_products.length} ürün
+                Oran ve limit yok — {data.no_data_products.length} ürün
               </summary>
               <ul className="mt-2 list-inside list-disc space-y-1 text-text-500">
                 {data.no_data_products.map((item) => (

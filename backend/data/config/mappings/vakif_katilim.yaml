@@ -1,0 +1,16 @@
+# Vakıf Katılım — InstallmentPayBack (doğrulanmış 2026-08-23)
+
+profit_rate:
+  - ornekOdemeBilgisi.karOrani
+monthly_installment:
+  - ornekOdemeBilgisi.taksitTutari
+total_payment:
+  - ornekOdemeBilgisi.odenecekToplamTutar
+
+request:
+  amount: amount
+  term: numberOfInstallments
+  product: financingType  # IF | KF | TF
+csrf: __RequestVerificationToken
+endpoint: /plugins/InstallmentPayBack
+method: POST

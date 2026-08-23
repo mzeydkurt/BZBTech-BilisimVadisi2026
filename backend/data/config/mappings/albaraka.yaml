@@ -1,0 +1,20 @@
+# Albaraka — getFinanceCalculate (doğrulanmış 2026-08-23)
+
+profit_rate:
+  - Data.ProfitRate
+annual_cost_rate:
+  - Data.AnnualCostRate
+monthly_installment:
+  - Data.MonthlyInstallmentAmount
+total_payment:
+  - Data.TotalAmountTobeRefunded
+allocation_fee:
+  - Data.TotalFees
+  - Data.AmortizationScheduleExpenses[].AmountWithTax
+
+request:
+  amount: FinanceAmount
+  term: Maturity
+  product: FinanceType  # JSON
+endpoint: /plugins/getFinanceCalculate
+method: GET
