@@ -47,6 +47,15 @@ export function BddkCheckResult({ result }: { result: BDDKLimitCheckResponse }) 
         <p className="text-xs text-text-500">Enerji sınıfı grubu: {result.energy_class}</p>
       )}
 
+      {result.first_home === false && (
+        <p className="text-xs text-warn-600">
+          İkinci / sonraki konut: BDDK oranları %75 azaltılarak uygulandı.
+        </p>
+      )}
+      {result.first_home === true && result.asset_type === "konut" && (
+        <p className="text-xs text-text-500">İlk konut varsayımı: tam LTV tavanı uygulandı.</p>
+      )}
+
       <p className="border-t border-border pt-2 text-xs text-text-500">{result.legal_reference}</p>
     </div>
   );

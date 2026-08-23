@@ -1,0 +1,135 @@
+{
+  "as_of": "2026-08-23",
+  "aciklama": "BDDK finansman tavanları — versiyonlu kanon. BDDK makine-okur API yayımlamaz; tavanlar Kurul kararlarıyla güncellenir. Bu dosya resmi karar metinlerinin yapısal özetidir. Banka HTML LTV matrisleri doğrulama içindir, kanonu ezmez.",
+  "yonetmelik_url": "https://www.bddk.org.tr/Mevzuat/DokumanGetir/1327",
+  "families": {
+    "ihtiyac": {
+      "product_types": [
+        "ihtiyac_finansmani",
+        "alisveris_finansmani",
+        "egitim_finansmani"
+      ],
+      "decision_no": "11152",
+      "decision_date": "2025-02-13",
+      "effective_date": "2025-02-14",
+      "legal_reference": "BDDK 13.02.2025 tarihli 11152 sayılı Tüketici Kredileri Genel Vade Sınırı Kararı",
+      "source_url": "https://www.bddk.org.tr/Duyuru/EkGetir/2101?ekId=866",
+      "kind": "term_by_amount",
+      "bands": [
+        {
+          "amount_max": "125000",
+          "label": "125.000 TL ve altı",
+          "max_term_months": 36
+        },
+        {
+          "amount_min": "125000.01",
+          "amount_max": "250000",
+          "label": "125.000 TL üzeri – 250.000 TL",
+          "max_term_months": 24
+        },
+        {
+          "amount_min": "250000.01",
+          "label": "250.000 TL üzeri",
+          "max_term_months": 12
+        }
+      ]
+    },
+    "konut": {
+      "product_types": [
+        "konut_finansmani",
+        "gayrimenkul_finansmani",
+        "arsa_finansmani",
+        "isyeri_finansmani"
+      ],
+      "decision_no": "11364",
+      "decision_date": "2026-01-29",
+      "effective_date": "2026-01-29",
+      "legal_reference": "BDDK 29.01.2026 tarihli 11364 sayılı Konut Kredileri LTV Kararı",
+      "source_url": "https://www.alomaliye.com/2026/01/31/konut-kredilerinde-ve-konut-teminatli-kredilerde-uygulanacak-kredi-deger-orani-ve-azami-kredi-tutari-11364/",
+      "kind": "ltv_by_value_energy",
+      "max_term_months": 120,
+      "second_home_reduction_pct": "75",
+      "second_home_note": "Tüketicinin kendisi, eşi veya 18 yaş altı çocuğunun malik olduğu en az bir konut varsa azami oranlar %75 azaltılarak uygulanır (ör. A-B ≤5M: %90 → %22,5).",
+      "bands": [
+        {
+          "value_max": "5000000",
+          "label": "5 milyon TL ve altı",
+          "rates": { "A-B": "90", "C": "80", "DIGER": "70" }
+        },
+        {
+          "value_min": "5000000.01",
+          "value_max": "7000000",
+          "label": "5–7 milyon TL",
+          "rates": { "A-B": "80", "C": "70", "DIGER": "60" }
+        },
+        {
+          "value_min": "7000000.01",
+          "value_max": "10000000",
+          "label": "7–10 milyon TL",
+          "rates": { "A-B": "70", "C": "60", "DIGER": "50" }
+        },
+        {
+          "value_min": "10000000.01",
+          "value_max": "20000000",
+          "label": "10–20 milyon TL",
+          "rates": { "A-B": "50", "C": "40", "DIGER": "30" }
+        },
+        {
+          "value_min": "20000000.01",
+          "label": "20 milyon TL üzeri",
+          "rates": { "A-B": "40", "C": "30", "DIGER": "20" }
+        }
+      ]
+    },
+    "tasit": {
+      "product_types": [
+        "tasit_finansmani",
+        "digital_arac_finansmani",
+        "marka_ozel_finansman"
+      ],
+      "decision_no": "10099",
+      "decision_date": "2022-02-21",
+      "effective_date": "2022-02-21",
+      "legal_reference": "BDDK 21.02.2022 tarihli 10099 sayılı Taşıt Kredileri Kararı",
+      "source_url": "https://www.bddk.org.tr/Mevzuat/Liste/56",
+      "kind": "ltv_term_by_value",
+      "bands": [
+        {
+          "value_max": "400000",
+          "label": "0 – 400.000 TL",
+          "max_ratio_pct": "70",
+          "max_term_months": 48
+        },
+        {
+          "value_min": "400000.01",
+          "value_max": "800000",
+          "label": "400.001 – 800.000 TL",
+          "max_ratio_pct": "50",
+          "max_term_months": 36
+        },
+        {
+          "value_min": "800000.01",
+          "value_max": "1200000",
+          "label": "800.001 – 1.200.000 TL",
+          "max_ratio_pct": "30",
+          "max_term_months": 24
+        },
+        {
+          "value_min": "1200000.01",
+          "value_max": "2000000",
+          "label": "1.200.001 – 2.000.000 TL",
+          "max_ratio_pct": "20",
+          "max_term_months": 12
+        },
+        {
+          "value_min": "2000000.01",
+          "label": "2.000.000 TL ve üzeri",
+          "max_ratio_pct": "0",
+          "max_term_months": null
+        }
+      ]
+    }
+  },
+  "allocation_fee_cap_pct": "0.5",
+  "allocation_fee_note": "Tüketici finansmanında tahsis ücreti yasal üst sınır genelde finansman tutarının binde beşi (%0,5)."
+}

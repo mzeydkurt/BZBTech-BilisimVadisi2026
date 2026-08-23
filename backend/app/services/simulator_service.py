@@ -22,14 +22,13 @@ from app.db.models.source_document import SourceDocument
 from app.schemas.simulator import (
     BankFinancingOffer,
     BankYieldOffer,
-    BDDKLimitCheckRequest,
-    BDDKLimitCheckResponse,
     FinancingSimulationRequest,
     FinancingSimulationResponse,
     MissingDataBank,
     ParticipationYieldRequest,
     ParticipationYieldResponse,
 )
+from app.services.bddk_limits_service import check_bddk_limits
 
 _KURUS = Decimal("0.01")
 _YUZDE = Decimal("100")
@@ -123,7 +122,35 @@ def calculate_financing_simulation(
 
     Yalnızca istenen ürün türünde `financing_rate` yayımlamış bankalar teklif
     üretir. Oranı olmayan banka `banks_without_data` içinde bildirilir.
+
+    İhtiyaç finansmanında BDDK vade tavanı aşılırsa teklif üretilmez; neden
+    `banks_without_data` ve `method_note` içinde bildirilir.
     """
+    from app.services.bddk_limits_service import (
+        family_for_product_type,
+        max_term_for_ihtiyac_amount,
+    )
+
+    bddk_vade_notu: str | None = None
+    aile = family_for_product_type(req.product_type)
+    if aile == "ihtiyac":
+        azami_vade, bant, _ = max_term_for_ihtiyac_amount(req.amount_try)
+        if req.term_months > azami_vade:
+            return FinancingSimulationResponse(
+                amount_try=req.amount_try,
+                term_months=req.term_months,
+                product_type=req.product_type,
+                best_bank_code=None,
+                offers=[],
+                banks_without_data=[],
+                method_note=(
+                    f"BDDK ihtiyaç vade tavanı aşıldı: {bant} için azami "
+                    f"{azami_vade} ay. İstenen vade {req.term_months} ay — "
+                    "teklif üretilmedi."
+                ),
+            )
+        bddk_vade_notu = f"BDDK azami vade ({bant}): {azami_vade} ay."
+
     bankalar = list(session.scalars(select(Bank).order_by(Bank.code)))
     teklifler: list[BankFinancingOffer] = []
     eksikler: list[MissingDataBank] = []
@@ -196,6 +223,14 @@ def calculate_financing_simulation(
         en_iyi = kazanan.bank_code
         teklifler.sort(key=lambda t: t.total_payment_try)
 
+    method = (
+        "Eşit taksitli (annüite) plan; taksit = P·r·(1+r)^n/((1+r)^n−1). "
+        "Oranlar bankaların kendi yayımladığı tablolardan okundu; tahsis "
+        "ücreti ve sigorta gibi ek maliyetler bu hesaba dahil değildir."
+    )
+    if bddk_vade_notu:
+        method = f"{method} {bddk_vade_notu}"
+
     return FinancingSimulationResponse(
         amount_try=req.amount_try,
         term_months=req.term_months,
@@ -203,11 +238,7 @@ def calculate_financing_simulation(
         best_bank_code=en_iyi,
         offers=teklifler,
         banks_without_data=eksikler,
-        method_note=(
-            "Eşit taksitli (annüite) plan; taksit = P·r·(1+r)^n/((1+r)^n−1). "
-            "Oranlar bankaların kendi yayımladığı tablolardan okundu; tahsis "
-            "ücreti ve sigorta gibi ek maliyetler bu hesaba dahil değildir."
-        ),
+        method_note=method,
     )
 
 
@@ -309,101 +340,5 @@ def calculate_participation_yield(
     )
 
 
-# ── BDDK limit denetimi ───────────────────────────────────
-#
-# ⚠️ Konut LTV'si TEK BAŞINA enerji sınıfına bağlı DEĞİLDİR; konut değeri
-# bandıyla birlikte belirlenir. "A sınıfı → %90" kuralı 25 milyonluk bir
-# konutta bankayı gerçekte verdiğinin iki katı cömert gösterir. Aşağıdaki
-# matris Albaraka, Türkiye Finans, Vakıf Katılım ve Emlak Katılım'ın
-# yayımladığı tablolardan doğrulandı (bkz. `product_limits`).
-
-_KONUT_LTV: tuple[tuple[Decimal | None, str, dict[str, Decimal]], ...] = (
-    (
-        Decimal("5000000"),
-        "5 milyon TL ve altı",
-        {"A-B": Decimal("90"), "C": Decimal("80"), "DIGER": Decimal("70")},
-    ),
-    (
-        Decimal("7000000"),
-        "5–7 milyon TL",
-        {"A-B": Decimal("80"), "C": Decimal("70"), "DIGER": Decimal("60")},
-    ),
-    (
-        Decimal("10000000"),
-        "7–10 milyon TL",
-        {"A-B": Decimal("70"), "C": Decimal("60"), "DIGER": Decimal("50")},
-    ),
-    (
-        Decimal("20000000"),
-        "10–20 milyon TL",
-        {"A-B": Decimal("50"), "C": Decimal("40"), "DIGER": Decimal("30")},
-    ),
-    (
-        None,
-        "20 milyon TL üzeri",
-        {"A-B": Decimal("40"), "C": Decimal("30"), "DIGER": Decimal("20")},
-    ),
-)
-
-# Taşıt: kasko/satış değeri bandına göre oran ve azami vade.
-_TASIT_BANTLARI: tuple[tuple[Decimal | None, Decimal, int | None], ...] = (
-    (Decimal("400000"), Decimal("70"), 48),
-    (Decimal("800000"), Decimal("50"), 36),
-    (Decimal("1200000"), Decimal("30"), 24),
-    (Decimal("2000000"), Decimal("20"), 12),
-    (None, Decimal("0"), None),  # 2 milyon üzeri: finansman kullandırılmaz
-)
-
-_TASIT_DAYANAK = "BDDK 21.02.2022 tarihli 10099 sayılı Taşıt Kredileri Kararı"
-_KONUT_DAYANAK = "BDDK 24.08.2023 tarihli 10631 sayılı Konut Kredileri LTV Kararı"
-
-
-def _enerji_sinifi(ham: str | None) -> str:
-    """Serbest metinli enerji sınıfını matris anahtarına çevirir."""
-    if not ham:
-        return "DIGER"
-    temiz = ham.strip().upper().replace("İ", "I")
-    if temiz.startswith("A") or temiz.startswith("B"):
-        return "A-B"
-    if temiz.startswith("C"):
-        return "C"
-    return "DIGER"
-
-
-def check_bddk_limits(req: BDDKLimitCheckRequest) -> BDDKLimitCheckResponse:
-    """BDDK azami finansman oranı ve vadesini denetler."""
-    deger = req.asset_value_try
-
-    if req.asset_type == "tasit":
-        for ust, oran, vade in _TASIT_BANTLARI:
-            if ust is None or deger <= ust:
-                bant = f"{ust:,.0f} TL ve altı".replace(",", ".") if ust else "2 milyon TL üzeri"
-                azami = _kurusla(deger * oran / _YUZDE)
-                return BDDKLimitCheckResponse(
-                    asset_type="tasit",
-                    asset_value_try=deger,
-                    value_band_label=bant,
-                    max_financing_ratio_pct=oran,
-                    max_financing_amount_try=azami,
-                    max_allowed_term_months=vade,
-                    is_financing_allowed=oran > 0,
-                    legal_reference=_TASIT_DAYANAK,
-                )
-
-    sinif = _enerji_sinifi(req.energy_class)
-    for ust, etiket, oranlar in _KONUT_LTV:
-        if ust is None or deger <= ust:
-            oran = oranlar[sinif]
-            return BDDKLimitCheckResponse(
-                asset_type="konut",
-                asset_value_try=deger,
-                energy_class=sinif,
-                value_band_label=etiket,
-                max_financing_ratio_pct=oran,
-                max_financing_amount_try=_kurusla(deger * oran / _YUZDE),
-                max_allowed_term_months=120,
-                is_financing_allowed=oran > 0,
-                legal_reference=_KONUT_DAYANAK,
-            )
-
-    raise AssertionError("limit bandı bulunamadı")  # pragma: no cover
+# check_bddk_limits: `bddk_limits_service` üzerinden yeniden dışa aktarılır
+# (yukarıdaki import). Koda gömülü LTV matrisi YOKTUR.

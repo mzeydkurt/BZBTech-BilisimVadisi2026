@@ -271,6 +271,7 @@ export interface ProductRateOut {
   evidence_text: string | null;
   /** bank_site | tkbb_veripetegi — KATİP KAPI 4 */
   data_source: string;
+  is_binding: boolean;
 }
 
 export interface ProductLimitOut {
@@ -332,6 +333,8 @@ export interface ProductDetailOut extends ProductOut {
   source_url: string | null;
   source_fetched_at: string | null;
   variants: ProductOut[];
+  bddk_limits: BddkCanonicalLimitsOut | null;
+  bank_limit_deviations: BankLimitDeviationOut[];
 }
 
 export interface ProductQuery {
@@ -415,6 +418,38 @@ export interface FinancingResponse {
   financing: ProductOut[];
   no_data_products: string[];
   coverage_note: string;
+  bddk_limits: BddkCanonicalLimitsOut | null;
+  bddk_limits_by_family: Record<string, BddkCanonicalLimitsOut>;
+}
+
+export interface BddkBandOut {
+  label: string;
+  amount_min: string | null;
+  amount_max: string | null;
+  value_min: string | null;
+  value_max: string | null;
+  max_term_months: number | null;
+  max_ratio_pct: string | null;
+  rates: Record<string, string> | null;
+}
+
+export interface BddkCanonicalLimitsOut {
+  family: string;
+  kind: string;
+  decision_no: string;
+  decision_date: string;
+  legal_reference: string;
+  source_url: string;
+  bands: BddkBandOut[];
+  max_term_months: number | null;
+  second_home_reduction_pct: string | null;
+  second_home_note: string | null;
+  as_of: string | null;
+}
+
+export interface BankLimitDeviationOut {
+  limit_id: number;
+  message: string;
 }
 
 // ==================== Katılım Hesabı (KATİP KAPI 7) ====================
@@ -530,9 +565,10 @@ export interface ParticipationYieldResponse {
 }
 
 export interface BDDKLimitCheckRequest {
-  asset_type: "tasit" | "konut";
+  asset_type: "tasit" | "konut" | "ihtiyac";
   asset_value_try: string;
   energy_class?: string | null;
+  first_home?: boolean | null;
 }
 
 export interface BDDKLimitCheckResponse {
@@ -545,6 +581,7 @@ export interface BDDKLimitCheckResponse {
   max_allowed_term_months: number | null;
   is_financing_allowed: boolean;
   legal_reference: string;
+  first_home: boolean | null;
 }
 
 // ==================== Sohbet ====================

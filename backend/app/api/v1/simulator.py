@@ -42,5 +42,5 @@ def simulate_yield(
 
 @router.post("/bddk-check", response_model=BDDKLimitCheckResponse)
 def check_bddk(req: BDDKLimitCheckRequest) -> BDDKLimitCheckResponse:
-    """BDDK Taşıt/Konut LTV azami limitlerini denetler."""
+    """BDDK Taşıt/Konut/İhtiyaç azami limitlerini denetler."""
     return check_bddk_limits(req)

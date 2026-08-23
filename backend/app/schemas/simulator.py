@@ -134,15 +134,25 @@ class ParticipationYieldResponse(BaseModel):
 
 
 class BDDKLimitCheckRequest(BaseModel):
-    """BDDK taşıt/konut azami finansman denetim isteği."""
+    """BDDK taşıt/konut/ihtiyaç azami finansman denetim isteği."""
 
-    asset_type: str = Field(description="Varlık türü: tasit veya konut")
+    asset_type: str = Field(description="Varlık türü: tasit, konut veya ihtiyac")
     asset_value_try: Decimal = Field(
-        gt=0, description="Kasko/fatura değeri veya konut ekspertiz değeri"
+        gt=0,
+        description=(
+            "Kasko/fatura değeri, konut ekspertiz değeri veya ihtiyaç finansman tutarı"
+        ),
     )
     energy_class: str | None = Field(
         default=None,
-        description="Konut enerji sınıfı (A, B, C veya diğer). Konut için zorunludur.",
+        description="Konut enerji sınıfı (A, B, C veya diğer). Konut için önerilir.",
+    )
+    first_home: bool | None = Field(
+        default=None,
+        description=(
+            "Konut için: True = ilk konut (tam LTV), False = ikinci/sonraki konut "
+            "(oranlar %75 azaltılır). None = ilk konut varsayılır."
+        ),
     )
 
 
@@ -160,3 +170,7 @@ class BDDKLimitCheckResponse(BaseModel):
     )
     is_financing_allowed: bool = Field(description="Bu değerde finansman kullandırılabilir mi?")
     legal_reference: str
+    first_home: bool | None = Field(
+        default=None,
+        description="Konut denetiminde uygulanan ilk-ev / ikinci-ev varsayımı",
+    )

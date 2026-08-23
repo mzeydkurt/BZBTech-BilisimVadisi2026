@@ -33,6 +33,7 @@ const DEFAULT_BDDK_FORM: BddkFormState = {
   asset_type: "konut",
   asset_value_try: "5000000",
   energy_class: "A",
+  first_home: true,
 };
 
 export function SimulatorPage() {
@@ -108,6 +109,7 @@ export function SimulatorPage() {
                 asset_type: bddkForm.asset_type,
                 asset_value_try: bddkForm.asset_value_try,
                 energy_class: bddkForm.asset_type === "konut" ? bddkForm.energy_class : null,
+                first_home: bddkForm.asset_type === "konut" ? bddkForm.first_home : null,
               })
             }
           />
