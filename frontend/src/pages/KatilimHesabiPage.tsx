@@ -57,42 +57,74 @@ export function KatilimHesabiPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface p-4">
-        <div className="w-72">
-          <label htmlFor="katilim-rate-type" className="mb-1 block text-sm text-text-500">
-            Oran Türü
-          </label>
-          <Select value={rateType} onValueChange={(next) => setRateType(next as KatilimHesabiRateType)}>
-            <SelectTrigger id="katilim-rate-type">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {RATE_TYPE_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-72">
+            <label htmlFor="katilim-rate-type" className="mb-1 block text-sm text-text-500">
+              Oran Türü
+            </label>
+            <Select value={rateType} onValueChange={(next) => setRateType(next as KatilimHesabiRateType)}>
+              <SelectTrigger id="katilim-rate-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {RATE_TYPE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="w-64">
+            <label htmlFor="katilim-variant" className="mb-1 block text-sm text-text-500">
+              Ürün
+            </label>
+            <Select value={variant} onValueChange={(next) => setVariant(next as KatilimHesabiVariant)}>
+              <SelectTrigger id="katilim-variant">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {VARIANT_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
-        <div className="w-64">
-          <label htmlFor="katilim-variant" className="mb-1 block text-sm text-text-500">
-            Ürün
-          </label>
-          <Select value={variant} onValueChange={(next) => setVariant(next as KatilimHesabiVariant)}>
-            <SelectTrigger id="katilim-variant">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {VARIANT_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <dl className="grid gap-2 border-t border-border pt-3 text-xs text-text-500 sm:grid-cols-2">
+          <div>
+            <dt className="font-medium text-text-900">Dağıtılan kâr payı oranı (getiri)</dt>
+            <dd className="mt-0.5">
+              Bankanın dönem sonunda müşteriye açıkladığı yıllık getiri yüzdesi. Karşılaştırmada
+              “en yüksek getiri” bunu kullanır.
+            </dd>
+          </div>
+          <div>
+            <dt className="font-medium text-text-900">Kâr paylaşım oranı (bölüşüm)</dt>
+            <dd className="mt-0.5">
+              Havuz kârının müşteri / banka arasındaki payı (ör. %90 / %10). Getiri değil; sözleşme
+              oranıdır.
+            </dd>
+          </div>
+          <div>
+            <dt className="font-medium text-text-900">Standart katılma hesabı</dt>
+            <dd className="mt-0.5">
+              Vade sonunda kâr payı ödenen klasik katılma hesabı. Ara dönemde ödeme yoktur.
+            </dd>
+          </div>
+          <div>
+            <dt className="font-medium text-text-900">Ara ödemeli katılma hesabı</dt>
+            <dd className="mt-0.5">
+              Vade bitmeden belirli aralıklarla (aylık / 3 aylık vb.) kâr payı ödenen ürün. Her banka
+              sunmaz.
+            </dd>
+          </div>
+        </dl>
       </div>
 
       {isLoading && <LoadingState variant="table" />}
@@ -187,6 +219,7 @@ export function KatilimHesabiPage() {
               <RankedProductTable
                 items={mutation.data.ranked}
                 winnerId={mutation.data.winner?.product_id}
+                showFeeColumns={false}
               />
             ) : (
               <p className="text-sm text-text-500">{mutation.data.note}</p>

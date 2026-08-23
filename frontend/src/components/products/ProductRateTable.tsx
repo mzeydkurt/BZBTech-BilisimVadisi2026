@@ -38,7 +38,7 @@ export function ProductRateTable({ rates }: { rates: ProductRateOut[] }) {
           <TableRow className="hover:bg-neutral-50">
             <TableHead>Oran Türü</TableHead>
             <TableHead className="text-right">Oran</TableHead>
-            <TableHead className="text-right">Tahsis Ücreti</TableHead>
+            <TableHead className="text-right">Tahsis ücreti/oranı</TableHead>
             <TableHead className="text-right">Yıllık Maliyet</TableHead>
             <TableHead className="text-right">Vade</TableHead>
             <TableHead className="text-right">Tutar Aralığı</TableHead>

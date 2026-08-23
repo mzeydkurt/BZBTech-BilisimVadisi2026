@@ -7,7 +7,7 @@ import type { ComparableRateType, RankingCriterion } from "@/types/api";
  */
 export const CRITERIA_LABELS: Record<RankingCriterion, string> = {
   en_dusuk_kar_payi: "En düşük kâr payı oranı",
-  en_dusuk_masraf: "En düşük tahsis masrafı",
+  en_dusuk_masraf: "En düşük tahsis ücreti/oranı",
   en_dusuk_toplam_maliyet: "En düşük toplam maliyet",
   en_yuksek_getiri: "En yüksek getiri",
   en_yuksek_paylasim_orani: "En yüksek paylaşım oranı",

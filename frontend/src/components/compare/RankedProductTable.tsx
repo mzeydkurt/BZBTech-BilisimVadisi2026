@@ -14,7 +14,16 @@ import { formatMonths, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { RankedProduct } from "@/types/api";
 
-export function RankedProductTable({ items, winnerId }: { items: RankedProduct[]; winnerId?: number }) {
+export function RankedProductTable({
+  items,
+  winnerId,
+  showFeeColumns = true,
+}: {
+  items: RankedProduct[];
+  winnerId?: number;
+  /** Tahsis / yıllık maliyet — finansmanda evet, katılma hesabında hayır. */
+  showFeeColumns?: boolean;
+}) {
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-surface">
       <Table>
@@ -25,8 +34,12 @@ export function RankedProductTable({ items, winnerId }: { items: RankedProduct[]
             <TableHead className="w-40">Banka</TableHead>
             <TableHead className="w-32">Oran Türü</TableHead>
             <TableHead className="text-right">Oran</TableHead>
-            <TableHead className="text-right">Tahsis</TableHead>
-            <TableHead className="text-right">Yıllık Maliyet</TableHead>
+            {showFeeColumns && (
+              <>
+                <TableHead className="text-right">Tahsis ücreti/oranı</TableHead>
+                <TableHead className="text-right">Yıllık Maliyet</TableHead>
+              </>
+            )}
             <TableHead className="text-right">Vade</TableHead>
             <TableHead className="w-10" />
           </TableRow>
@@ -54,12 +67,16 @@ export function RankedProductTable({ items, winnerId }: { items: RankedProduct[]
                   format={formatPercent}
                 />
               </TableCell>
-              <TableCell className="tabular text-right text-text-500">
-                <MissingValue value={item.allocation_fee_pct} format={formatPercent} />
-              </TableCell>
-              <TableCell className="tabular text-right text-text-500">
-                <MissingValue value={item.annual_cost_pct} format={formatPercent} />
-              </TableCell>
+              {showFeeColumns && (
+                <>
+                  <TableCell className="tabular text-right text-text-500">
+                    <MissingValue value={item.allocation_fee_pct} format={formatPercent} />
+                  </TableCell>
+                  <TableCell className="tabular text-right text-text-500">
+                    <MissingValue value={item.annual_cost_pct} format={formatPercent} />
+                  </TableCell>
+                </>
+              )}
               <TableCell className="tabular text-right text-text-500">
                 {formatMonths(item.term_months)}
               </TableCell>
