@@ -60,6 +60,9 @@ def _set_sqlite_pragmas(dbapi_connection: Any, connection_record: Any) -> None:
         cursor.execute("PRAGMA foreign_keys=ON")
         # Eşzamanlı okuma/yazma sırasında kilit hatalarını azaltır.
         cursor.execute("PRAGMA journal_mode=WAL")
+        # API + urun-kazi aynı anda açıkken anında "database is locked"
+        # vermemek için yazmayı kısa süre beklet (ms).
+        cursor.execute("PRAGMA busy_timeout=30000")
     finally:
         cursor.close()
 

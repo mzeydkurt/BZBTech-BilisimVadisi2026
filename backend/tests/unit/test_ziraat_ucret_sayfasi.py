@@ -3,8 +3,8 @@
 Testler ağa çıkmaz: kaydedilmiş bir HTML fixture'ı doğrudan
 `_parse_fee_rate_page`'e verilir (§13). Fixture, canlı sayfadan (21 Ağustos
 2026) alınmış üç sekmenin (İhtiyaç/Konut/Taşıt Finansmanı) küçültülmüş bir
-örneğidir; hizmet ücreti satırı (Tahsis Ücreti) bilinçli olarak dahil edildi
-— eleneceğini doğrulamak için.
+örneğidir; Tahsis Ücreti ve Yıllık Maliyet Oranı satırları bilinçli olarak
+dahil edildi — kâr oranı satırına birleşeceklerini doğrulamak için.
 """
 
 from __future__ import annotations
@@ -27,15 +27,23 @@ def test_her_sekme_dogru_urun_turune_eslenir(html: str) -> None:
     assert turler == {"ihtiyac_finansmani", "konut_finansmani", "tasit_finansmani"}
 
 
-def test_hizmet_ucreti_satiri_atlanir(html: str) -> None:
-    """ "Tahsis Ücreti" satırı kâr oranı DEĞİLDİR; ürün yalnızca 1 oran taşımalı."""
+def test_tahsis_ucreti_kar_orani_satirina_eklenir(html: str) -> None:
+    """Tahsis Ücreti ayrı satır değil; eşleşen kâr oranı satırına yazılır."""
     urunler = _parse_fee_rate_page(html, FEE_RATE_URL)
     arsa = next(u for u in urunler if u.name == "Arsa Finansmanı")
     assert len(arsa.rates) == 1
     assert arsa.rates[0].profit_rate_pct == Decimal("4.99")
+    assert arsa.rates[0].allocation_fee_pct == Decimal("0.50")
     assert arsa.rates[0].term_months == 60
     assert arsa.rates[0].term_label == "1-60 ay vade"
     assert arsa.rates[0].rate_source == "html_table"
+    assert "Tahsis ücreti %0.50" in (arsa.rates[0].evidence_text or "")
+
+
+def test_yillik_maliyet_orani_kar_orani_satirina_eklenir(html: str) -> None:
+    konut = next(u for u in _parse_fee_rate_page(html, FEE_RATE_URL) if "Konut" in u.name)
+    assert konut.rates[0].annual_cost_pct == Decimal("42.15")
+    assert "Yıllık maliyet oranı %42.15" in (konut.rates[0].evidence_text or "")
 
 
 def test_panel_basligindaki_tutar_bandi_ayristirilir(html: str) -> None:

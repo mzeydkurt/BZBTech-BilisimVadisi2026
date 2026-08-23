@@ -568,7 +568,7 @@ class ProductRunner:
             yazilanlar.add(kimlik)
 
             var_mi = session.scalar(
-                select(ProductRate.id).where(
+                select(ProductRate).where(
                     ProductRate.product_id == product_id,
                     ProductRate.rate_source == raw.rate_source,
                     ProductRate.effective_date == gecerlilik,
@@ -576,6 +576,19 @@ class ProductRunner:
                 )
             )
             if var_mi is not None:
+                # Mevcut satırı atlama: tahsis / YMO sonradan eklendiyse doldur.
+                guncellendi = False
+                if raw.allocation_fee_pct is not None and var_mi.allocation_fee_pct is None:
+                    var_mi.allocation_fee_pct = raw.allocation_fee_pct
+                    guncellendi = True
+                if raw.monthly_cost_pct is not None and var_mi.monthly_cost_pct is None:
+                    var_mi.monthly_cost_pct = raw.monthly_cost_pct
+                    guncellendi = True
+                if raw.annual_cost_pct is not None and var_mi.annual_cost_pct is None:
+                    var_mi.annual_cost_pct = raw.annual_cost_pct
+                    guncellendi = True
+                if guncellendi:
+                    result.rates_updated += 1
                 continue
 
             # ⚠️ `confidence` elle verilmez: `ProductRate.__init__` onu

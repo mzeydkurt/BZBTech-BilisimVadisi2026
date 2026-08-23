@@ -202,6 +202,7 @@ class ProductRunResult:
     products_new: int = 0
     products_updated: int = 0
     rates_new: int = 0
+    rates_updated: int = 0
     limits_new: int = 0
     errors_count: int = 0
     errors: list[str] = field(default_factory=list)
