@@ -23,11 +23,21 @@ _VARIANT_ANAHTAR: dict[str, tuple[str, ...]] = {
     "is yeri": ("is yeri", "isyeri"),
     "isyeri": ("is yeri", "isyeri"),
     "ihtiyac": ("ihtiyac",),
+    "tuketici ihtiyac": ("ihtiyac",),
     "alisveris": ("ihtiyac", "alisveris"),
     "egitim": ("egitim",),
     "hac": ("hac", "umre"),
     "umre": ("hac", "umre"),
     "pratik finansman kart": ("pratik",),
+    "hepsiburada": ("hepsiburada", "alisveris"),
+    "waikiki": ("waikiki", "alisveris"),
+    "taksitlio": ("taksitlio", "alisveris"),
+    "trendyol": ("trendyol", "alisveris"),
+    "arac binek": ("arac", "tasit"),
+    "arac": ("arac", "tasit"),
+    "prefabrik": ("prefabrik",),
+    "yurt": ("yurt",),
+    "kira": ("kira",),
 }
 
 

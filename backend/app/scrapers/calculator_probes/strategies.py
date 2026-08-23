@@ -411,6 +411,11 @@ def _dunya_oran_oku(page: Any) -> Decimal | None:
 
 
 def probe_dunya_embedded(page: Any, hedef: ProbeTarget) -> list[ProbeReading]:
+    """Dünya gömülü hesaplayıcı — LoanInstallmentValues + LoanCheckRate JSON.
+
+    Tutar/vade ürün limitlerine göre seçilir (araçta 1.5M gibi BDDK dışı örnekler
+    RATE_ERROR verir). Oran DOM yerine API `rate` alanından okunur.
+    """
     page.goto(hedef.url, wait_until="domcontentloaded", timeout=90000)
     page.wait_for_timeout(3000)
     cerez_kapat(page)
@@ -423,35 +428,84 @@ def probe_dunya_embedded(page: Any, hedef: ProbeTarget) -> list[ProbeReading]:
     )
     sonuclar: list[ProbeReading] = []
     for opt in opts:
-        etiket = opt["t"]
-        if not _filtre(etiket, hedef.product_filter):
+        etiket = (opt.get("t") or "").strip()
+        kod = opt.get("v") or ""
+        if not etiket or not kod or not _filtre(etiket, hedef.product_filter):
             continue
-        page.locator("#loanSelect").select_option(value=opt["v"])
-        page.wait_for_timeout(800)
-        amount = Decimal("1500000")
-        ipucu = urun_tipi_ipucu(etiket)
-        term = bddk_ornek_vade(ipucu, amount)
-        try:
-            page.locator("#loanAmount").fill(str(int(amount)))
-            page.locator("#loanAmount").dispatch_event("input")
-            page.locator("#loanAmount").dispatch_event("change")
-        except Exception:
-            pass
-        page.evaluate(
-            """() => {
-            const r = document.getElementById('loanInstallmentRange');
-            if (!r) return;
-            r.value = r.max;
-            r.dispatchEvent(new Event('input', { bubbles: true }));
-            r.dispatchEvent(new Event('change', { bubbles: true }));
-        }"""
+        api = page.evaluate(
+            """(productCode) => {
+            const $ = window.jQuery;
+            if (!$ || !productCode) return null;
+            $('#loanSelect').val(productCode);
+            const form = $('#loanForm');
+            const token = $('input[name="__RequestVerificationToken"]', form).val();
+            const lang = document.documentElement.lang || 'tr';
+            const valuesUrl = ($('#LoanInstallmentValues').val() || '/LoanInstallmentValues')
+                + '?lang=' + lang;
+            const rateUrl = ($('#LoanCheckRate').val() || '/LoanCheckRate') + '?lang=' + lang;
+            let values = null;
+            $.ajax({
+                url: valuesUrl, type: 'POST', async: false,
+                data: { productCode, __RequestVerificationToken: token },
+                success: (d) => { values = d; }
+            });
+            if (!values || values.result !== 'SUCCESS') {
+                return { values, rate: null };
+            }
+            const amountNum = Number(values.defaultAmount) || 0;
+            const installment = values.maxInstallment || values.defaultInstallment || 12;
+            const productName = ($('#loanSelect option[value=\"' + productCode + '\"]').text() || '').trim();
+            const category = values.category || '';
+            const amountStr = Math.round(amountNum).toLocaleString('tr-TR');
+            let rateBody = null;
+            $.ajax({
+                url: rateUrl, type: 'POST', async: false,
+                data: {
+                    productName,
+                    productCode,
+                    productCategory: category,
+                    amount: amountStr,
+                    installmentCount: installment,
+                    userRate: '0,00',
+                    userSelected: false,
+                    __RequestVerificationToken: token,
+                },
+                success: (d) => { rateBody = d; }
+            });
+            return { values, rate: rateBody, amount: amountNum, installment, productName };
+        }""",
+            kod,
         )
-        page.wait_for_timeout(1500)
-        oran = _dunya_oran_oku(page)
-        metin = page.inner_text("body")
-        taksit, toplam = metinden_taksit_toplam(metin)
+        if not isinstance(api, dict):
+            continue
+        rate_body = api.get("rate") or {}
+        if rate_body.get("result") != "SUCCESS" or rate_body.get("rate") is None:
+            continue
+        try:
+            oran = Decimal(str(rate_body["rate"]))
+        except Exception:
+            continue
         if not oran_gecerli(oran):
             continue
+        amount_raw = api.get("amount")
+        try:
+            amount = Decimal(str(int(float(amount_raw))))
+        except Exception:
+            amount = Decimal("200000")
+        try:
+            term = int(api.get("installment") or 12)
+        except Exception:
+            term = 12
+        ipucu = urun_tipi_ipucu(etiket)
+        taksit = None
+        toplam = None
+        try:
+            if rate_body.get("monthlyInterest") is not None:
+                taksit = Decimal(str(rate_body["monthlyInterest"]))
+            if rate_body.get("totalPayment") is not None:
+                toplam = Decimal(str(rate_body["totalPayment"]))
+        except Exception:
+            pass
         sonuclar.append(
             ProbeReading(
                 bank_code=hedef.bank_code,
@@ -463,6 +517,7 @@ def probe_dunya_embedded(page: Any, hedef: ProbeTarget) -> list[ProbeReading]:
                 monthly_installment=taksit,
                 total_repayment=toplam,
                 product_type_hint=ipucu,
+                raw_meta={"product_code": kod, "api": api.get("values")},
             )
         )
         bekle()
