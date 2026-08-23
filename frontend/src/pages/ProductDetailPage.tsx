@@ -2,6 +2,7 @@ import { AlertTriangle, ExternalLink } from "lucide-react";
 import { useParams } from "react-router-dom";
 
 import { taxonomyLabel } from "@/lib/taxonomy";
+import { BddkLimitsBanner } from "@/components/financing/BddkLimitsBanner";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { ProductLimitTable } from "@/components/products/ProductLimitTable";
@@ -20,6 +21,19 @@ export function ProductDetailPage() {
   if (isError) return <ErrorState error={error} onRetry={() => void refetch()} />;
   if (!product) return null;
 
+  const bindingRates = product.rates.filter(
+    (r) =>
+      r.rate_source !== "calculator_api" &&
+      r.rate_source !== "calculator_playwright" &&
+      r.rate_source !== "js_default",
+  );
+  const probeRates = product.rates.filter(
+    (r) =>
+      r.rate_source === "calculator_api" ||
+      r.rate_source === "calculator_playwright" ||
+      r.rate_source === "payment_plan_derived",
+  );
+
   return (
     <div className="space-y-5">
       <div>
@@ -31,8 +45,12 @@ export function ProductDetailPage() {
               {taxonomyLabel(product.product_type)}
             </span>
           )}
-          {product.description && <span>{product.description}</span>}
         </div>
+        {product.description && (
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-text-900">
+            {product.description}
+          </p>
+        )}
       </div>
 
       {!product.is_binding && (
@@ -47,19 +65,45 @@ export function ProductDetailPage() {
         </div>
       )}
 
+      <BddkLimitsBanner limits={product.bddk_limits} />
+
       <section>
         <h2 className="text-sm font-semibold text-text-900">Oranlar</h2>
         <div className="mt-2">
-          <ProductRateTable rates={product.rates} />
+          <ProductRateTable rates={bindingRates.length > 0 ? bindingRates : product.rates} />
         </div>
       </section>
 
-      <section>
-        <h2 className="text-sm font-semibold text-text-900">BDDK Limitleri</h2>
-        <div className="mt-2">
-          <ProductLimitTable limits={product.limits} />
-        </div>
-      </section>
+      {probeRates.length > 0 && bindingRates.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-text-900">
+            Hesaplayıcı / türetim tahmini
+          </h2>
+          <p className="mt-1 text-xs text-text-500">
+            Bankanın hesaplama aracından veya ödeme planından türetilmiş değerler —
+            bağlayıcı teklif değildir.
+          </p>
+          <div className="mt-2">
+            <ProductRateTable rates={probeRates} />
+          </div>
+        </section>
+      )}
+
+      {product.limits.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-text-900">Banka LTV / vade matrisi</h2>
+          {product.bank_limit_deviations.length > 0 && (
+            <ul className="mt-2 space-y-1 rounded-lg border border-warn-600/40 bg-surface px-3 py-2 text-xs text-warn-600">
+              {product.bank_limit_deviations.map((d) => (
+                <li key={d.limit_id}>{d.message}</li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-2">
+            <ProductLimitTable limits={product.limits} />
+          </div>
+        </section>
+      )}
 
       {product.variants.length > 0 && (
         <section>
@@ -79,7 +123,7 @@ export function ProductDetailPage() {
             {product.variants.map((variant) => (
               <TabsContent key={variant.id} value={String(variant.id)} className="space-y-4">
                 <ProductRateTable rates={variant.rates} />
-                <ProductLimitTable limits={variant.limits} />
+                {variant.limits.length > 0 && <ProductLimitTable limits={variant.limits} />}
               </TabsContent>
             ))}
           </Tabs>

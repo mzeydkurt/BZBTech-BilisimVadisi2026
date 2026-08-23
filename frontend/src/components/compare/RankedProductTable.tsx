@@ -25,15 +25,16 @@ export function RankedProductTable({ items, winnerId }: { items: RankedProduct[]
             <TableHead className="w-40">Banka</TableHead>
             <TableHead className="w-32">Oran Türü</TableHead>
             <TableHead className="text-right">Oran</TableHead>
+            <TableHead className="text-right">Tahsis</TableHead>
+            <TableHead className="text-right">Yıllık Maliyet</TableHead>
             <TableHead className="text-right">Vade</TableHead>
             <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
         <TableBody>
           {items.map((item, index) => (
+            // Aynı ürün varyantı birden çok satırda görünebilir; product_id tek başına eşsiz değil.
             <TableRow
-              // ⚠️ Aynı ürün varyantı birden çok satırda görünebilir (ör. farklı
-              // vadelerde ayrı sıralanmış); `product_id` tek başına eşsiz DEĞİLDİR.
               key={`${item.product_id}-${item.rank ?? index}`}
               className={cn(item.product_id === winnerId && "bg-teal-100/40")}
             >
@@ -52,6 +53,12 @@ export function RankedProductTable({ items, winnerId }: { items: RankedProduct[]
                   }
                   format={formatPercent}
                 />
+              </TableCell>
+              <TableCell className="tabular text-right text-text-500">
+                <MissingValue value={item.allocation_fee_pct} format={formatPercent} />
+              </TableCell>
+              <TableCell className="tabular text-right text-text-500">
+                <MissingValue value={item.annual_cost_pct} format={formatPercent} />
               </TableCell>
               <TableCell className="tabular text-right text-text-500">
                 {formatMonths(item.term_months)}

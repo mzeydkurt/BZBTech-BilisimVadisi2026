@@ -4,6 +4,7 @@ import {
   FinancingFilters,
   type FinancingFilterState,
 } from "@/components/financing/FinancingFilters";
+import { BddkLimitsPanel } from "@/components/financing/BddkLimitsBanner";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
@@ -11,23 +12,52 @@ import { ProductTable } from "@/components/products/ProductTable";
 import { useBanks } from "@/hooks/useBanks";
 import { useFinancing } from "@/hooks/useFinancing";
 
+/** product_type → BDDK aile anahtarı */
+function familyFromProductType(productType?: string): string | null {
+  if (!productType) return null;
+  if (productType.includes("ihtiyac") || productType.includes("alisveris") || productType.includes("egitim")) {
+    return "ihtiyac";
+  }
+  if (
+    productType.includes("konut") ||
+    productType.includes("gayrimenkul") ||
+    productType.includes("arsa") ||
+    productType.includes("isyeri")
+  ) {
+    return "konut";
+  }
+  if (productType.includes("tasit") || productType.includes("arac") || productType.includes("marka")) {
+    return "tasit";
+  }
+  return null;
+}
+
 export function FinancingPage() {
   const [filters, setFilters] = useState<FinancingFilterState>({});
 
   const { data: banks } = useBanks();
   const { data, isLoading, isError, error, refetch } = useFinancing(filters);
 
+  const activeFamily = familyFromProductType(filters.product_type);
+
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-semibold text-text-900">Finansmanlar</h1>
         <p className="mt-1 text-sm text-text-500">
-          Konut, taşıt, ihtiyaç, arsa ve diğer finansman ürünleri — kâr payı oranı ve
-          limit bilgisiyle. Katılma hesabı ürünleri bu sekmede yer almaz.
+          Konut, taşıt, ihtiyaç ve diğer finansman ürünleri — kâr payı ve limit. Katılma
+          hesabı bu sekmede yok.
         </p>
       </div>
 
       <FinancingFilters banks={banks ?? []} value={filters} onChange={setFilters} />
+
+      {data && Object.keys(data.bddk_limits_by_family).length > 0 && (
+        <BddkLimitsPanel
+          byFamily={data.bddk_limits_by_family}
+          activeFamily={activeFamily}
+        />
+      )}
 
       {isLoading && <LoadingState variant="table" />}
 
@@ -43,16 +73,14 @@ export function FinancingPage() {
 
       {!isLoading && !isError && data && data.financing.length > 0 && (
         <>
-          <p className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-text-500">
-            {data.coverage_note}
-          </p>
+          <p className="text-sm text-text-500">{data.coverage_note}</p>
 
           <ProductTable products={data.financing} />
 
           {data.no_data_products.length > 0 && (
             <details className="rounded-lg border border-border bg-surface p-4 text-sm">
               <summary className="cursor-pointer font-medium text-text-900">
-                Ne oran ne limit bilgisi yayımlanan {data.no_data_products.length} ürün
+                Oran/limit yayımlanmayan {data.no_data_products.length} ürün
               </summary>
               <ul className="mt-2 list-inside list-disc space-y-1 text-text-500">
                 {data.no_data_products.map((item) => (

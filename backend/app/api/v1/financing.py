@@ -21,6 +21,7 @@ from app.db.models.bank import Bank
 from app.db.models.product import Product
 from app.schemas.financing import FinancingResponse
 from app.schemas.product import ProductOut
+from app.services.bddk_api import all_family_bddk_outs, bddk_out_for_product_type
 
 router = APIRouter(prefix="/financing", tags=["finansmanlar"])
 
@@ -85,14 +86,26 @@ def list_financing(
             banka_adi = urun.bank.name if urun.bank else "Bilinmeyen banka"
             no_data_products.append(f"{banka_adi} — {urun.name}")
 
+    tablo_sayisi = sum(1 for u in urunler if any(r.rate_source == "html_table" for r in u.rates))
+    probe_sayisi = sum(
+        1
+        for u in urunler
+        if any(
+            r.rate_source in ("calculator_api", "calculator_playwright", "payment_plan_derived")
+            for r in u.rates
+        )
+    )
+    oranli = sum(1 for u in urunler if u.rates)
+    bos = len(no_data_products)
+
     return FinancingResponse(
         financing=financing,
         no_data_products=no_data_products,
         coverage_note=(
-            "Katılım bankalarının çoğu finansman kâr payı oranını kamuya açık "
-            "yayınlamamaktadır. Sistem, veri olmayan yerde uydurmak yerine mevcut "
-            "olanı gösterir ve eksik olanı açıkça işaretler. Karz-ı Hasen ve Eğitim "
-            'Finansmanı gibi vade farksız ürünlerde oran sütunu "Kâr Payı Alınmaz" '
-            "olarak gösterilir, %0 ile karıştırılmaz."
+            f"{oranli} üründe oran (tablo {tablo_sayisi} · hesaplayıcı {probe_sayisi})"
+            + (f" · {bos} üründe veri yok" if bos else "")
+            + ". Eksik oran uydurulmaz."
         ),
+        bddk_limits=bddk_out_for_product_type(product_type) if product_type else None,
+        bddk_limits_by_family=all_family_bddk_outs(),
     )

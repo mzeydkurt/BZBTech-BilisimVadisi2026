@@ -18,7 +18,7 @@ const EXTRACTION_METHOD_LABELS: Record<string, string> = {
 
 export function ProductLimitTable({ limits }: { limits: ProductLimitOut[] }) {
   if (limits.length === 0) {
-    return <p className="text-sm text-text-500">Bu ürün için BDDK limit kaydı bulunmuyor.</p>;
+    return null;
   }
 
   return (
