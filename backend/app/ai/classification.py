@@ -27,6 +27,7 @@ eder ve tüm çalıştırmayı düşürürdü.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Final
@@ -38,6 +39,7 @@ from app.ai.cache import cached_generate
 from app.ai.fields import MAX_PROMPT_CHARS
 from app.ai.prompts import load_prompt
 from app.ai.providers.base import LLMProvider, LLMProviderError
+from app.core.normalization.text import ascii_fold_tr
 from app.core.taxonomy import AUDIENCES, BENEFITS, PRODUCT_TYPES, SECTORS
 from app.db.models import Campaign, CampaignCategory
 from app.logging_config import get_logger
@@ -64,9 +66,21 @@ AXIS_VOCAB: Final[dict[str, tuple[str, ...]]] = {
 
 # ⚠️ `sector='genel'` bir etiket DEĞİL, etiketlenememenin adıdır. Bu değeri
 # taşıyan eksen boş sayılır ve modele sorulur.
+# `herkes` de öyle: model boş kitleyi buna dolduruyor; gold'da varsayılan
+# `mevcut_musteri`. Kanıtsız `herkes` yer tutucudur.
 PLACEHOLDER_VALUES: Final[dict[str, frozenset[str]]] = {
     "sector": frozenset({"genel"}),
+    "audience": frozenset({"herkes"}),
 }
+
+# Kuralın sinyal yokken yazdığı varsayılan. Güveni 0.30 olduğu için eski
+# kod bunu "zayıf" sayıp modele tekrar soruyordu; model `herkes` yazıyordu.
+FALLBACK_AUDIENCE: Final[str] = "mevcut_musteri"
+
+# `herkes` ancak metin açıkça herkese hitap ediyorsa kabul.
+_HERKES_KANIT_RE: Final[re.Pattern[str]] = re.compile(
+    r"herkese\s+acik|tum\s+musteriler|herkes\s+icin",
+)
 
 
 @dataclass
@@ -126,14 +140,28 @@ def missing_axes(mevcut: dict[str, list[CampaignCategory]]) -> list[str]:
             istenen.append(eksen)
             continue
 
+        # ⚠️ Varsayılan `mevcut_musteri` zayıf görünür ama gold'un çoğunluğu
+        # budur. Tekrar sormak modeli `herkes` yazmaya iter.
+        if eksen == "audience" and any(e.value == FALLBACK_AUDIENCE for e in anlamli):
+            continue
+
         if all(e.confidence < WEAK_CONFIDENCE for e in anlamli):
             istenen.append(eksen)
 
     return istenen
 
 
+def _herkes_izinli(kanit: str, clean_text: str) -> bool:
+    """`herkes` yalnızca metin açıkça herkese hitap ediyorsa kabul."""
+    katman = ascii_fold_tr(f"{kanit} {clean_text}")
+    return _HERKES_KANIT_RE.search(katman) is not None
+
+
 def _validate_labels(
-    parsed: dict[str, Any] | None, istenen: list[str]
+    parsed: dict[str, Any] | None,
+    istenen: list[str],
+    *,
+    clean_text: str = "",
 ) -> tuple[dict[str, list[tuple[str, str]]], list[tuple[str, str]]]:
     """Model yanıtını kontrollü sözlüğe karşı doğrular.
 
@@ -161,6 +189,9 @@ def _validate_labels(
                 continue
             if deger not in sozluk:
                 # ⚠️ Sözlük dışı etiket veritabanı kısıtını ihlal eder.
+                red.append((eksen, deger))
+                continue
+            if eksen == "audience" and deger == "herkes" and not _herkes_izinli(kanit, clean_text):
                 red.append((eksen, deger))
                 continue
             kabul.setdefault(eksen, []).append((deger, kanit))
@@ -253,7 +284,7 @@ async def complete_classification(
         )
         return ClassificationResult(requested_axes=istenen, skipped_reason=type(exc).__name__)
 
-    kabul, red = _validate_labels(yanit.parsed, istenen)
+    kabul, red = _validate_labels(yanit.parsed, istenen, clean_text=clean_text)
     if red:
         logger.warning("sozluk_disi_etiket_reddedildi", kampanya_id=campaign.id, etiketler=red)
 

@@ -2,14 +2,14 @@
   "mode": "rule_only",
   "gold_campaigns": 66,
   "gold_annotations": 1452,
-  "micro_f1": 0.8268,
-  "macro_f1": 0.7998,
-  "hallucination_rate": 0.169,
-  "correct_silence_rate": 0.9165,
+  "micro_f1": 0.8288,
+  "macro_f1": 0.8008,
+  "hallucination_rate": 0.167,
+  "correct_silence_rate": 0.9174,
   "overall": {
-    "tp": 413,
-    "fp": 84,
-    "fn": 89,
+    "tp": 414,
+    "fp": 83,
+    "fn": 88,
     "tn": 922
   },
   "by_field": {
@@ -128,35 +128,35 @@
       "tn": 6
     },
     "target_customer": {
-      "tp": 52,
-      "fp": 14,
-      "fn": 14,
-      "tn": 0
-    },
-    "product_type": {
-      "tp": 52,
-      "fp": 13,
-      "fn": 14,
-      "tn": 0
-    },
-    "sector": {
       "tp": 55,
       "fp": 11,
       "fn": 11,
+      "tn": 0
+    },
+    "product_type": {
+      "tp": 51,
+      "fp": 14,
+      "fn": 15,
+      "tn": 0
+    },
+    "sector": {
+      "tp": 54,
+      "fp": 12,
+      "fn": 12,
       "tn": 0
     }
   },
   "by_method": {
     "blind": {
-      "tp": 152,
-      "fp": 31,
-      "fn": 28,
+      "tp": 151,
+      "fp": 32,
+      "fn": 29,
       "tn": 311
     },
     "assisted": {
-      "tp": 261,
-      "fp": 53,
-      "fn": 61,
+      "tp": 263,
+      "fp": 51,
+      "fn": 59,
       "tn": 611
     }
   },
@@ -168,39 +168,39 @@
       "tn": 192
     },
     "emlak_katilim": {
-      "tp": 79,
-      "fp": 5,
-      "fn": 6,
+      "tp": 78,
+      "fp": 6,
+      "fn": 7,
       "tn": 156
     },
     "vakif_katilim": {
-      "tp": 16,
-      "fp": 5,
-      "fn": 10,
+      "tp": 17,
+      "fp": 4,
+      "fn": 9,
       "tn": 37
     },
     "hayat_finans": {
-      "tp": 38,
-      "fp": 7,
-      "fn": 11,
+      "tp": 36,
+      "fp": 9,
+      "fn": 13,
       "tn": 104
     },
     "kuveyt_turk": {
-      "tp": 77,
-      "fp": 26,
-      "fn": 21,
+      "tp": 80,
+      "fp": 23,
+      "fn": 18,
       "tn": 159
     },
     "albaraka": {
-      "tp": 29,
-      "fp": 6,
-      "fn": 7,
+      "tp": 28,
+      "fp": 7,
+      "fn": 8,
       "tn": 73
     },
     "dunya_katilim": {
-      "tp": 31,
-      "fp": 19,
-      "fn": 11,
+      "tp": 32,
+      "fp": 18,
+      "fn": 10,
       "tn": 103
     },
     "tom_bank": {

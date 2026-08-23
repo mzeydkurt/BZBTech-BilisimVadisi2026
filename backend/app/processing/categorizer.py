@@ -38,6 +38,7 @@ from app.core.normalization.text import ascii_fold_tr, lower_tr, normalize_text
 from app.core.taxonomy import (
     AMBIGUOUS_MERCHANTS,
     AUDIENCE_KEYWORDS,
+    AUDIENCE_URL_PATHS,
     BANK_CATEGORY_PRODUCT_TYPE,
     BANK_CATEGORY_SECTOR,
     BENEFIT_KEYWORDS,
@@ -127,6 +128,30 @@ def _kelime_var(hedef_katlanmis: str, aranan: str) -> bool:
         return re.search(rf"(?<![a-z0-9]){kalip}(?![a-z0-9])", hedef_katlanmis) is not None
     # Sol sınır: dize başı veya harf/rakam olmayan bir karakter.
     return re.search(rf"(?<![a-z0-9]){kalip}", hedef_katlanmis) is not None
+
+
+def _audience_from_url(source_url: str) -> list[CategoryLabel]:
+    """Adres klasöründen hedef kitle üretir.
+
+    ⚠️ Gövdeye bakılmaz. 'Müşteri Ol' düğmesi her sayfada var; klasör adı
+    (`musteri-ol-kampanyalari`) listenin kendisidir.
+    """
+    if not source_url:
+        return []
+    path = urlsplit(source_url).path.lower()
+    for ham, deger in AUDIENCE_URL_PATHS.items():
+        parca = _fold(ham)
+        if parca and parca in _fold(path):
+            return [
+                CategoryLabel(
+                    axis="audience",
+                    value=deger,
+                    source="url",
+                    confidence=SOURCE_CONFIDENCE["url"],
+                    evidence=_kirp(ham),
+                )
+            ]
+    return []
 
 
 def _url_kategorisi(source_url: str) -> str | None:
@@ -375,6 +400,7 @@ def categorize(
 
     # 1-2. Bankanın kendi verisi (url + bank_category)
     etiketler += _banka_etiketinden(bank_category, source_url)
+    etiketler += _audience_from_url(source_url)
 
     # 3. Marka sözlüğü — yalnızca başlık ve açıklamada aranır; koşul metninde
     #    geçen "kampanya dışıdır" cümleleri yanlış sektör üretiyordu.

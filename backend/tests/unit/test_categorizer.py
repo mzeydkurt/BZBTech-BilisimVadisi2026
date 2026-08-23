@@ -270,6 +270,34 @@ class TestKurumsalKobiSektor:
         )
         assert "kobi" not in _etiket(etiketler, "audience")
 
+    def test_url_musteri_ol_klasoru_yeni_musteri(self) -> None:
+        etiketler = categorize(
+            title="Mobil Müşterilerine Mil",
+            source_url=(
+                "https://www.kuveytturk.com.tr/kampanyalar/kendim-icin/"
+                "musteri-ol-kampanyalari/yeni-mobil"
+            ),
+        )
+        assert "yeni_musteri" in _etiket(etiketler, "audience")
+
+    def test_url_kobi_klasoru_kobi(self) -> None:
+        etiketler = categorize(
+            title="İhracat Avantajı",
+            source_url=(
+                "https://www.kuveytturk.com.tr/kampanyalar/isim-icin/"
+                "kobi-kampanyalari/ihracat"
+            ),
+        )
+        assert "kobi" in _etiket(etiketler, "audience")
+
+    def test_musteri_ol_dugmesi_url_degilse_yeni_degil(self) -> None:
+        etiketler = categorize(
+            title="Market Kampanyası",
+            body_text="Müşteri Ol ve 4 taksit fırsatını kaçırma.",
+            source_url="https://www.emlakkatilim.com.tr/tr/bireysel/kampanyalar/kampanya/market",
+        )
+        assert "yeni_musteri" not in _etiket(etiketler, "audience")
+
 
 class TestSegmentCikarimi:
     """Campaign.segment — audience ekseni değil."""

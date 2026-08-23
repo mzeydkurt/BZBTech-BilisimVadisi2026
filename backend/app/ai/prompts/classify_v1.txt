@@ -11,6 +11,13 @@ Yalnızca aşağıdaki kontrollü sözlükten değer seç. Sözlükte karşılı
 olmayan bir etiket UYDURMA — uygun değer yoksa o eksen için boş liste
 döndür.
 
+audience için:
+- Metinde kitle belirtilmemişse `herkes` YAZMA; boş liste döndür.
+- `herkes` yalnızca “herkese açık”, “tüm müşteriler” veya “herkes için”
+  açıkça geçiyorsa.
+- `yeni_musteri` / `emekli` / `ogrenci` / `kobi` yalnızca metinde o kitle
+  geçiyorsa. Varsayılan mevcut müşteriyi değiştirme.
+
 product_type: {product_type_sozlugu}
 
 sector: {sector_sozlugu}

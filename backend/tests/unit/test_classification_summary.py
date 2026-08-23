@@ -104,6 +104,15 @@ class TestEksenSecimi:
         }
         assert "sector" not in missing_axes(mevcut)
 
+    def test_varsayilan_mevcut_musteri_tekrar_sorulmaz(self) -> None:
+        """Kuralın 0.30 `mevcut_musteri` varsayılanı modele `herkes` yazdırıyordu."""
+        mevcut = {"audience": [_etiket("audience", "mevcut_musteri", "0.300")]}
+        assert "audience" not in missing_axes(mevcut)
+
+    def test_herkes_yer_tutucu_sayilir(self) -> None:
+        mevcut = {"audience": [_etiket("audience", "herkes", "0.700", "llm")]}
+        assert "audience" in missing_axes(mevcut)
+
 
 @pytest.fixture
 def kampanya(db_session: Session) -> Campaign:
@@ -164,6 +173,26 @@ class TestSiniflandirma:
 
         assert ("audience", "emekliler_ve_yaslilar") in sonuc.rejected_labels
         assert all(k.value != "emekliler_ve_yaslilar" for k in sonuc.added)
+
+    async def test_kanitsiz_herkes_reddedilir(self, db_session: Session, kampanya: Campaign) -> None:
+        saglayici = SabitYanitProvider(
+            {"audience": [{"value": "herkes", "evidence": "kampanya"}]}
+        )
+        sonuc = await complete_classification(
+            saglayici, db_session, kampanya, KAYNAK, prompt_version=PROMPT_VERSION
+        )
+        assert ("audience", "herkes") in sonuc.rejected_labels
+        assert all(k.value != "herkes" for k in sonuc.added)
+
+    async def test_acik_herkes_kabul(self, db_session: Session, kampanya: Campaign) -> None:
+        metin = "Kampanya herkese açıktır. Tüm müşteriler yararlanabilir."
+        saglayici = SabitYanitProvider(
+            {"audience": [{"value": "herkes", "evidence": "herkese açıktır"}]}
+        )
+        sonuc = await complete_classification(
+            saglayici, db_session, kampanya, metin, prompt_version=PROMPT_VERSION
+        )
+        assert ("audience", "herkes") in {(k.axis, k.value) for k in sonuc.added}
 
     async def test_guven_bir_etiketin_uzerine_yazilmaz(
         self, db_session: Session, kampanya: Campaign

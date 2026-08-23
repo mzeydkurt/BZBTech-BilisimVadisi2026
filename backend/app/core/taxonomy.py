@@ -799,6 +799,8 @@ AUDIENCE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
     # Belirsiz kalanlar `categorizer.OWNERSHIP_RE` varsayılanına bırakılır.
     "yeni_musteri": (
         "yeni müşteri",
+        "yeni müşterilerine",
+        "yeni mobil müşteri",
         "ilk kez müşteri",
         "müşterimiz olan",
         "arkadaşını getir",
@@ -815,7 +817,7 @@ AUDIENCE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
     ),
     "maas_musterisi": ("maaş müşteri", "maaşını bankamız", "maaş alan"),
     "emekli": ("emekli", "emeklilik maaş", "emekli müşteri", "emeklilerimize"),
-    "ogrenci": ("öğrenci", "üniversiteli"),
+    "ogrenci": ("öğrenci", "üniversiteli", "kampüs", "kampuse"),
     "genc": ("genç", "18-25"),
     "kamu_calisani": ("kamu çalışan", "memur", "kamu personel"),
     "banka_calisani": ("banka çalışan", "personelimiz"),
@@ -835,6 +837,7 @@ AUDIENCE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
         "kobi müşteri",
         "küçük işletme",
         "esnaf ve kobi",
+        "net ihracatçı",
     ),
     "ticari_kurumsal": (
         "ticari müşteri",
@@ -861,6 +864,17 @@ SEGMENTS: Final[tuple[str, ...]] = (
     "ticari",
     "tarim",
 )
+
+# Adres yolu / klasör → hedef kitle. Gövde kelimesi değil: "Müşteri Ol"
+# düğmesi her sayfada var, `musteri-ol-kampanyalari` klasörü yalnızca
+# yeni müşteri listesinde. Çıplak `/kobi/` segment'tir, buraya konmaz.
+AUDIENCE_URL_PATHS: Final[dict[str, str]] = {
+    "musteri-ol-kampanyalari": "yeni_musteri",
+    "musteri-ol": "yeni_musteri",
+    "kobi-kampanyalari": "kobi",
+    "kampuse": "ogrenci",
+    "kampus": "ogrenci",
+}
 
 # Adres yolu parçası → segment (Kuveyt / Vakıf kalıbı).
 SEGMENT_URL_PATHS: Final[dict[str, str]] = {
