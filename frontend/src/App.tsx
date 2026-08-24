@@ -4,6 +4,7 @@ import { Route, BrowserRouter as Router, Routes } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CampaignsPage } from "@/pages/CampaignsPage";
+import { CampaignDetailPage } from "@/pages/CampaignDetailPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { ComparePage } from "@/pages/ComparePage";
 import { ExtractPage } from "@/pages/ExtractPage";
@@ -34,6 +35,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<OverviewPage />} />
               <Route path="/campaigns" element={<CampaignsPage />} />
+              <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
               <Route path="/financing" element={<FinancingPage />} />
               <Route path="/katilim-hesabi" element={<KatilimHesabiPage />} />
               <Route path="/products/:id" element={<ProductDetailPage />} />

@@ -55,19 +55,27 @@ export function OverviewPage() {
           value={stats.total_banks}
           icon={Building2}
           hint={`${formatNumber(stats.banks_with_data)} veri kaynağı zengin`}
+          info="Sistemde tanımlı katılım bankası sayısı. Alt satır, kamuya açık verisi zengin olan bankaları gösterir."
         />
-        <StatCard label="Toplam Kampanya" value={stats.total_campaigns} icon={LayoutList} />
+        <StatCard
+          label="Toplam Kampanya"
+          value={stats.total_campaigns}
+          icon={LayoutList}
+          info="Tüm bankalardan toplanmış kampanya kayıtlarının toplamı (aktif, yaklaşan, bitmiş ve tarihsiz)."
+        />
         <StatCard
           label="Aktif Kampanya"
           value={stats.active_campaigns}
           icon={Activity}
           tone="active"
+          info="Şu an yürürlükte olan kampanyalar: başlangıç tarihi geçmiş, bitiş tarihi henüz gelmemiş."
         />
         <StatCard
           label="Yaklaşan Kampanya"
           value={stats.upcoming_campaigns}
           icon={Calendar}
           tone="upcoming"
+          info="Başlangıç tarihi henüz gelmemiş kampanyalar. Yakında yürürlüğe girecekler."
         />
         <StatCard
           label="Tarihsiz"
@@ -75,19 +83,33 @@ export function OverviewPage() {
           icon={TimerOff}
           hint="Bitiş tarihi olmayan"
           tone="unknown"
+          info="Kaynak sayfada başlangıç veya bitiş tarihi bulunamayan kampanyalar. Durum kesin hesaplanamaz."
         />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard label="Ürün" value={stats.products_total} />
-        <StatCard label="Oran Kaydı" value={stats.rates_total} />
-        <StatCard label="Limit Kaydı" value={stats.limits_total} />
+        <StatCard
+          label="Ürün"
+          value={stats.products_total}
+          info="Bankaların yayımladığı finansman, katılma hesabı ve benzeri ürün kayıtlarının sayısı."
+        />
+        <StatCard
+          label="Oran Kaydı"
+          value={stats.rates_total}
+          info="Ürünlere bağlı kâr payı / getiri satırları. Aynı ürünün farklı vade veya para birimi için ayrı oranları olabilir; bu yüzden ürün sayısından fazla olabilir."
+        />
+        <StatCard
+          label="Limit Kaydı"
+          value={stats.limits_total}
+          info="Ürünlere bağlı finansman limitleri (ör. azami tutar, LTV). Bir ürünün birden fazla limit satırı olabilir."
+        />
         <StatCard
           label="Yeşil Finans"
           value={stats.green_campaigns_count}
           icon={Leaf}
           hint={`Toplamın %${greenPct.toFixed(1)}'i`}
           tone="active"
+          info="Çevre / sürdürülebilirlik / yeşil finans temalı olarak sınıflandırılmış kampanya sayısı."
         />
         <Link
           to="/campaigns?status=active"
@@ -99,6 +121,7 @@ export function OverviewPage() {
             icon={Clock}
             hint="Aktif · ≤14 gün · katalogda aç"
             tone="upcoming"
+            info="Aktif kampanyalar arasında bitiş tarihi 14 gün veya daha az kalanlar. Tıklayınca kampanya listesine gider."
           />
         </Link>
       </div>

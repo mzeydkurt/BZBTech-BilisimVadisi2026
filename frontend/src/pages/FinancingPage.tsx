@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   FinancingFilters,
@@ -36,9 +36,25 @@ export function FinancingPage() {
   const [filters, setFilters] = useState<FinancingFilterState>({});
 
   const { data: banks } = useBanks();
-  const { data, isLoading, isError, error, refetch } = useFinancing(filters);
+  const { data, isLoading, isError, error, refetch } = useFinancing({
+    ...filters,
+    limit: 200,
+  });
 
   const activeFamily = familyFromProductType(filters.product_type);
+
+  // Ana tabloda yalnızca oranı olan ürünler — limitsiz/oransızlar aşağıda
+  // ayrı listelenir; aynı satırın iki kez görünmesi önlenir.
+  const withRates = useMemo(
+    () => (data?.financing ?? []).filter((p) => p.rates.length > 0),
+    [data?.financing],
+  );
+
+  const hasAny =
+    data &&
+    (withRates.length > 0 ||
+      data.products_with_limits_only.length > 0 ||
+      data.no_data_products.length > 0);
 
   return (
     <div className="space-y-4">
@@ -63,7 +79,7 @@ export function FinancingPage() {
 
       {isError && <ErrorState error={error} onRetry={() => void refetch()} />}
 
-      {!isLoading && !isError && data && data.financing.length === 0 && (
+      {!isLoading && !isError && data && !hasAny && (
         <EmptyState
           title="Filtrelere uyan finansman ürünü bulunamadı"
           description="Farklı bir banka veya finansman türü deneyebilirsiniz."
@@ -71,11 +87,18 @@ export function FinancingPage() {
         />
       )}
 
-      {!isLoading && !isError && data && data.financing.length > 0 && (
+      {!isLoading && !isError && data && hasAny && (
         <>
           <p className="text-sm text-text-500">{data.coverage_note}</p>
 
-          <ProductTable products={data.financing} />
+          {withRates.length > 0 ? (
+            <ProductTable products={withRates} />
+          ) : (
+            <p className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-text-500">
+              Bu süzgeçte kâr payı oranı yayımlanmış ürün yok. Limit veya veri durumu
+              aşağıdaki listelerde.
+            </p>
+          )}
 
           {data.products_with_limits_only.length > 0 && (
             <details className="rounded-lg border border-border bg-surface p-4 text-sm">
@@ -84,6 +107,7 @@ export function FinancingPage() {
               </summary>
               <p className="mt-2 text-text-500">
                 Tutar/vade bilgisi var; kâr payı oranı banka sayfasında yayımlanmamış.
+                Ana tabloda tekrar gösterilmez.
               </p>
               <ul className="mt-2 list-inside list-disc space-y-1 text-text-500">
                 {data.products_with_limits_only.map((item) => (
@@ -98,6 +122,10 @@ export function FinancingPage() {
               <summary className="cursor-pointer font-medium text-text-900">
                 Oran ve limit yok — {data.no_data_products.length} ürün
               </summary>
+              <p className="mt-2 text-text-500">
+                Ürün kaydı var; kamuya açık oran/limit çıkarılmamış. Ana tabloda tekrar
+                gösterilmez.
+              </p>
               <ul className="mt-2 list-inside list-disc space-y-1 text-text-500">
                 {data.no_data_products.map((item) => (
                   <li key={item}>{item}</li>

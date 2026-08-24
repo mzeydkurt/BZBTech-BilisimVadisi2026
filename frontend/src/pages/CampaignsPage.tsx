@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { CampaignFilters, type FilterState } from "@/components/campaigns/CampaignFilters";
@@ -31,13 +31,28 @@ function filtersFromSearch(params: URLSearchParams): FilterState {
   return { ...EMPTY_FILTERS, status };
 }
 
+function idFromSearch(params: URLSearchParams): number | null {
+  const raw = params.get("id");
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function CampaignsPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = useState<FilterState>(() => filtersFromSearch(searchParams));
   const [sort, setSort] = useState<NonNullable<CampaignQuery["sort"]>>("title");
   const [order, setOrder] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(1);
-  const [drawerCampaignId, setDrawerCampaignId] = useState<number | null>(null);
+  const [drawerCampaignId, setDrawerCampaignId] = useState<number | null>(() =>
+    idFromSearch(searchParams),
+  );
+
+  // Geriye dönük uyum: /campaigns?id=123 → EvidenceDrawer açılır.
+  useEffect(() => {
+    const fromQuery = idFromSearch(searchParams);
+    if (fromQuery !== null) setDrawerCampaignId(fromQuery);
+  }, [searchParams]);
 
   const { data: banks } = useBanks();
 
@@ -75,6 +90,15 @@ export function CampaignsPage() {
     setPage(1);
   };
 
+  const handleDrawerClose = () => {
+    setDrawerCampaignId(null);
+    if (searchParams.has("id")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("id");
+      setSearchParams(next, { replace: true });
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -109,7 +133,7 @@ export function CampaignsPage() {
         />
       )}
 
-      <EvidenceDrawer campaignId={drawerCampaignId} onClose={() => setDrawerCampaignId(null)} />
+      <EvidenceDrawer campaignId={drawerCampaignId} onClose={handleDrawerClose} />
     </div>
   );
 }

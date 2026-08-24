@@ -18,11 +18,17 @@ const RATE_TYPE_OPTIONS: { value: ComparableRateType; label: string }[] = [
   { value: "profit_sharing_ratio", label: "Katılımcı payı" },
 ];
 
+const CURRENCIES = ["TRY", "USD", "EUR", "XAU", "XAG"] as const;
+
 export interface CompareFormState {
   rate_type: ComparableRateType;
   criterion: ProductRankingRequest["criterion"];
   product_type: string;
   bank_codes: string[];
+  term_months: string;
+  term_days: string;
+  amount_try: string;
+  currency: string;
   rate_weight: string;
   fee_weight: string;
   term_weight: string;
@@ -38,13 +44,23 @@ interface CompareFormProps {
 
 export function CompareForm({ value, onChange, onSubmit, banks, isPending }: CompareFormProps) {
   const validCriteria = getValidCriteria(value.rate_type);
+  const showTermMonths = value.rate_type === "financing_rate";
+  const showTermDays =
+    value.rate_type === "participation_yield" || value.rate_type === "profit_sharing_ratio";
 
   const handleRateTypeChange = (rateType: ComparableRateType) => {
     const nextCriteria = getValidCriteria(rateType);
     onChange({
       ...value,
       rate_type: rateType,
-      criterion: nextCriteria.includes(value.criterion) ? value.criterion : nextCriteria[0] ?? value.criterion,
+      criterion: nextCriteria.includes(value.criterion)
+        ? value.criterion
+        : (nextCriteria[0] ?? value.criterion),
+      term_months: rateType === "financing_rate" ? value.term_months : "",
+      term_days:
+        rateType === "participation_yield" || rateType === "profit_sharing_ratio"
+          ? value.term_days
+          : "",
     });
   };
 
@@ -68,7 +84,10 @@ export function CompareForm({ value, onChange, onSubmit, banks, isPending }: Com
           <label htmlFor="compare-rate-type" className="mb-1 block text-sm text-text-500">
             Oran Türü
           </label>
-          <Select value={value.rate_type} onValueChange={(next) => handleRateTypeChange(next as ComparableRateType)}>
+          <Select
+            value={value.rate_type}
+            onValueChange={(next) => handleRateTypeChange(next as ComparableRateType)}
+          >
             <SelectTrigger id="compare-rate-type">
               <SelectValue />
             </SelectTrigger>
@@ -88,7 +107,9 @@ export function CompareForm({ value, onChange, onSubmit, banks, isPending }: Com
           </label>
           <Select
             value={value.criterion}
-            onValueChange={(next) => onChange({ ...value, criterion: next as CompareFormState["criterion"] })}
+            onValueChange={(next) =>
+              onChange({ ...value, criterion: next as CompareFormState["criterion"] })
+            }
           >
             <SelectTrigger id="compare-criterion">
               <SelectValue />
@@ -119,6 +140,69 @@ export function CompareForm({ value, onChange, onSubmit, banks, isPending }: Com
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-3">
+        {showTermMonths && (
+          <div className="w-36">
+            <label htmlFor="compare-term-months" className="mb-1 block text-sm text-text-500">
+              Vade (ay)
+            </label>
+            <Input
+              id="compare-term-months"
+              inputMode="numeric"
+              value={value.term_months}
+              onChange={(event) => onChange({ ...value, term_months: event.target.value })}
+              placeholder="ör. 36"
+            />
+          </div>
+        )}
+        {showTermDays && (
+          <div className="w-36">
+            <label htmlFor="compare-term-days" className="mb-1 block text-sm text-text-500">
+              Vade (gün)
+            </label>
+            <Input
+              id="compare-term-days"
+              inputMode="numeric"
+              value={value.term_days}
+              onChange={(event) => onChange({ ...value, term_days: event.target.value })}
+              placeholder="ör. 90"
+            />
+          </div>
+        )}
+        <div className="w-44">
+          <label htmlFor="compare-amount" className="mb-1 block text-sm text-text-500">
+            Tutar (TL, opsiyonel)
+          </label>
+          <Input
+            id="compare-amount"
+            inputMode="decimal"
+            value={value.amount_try}
+            onChange={(event) => onChange({ ...value, amount_try: event.target.value })}
+            placeholder="ör. 500000"
+          />
+        </div>
+        <div className="w-32">
+          <label htmlFor="compare-currency" className="mb-1 block text-sm text-text-500">
+            Para birimi
+          </label>
+          <Select
+            value={value.currency}
+            onValueChange={(next) => onChange({ ...value, currency: next })}
+          >
+            <SelectTrigger id="compare-currency">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CURRENCIES.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       <fieldset>
         <legend className="mb-2 text-sm text-text-500">Bankalar (opsiyonel, boşsa tümü)</legend>
         <div className="flex flex-wrap gap-2">
@@ -144,8 +228,6 @@ export function CompareForm({ value, onChange, onSubmit, banks, isPending }: Com
         </div>
       </fieldset>
 
-      {/* ⚠️ Ağırlık slider'ları yalnızca "en_avantajli" ölçütünde anlamlıdır;
-          diğerlerinde gizlenir, devre dışı gösterip etkisiz kontrol vaat edilmez. */}
       {value.criterion === "en_avantajli" && (
         <fieldset className="grid gap-3 sm:grid-cols-3">
           <legend className="mb-1 text-sm text-text-500 sm:col-span-3">Ağırlıklar (toplam 100)</legend>

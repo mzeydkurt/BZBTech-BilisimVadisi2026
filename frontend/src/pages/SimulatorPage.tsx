@@ -15,12 +15,14 @@ import { FinancingResults } from "@/components/simulator/FinancingResults";
 import { YieldForm, type YieldFormState } from "@/components/simulator/YieldForm";
 import { YieldResults } from "@/components/simulator/YieldResults";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useBanks } from "@/hooks/useBanks";
 import { useBddkCheck, useFinancingSimulation, useYieldSimulation } from "@/hooks/useSimulator";
 
 const DEFAULT_FINANCING_FORM: FinancingFormState = {
   amount_try: "500000",
   term_months: "36",
   product_type: "tasit_finansmani",
+  bank_codes: [],
 };
 
 const DEFAULT_YIELD_FORM: YieldFormState = {
@@ -41,9 +43,18 @@ export function SimulatorPage() {
   const [yieldForm, setYieldForm] = useState<YieldFormState>(DEFAULT_YIELD_FORM);
   const [bddkForm, setBddkForm] = useState<BddkFormState>(DEFAULT_BDDK_FORM);
 
+  const { data: banks } = useBanks();
   const financingSimulation = useFinancingSimulation();
   const yieldSimulation = useYieldSimulation();
   const bddkCheck = useBddkCheck();
+
+  const runYield = (form: YieldFormState = yieldForm) => {
+    yieldSimulation.mutate({
+      deposit_try: form.deposit_try,
+      term_days: Number(form.term_days),
+      currency: form.currency,
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -65,12 +76,17 @@ export function SimulatorPage() {
           <FinancingForm
             value={financingForm}
             onChange={setFinancingForm}
+            banks={banks ?? []}
             isPending={financingSimulation.isPending}
             onSubmit={() =>
               financingSimulation.mutate({
                 amount_try: financingForm.amount_try,
                 term_months: Number(financingForm.term_months),
                 product_type: financingForm.product_type,
+                bank_codes:
+                  financingForm.bank_codes.length > 0
+                    ? financingForm.bank_codes
+                    : undefined,
               })
             }
           />
@@ -86,17 +102,20 @@ export function SimulatorPage() {
             value={yieldForm}
             onChange={setYieldForm}
             isPending={yieldSimulation.isPending}
-            onSubmit={() =>
-              yieldSimulation.mutate({
-                deposit_try: yieldForm.deposit_try,
-                term_days: Number(yieldForm.term_days),
-                currency: yieldForm.currency,
-              })
-            }
+            onSubmit={() => runYield()}
           />
           {yieldSimulation.isPending && <LoadingState variant="table" />}
           {yieldSimulation.isError && <ErrorState error={yieldSimulation.error} />}
-          {yieldSimulation.isSuccess && <YieldResults result={yieldSimulation.data} />}
+          {yieldSimulation.isSuccess && (
+            <YieldResults
+              result={yieldSimulation.data}
+              onLadderSelect={(termDays) => {
+                const next = { ...yieldForm, term_days: String(termDays) };
+                setYieldForm(next);
+                runYield(next);
+              }}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="bddk" className="space-y-4">

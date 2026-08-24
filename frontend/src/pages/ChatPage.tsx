@@ -1,23 +1,35 @@
+import { Copy, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 
 import { ChatForm } from "@/components/chat/ChatForm";
+import { ChatMatchCard } from "@/components/chat/ChatResultCard";
 import { ForbiddenTermsAlert } from "@/components/chat/ForbiddenTermsAlert";
 import { ErrorState } from "@/components/common/ErrorState";
+import { Button } from "@/components/ui/button";
 import { useBanks } from "@/hooks/useBanks";
-import { useChat } from "@/hooks/useChat";
+import {
+  readStoredSessionId,
+  useChat,
+  useChatSession,
+  useEndChatSession,
+  writeStoredSessionId,
+} from "@/hooks/useChat";
+import { ApiError } from "@/lib/api";
 import { formatPercent } from "@/lib/format";
-import type { ChatResponse, ChatTopMatch } from "@/types/api";
+import type { ChatResponse, ChatSessionMessage, ChatTopMatch } from "@/types/api";
 
 interface Message {
   role: "user" | "assistant";
   text: string;
   response?: ChatResponse;
+  failed?: boolean;
+  /** Başarısız turda yeniden deneme için. */
+  retryQuery?: string;
 }
 
 function matchHref(m: ChatTopMatch): string {
   if (m.detail_path) return m.detail_path;
-  if (m.entity_type === "campaign") return `/campaigns?id=${m.id}`;
+  if (m.entity_type === "campaign") return `/campaigns/${m.id}`;
   if (m.entity_type === "product" || m.entity_type === "product_rate") {
     return `/products/${m.id}`;
   }
@@ -25,113 +37,125 @@ function matchHref(m: ChatTopMatch): string {
   return "/chat";
 }
 
-function SourceLine({ data }: { data: ChatResponse }) {
-  const kaynaklar: { label: string; href: string | null }[] = [];
-  const top = data.top_matches ?? [];
+/** Eski yanıtlardaki [1] / [N] atıflarını temizle. */
+function cleanAnswerText(text: string): string {
+  return text
+    .replace(/\s*\[(?:\d+|N)\]/gi, "")
+    .replace(/ {2,}/g, " ")
+    .trim();
+}
 
-  for (const m of top.slice(0, 3)) {
-    kaynaklar.push({
-      label: m.bank_name ? `${m.bank_name} — ${m.title}` : m.title,
-      href: matchHref(m),
-    });
-  }
-  if (kaynaklar.length === 0) {
-    for (const r of data.results.slice(0, 3)) {
-      kaynaklar.push({
-        label: `${r.bank_name} — ${r.title}`,
-        href: `/campaigns?id=${r.campaign_id}`,
-      });
-    }
-  }
-  if (kaynaklar.length === 0) {
-    for (const p of data.products.slice(0, 3)) {
-      kaynaklar.push({
-        label: `${p.bank_name} — ${p.product_name}`,
-        href: `/products/${p.product_id}`,
-      });
-    }
-  }
-  if (kaynaklar.length === 0) return null;
-
-  return (
-    <p className="mt-2 text-xs text-text-500">
-      <span className="font-medium text-text-700">Kaynaklar: </span>
-      {kaynaklar.map((k, i) => (
-        <span key={`${k.label}-${i}`}>
-          {i > 0 && " · "}
-          {k.href ? (
-            <Link to={k.href} className="text-brand-700 hover:underline">
-              {k.label}
-            </Link>
-          ) : (
-            k.label
-          )}
-        </span>
-      ))}
-    </p>
-  );
+function messagesFromSession(msgs: ChatSessionMessage[]): Message[] {
+  return msgs.map((m) => ({
+    role: m.role,
+    text: m.content,
+    response:
+      m.role === "assistant"
+        ? (m.response_json ?? m.response ?? undefined)
+        : undefined,
+  }));
 }
 
 function TopMatchCards({ data }: { data: ChatResponse }) {
   const matches = (data.top_matches ?? []).slice(0, 3);
-  if (matches.length === 0) {
-    // Geriye uyumluluk: top_matches yoksa results/products'tan kart üret.
-    const fallback: ChatTopMatch[] = [
-      ...data.results.slice(0, 3).map((r) => ({
-        entity_type: "campaign",
-        id: r.campaign_id,
-        title: r.title,
-        bank_name: r.bank_name,
-        score: "0",
-        source_url: r.source_url,
-        reason: r.summary,
-        detail_path: `/campaigns?id=${r.campaign_id}`,
-      })),
-      ...data.products.slice(0, 3).map((p) => ({
-        entity_type: "product",
-        id: p.product_id,
-        title: p.product_name,
-        bank_name: p.bank_name,
-        score: "0",
-        source_url: p.source_url,
-        reason:
-          p.profit_rate_pct != null
-            ? `Oran: ${formatPercent(p.profit_rate_pct)}`
-            : null,
-        detail_path:
-          p.rate_type === "participation_yield" ||
-          p.rate_type === "profit_sharing_ratio"
-            ? "/katilim-hesabi"
-            : `/products/${p.product_id}`,
-      })),
-    ].slice(0, 3);
-    if (fallback.length === 0) return null;
-    return <MatchGrid items={fallback} />;
+  if (matches.length > 0) {
+    return <MatchGrid items={matches} />;
   }
-  return <MatchGrid items={matches} />;
+
+  const fallback: ChatTopMatch[] = [
+    ...data.results.slice(0, 3).map((r) => ({
+      entity_type: "campaign",
+      id: r.campaign_id,
+      title: r.title,
+      bank_name: r.bank_name,
+      score: "0",
+      source_url: r.source_url,
+      reason: r.summary,
+      detail_path: `/campaigns/${r.campaign_id}`,
+    })),
+    ...data.products.slice(0, 3).map((p) => ({
+      entity_type: "product",
+      id: p.product_id,
+      title: p.product_name,
+      bank_name: p.bank_name,
+      score: "0",
+      source_url: p.source_url,
+      reason:
+        p.profit_rate_pct != null ? `Oran: ${formatPercent(p.profit_rate_pct)}` : null,
+      detail_path:
+        p.rate_type === "participation_yield" ||
+        p.rate_type === "profit_sharing_ratio"
+          ? "/katilim-hesabi"
+          : `/products/${p.product_id}`,
+    })),
+  ].slice(0, 3);
+
+  if (fallback.length === 0) return null;
+  return <MatchGrid items={fallback} />;
 }
 
 function MatchGrid({ items }: { items: ChatTopMatch[] }) {
+  const cols =
+    items.length === 1
+      ? "sm:grid-cols-1"
+      : items.length === 2
+        ? "sm:grid-cols-2"
+        : "sm:grid-cols-3";
   return (
-    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+    <div className={`mt-3 grid grid-cols-1 gap-2 ${cols}`}>
       {items.map((m) => (
-        <Link
-          key={`${m.entity_type}-${m.id}`}
-          to={matchHref(m)}
-          className="block rounded-lg border border-border bg-surface px-3 py-2 transition-colors hover:border-brand-500"
-        >
-          {m.bank_name && <p className="text-[11px] text-text-500">{m.bank_name}</p>}
-          <p className="text-sm font-medium text-text-900 line-clamp-2">{m.title}</p>
-          {m.reason && (
-            <p className="mt-1 text-xs text-text-500 line-clamp-2">{m.reason}</p>
-          )}
-        </Link>
+        <ChatMatchCard key={`${m.entity_type}-${m.id}`} match={m} href={matchHref(m)} />
       ))}
     </div>
   );
 }
 
-function AssistantBubble({ msg }: { msg: Message }) {
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="inline-flex items-center gap-1 text-[11px] text-text-500 hover:text-text-700"
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+    >
+      <Copy className="h-3 w-3" aria-hidden="true" />
+      {copied ? "Kopyalandı" : "Kopyala"}
+    </button>
+  );
+}
+
+function AssistantBubble({
+  msg,
+  onRetry,
+}: {
+  msg: Message;
+  onRetry?: () => void;
+}) {
+  if (msg.failed) {
+    return (
+      <div className="max-w-[90%] space-y-2">
+        <div className="rounded-2xl rounded-bl-md bg-surface px-4 py-3 text-sm text-text-900 shadow-sm ring-1 ring-border">
+          <p>{msg.text}</p>
+          {onRetry && (
+            <button
+              type="button"
+              className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-900"
+              onClick={onRetry}
+            >
+              <RotateCcw className="h-3 w-3" aria-hidden="true" />
+              Yeniden dene
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const data = msg.response;
   if (!data) {
     return (
@@ -141,22 +165,30 @@ function AssistantBubble({ msg }: { msg: Message }) {
     );
   }
 
+  const answerText = cleanAnswerText(data.answer.text);
+  // Oran karşılaştırması dışında yön notu gösterme (kampanya sohbeti).
+  const showDirection =
+    Boolean(data.direction_note) &&
+    (Boolean(data.comparison) || (data.products.length > 0 && data.results.length === 0));
+
   return (
     <div className="max-w-[90%] space-y-1">
-      <div className="rounded-2xl rounded-bl-md bg-surface px-4 py-3 text-sm text-text-900 shadow-sm ring-1 ring-border">
+      <div className="rounded-2xl rounded-bl-md bg-surface px-4 py-3 text-sm leading-relaxed text-text-900 shadow-sm ring-1 ring-border">
         {data.forbidden_terms_warning && (
           <div className="mb-2">
             <ForbiddenTermsAlert message={data.forbidden_terms_warning} />
           </div>
         )}
-        <p className="whitespace-pre-wrap">{data.answer.text}</p>
+        <p className="whitespace-pre-wrap">{answerText}</p>
         {data.clarification_needed && data.clarification_question && (
           <p className="mt-2 text-amber-800">{data.clarification_question}</p>
         )}
-        {data.direction_note && (
+        {showDirection && data.direction_note && (
           <p className="mt-2 text-xs text-brand-800">{data.direction_note}</p>
         )}
-        <SourceLine data={data} />
+        <div className="mt-2">
+          <CopyButton text={answerText} />
+        </div>
       </div>
       <TopMatchCards data={data} />
     </div>
@@ -166,34 +198,78 @@ function AssistantBubble({ msg }: { msg: Message }) {
 export function ChatPage() {
   const [query, setQuery] = useState("");
   const [bankCode, setBankCode] = useState<string | undefined>(undefined);
+  const [sessionId, setSessionId] = useState<string | null>(() => readStoredSessionId());
   const [messages, setMessages] = useState<Message[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(!sessionId);
   const [pendingClarification, setPendingClarification] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const { data: banks } = useBanks();
   const mutation = useChat();
+  const endSession = useEndChatSession();
+  const sessionQuery = useChatSession(sessionId && !historyLoaded ? sessionId : null);
+
+  useEffect(() => {
+    if (!sessionId) {
+      setHistoryLoaded(true);
+      return;
+    }
+    if (sessionQuery.isSuccess && sessionQuery.data) {
+      if (sessionQuery.data.ended_at) {
+        writeStoredSessionId(null);
+        setSessionId(null);
+        setMessages([]);
+      } else {
+        setMessages(messagesFromSession(sessionQuery.data.messages ?? []));
+      }
+      setHistoryLoaded(true);
+    } else if (sessionQuery.isError) {
+      const err = sessionQuery.error;
+      if (err instanceof ApiError && (err.code === "HTTP_404" || err.code.includes("404"))) {
+        writeStoredSessionId(null);
+        setSessionId(null);
+      }
+      setHistoryLoaded(true);
+    }
+  }, [sessionId, sessionQuery.isSuccess, sessionQuery.isError, sessionQuery.data, sessionQuery.error]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, mutation.isPending]);
 
-  const runQuery = (text: string) => {
+  const persistSession = (id: string | null) => {
+    setSessionId(id);
+    writeStoredSessionId(id);
+  };
+
+  const runQuery = (text: string, opts?: { replaceFailedIndex?: number }) => {
     const trimmed = text.trim();
     if (trimmed.length < 2) return;
 
     let finalQuery = trimmed;
-    if (pendingClarification) {
+    if (pendingClarification && opts?.replaceFailedIndex === undefined) {
       finalQuery = `${pendingClarification} ${trimmed}`;
       setPendingClarification(null);
+    }
+
+    if (opts?.replaceFailedIndex !== undefined) {
+      setMessages((prev) =>
+        prev.filter((_, i) => i !== opts.replaceFailedIndex && i !== opts.replaceFailedIndex! - 1),
+      );
     }
 
     setMessages((prev) => [...prev, { role: "user", text: finalQuery }]);
     setQuery("");
 
     mutation.mutate(
-      { query: finalQuery, bank_code: bankCode ?? null },
+      {
+        query: finalQuery,
+        bank_code: bankCode ?? null,
+        session_id: sessionId,
+      },
       {
         onSuccess: (data) => {
+          if (data.session_id) persistSession(data.session_id);
           setMessages((prev) => [
             ...prev,
             { role: "assistant", text: data.answer.text, response: data },
@@ -208,6 +284,8 @@ export function ChatPage() {
             {
               role: "assistant",
               text: "Sorgu yanıtlanamadı. Lütfen tekrar deneyin.",
+              failed: true,
+              retryQuery: finalQuery,
             },
           ]);
         },
@@ -215,7 +293,23 @@ export function ChatPage() {
     );
   };
 
-  const bos = messages.length === 0 && !mutation.isPending;
+  const handleEndSession = () => {
+    const key = sessionId;
+    const clearLocal = () => {
+      persistSession(null);
+      setMessages([]);
+      setPendingClarification(null);
+    };
+    if (!key) {
+      clearLocal();
+      return;
+    }
+    endSession.mutate(key, {
+      onSettled: clearLocal,
+    });
+  };
+
+  const bos = messages.length === 0 && !mutation.isPending && historyLoaded;
 
   return (
     <div className="flex h-[calc(100vh-2rem)] flex-col">
@@ -227,6 +321,10 @@ export function ChatPage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto py-4">
+        {!historyLoaded && (
+          <p className="px-2 text-sm text-text-500">Önceki sohbet yükleniyor…</p>
+        )}
+
         {bos && (
           <div className="mx-auto max-w-xl space-y-4 px-2 py-8 text-center">
             <p className="text-sm text-text-500">
@@ -252,13 +350,25 @@ export function ChatPage() {
           {messages.map((msg, index) =>
             msg.role === "user" ? (
               <div key={`u-${index}`} className="flex justify-end">
-                <div className="max-w-[85%] rounded-2xl rounded-br-md bg-brand-700 px-4 py-2.5 text-sm text-white">
-                  {msg.text}
+                <div className="max-w-[85%] space-y-1">
+                  <div className="rounded-2xl rounded-br-md bg-brand-700 px-4 py-2.5 text-sm leading-relaxed text-white">
+                    {msg.text}
+                  </div>
+                  <div className="flex justify-end">
+                    <CopyButton text={msg.text} />
+                  </div>
                 </div>
               </div>
             ) : (
               <div key={`a-${index}`} className="flex justify-start">
-                <AssistantBubble msg={msg} />
+                <AssistantBubble
+                  msg={msg}
+                  onRetry={
+                    msg.failed && msg.retryQuery
+                      ? () => runQuery(msg.retryQuery!, { replaceFailedIndex: index })
+                      : undefined
+                  }
+                />
               </div>
             ),
           )}
@@ -293,14 +403,17 @@ export function ChatPage() {
           compact
           showExamples={false}
         />
-        {messages.length > 0 && (
-          <button
+        {(messages.length > 0 || sessionId) && (
+          <Button
             type="button"
-            className="mt-2 text-xs text-text-500 hover:text-text-700"
-            onClick={() => setMessages([])}
+            variant="ghost"
+            size="sm"
+            className="mt-2 h-7 text-xs text-text-500"
+            disabled={endSession.isPending}
+            onClick={handleEndSession}
           >
-            Sohbeti temizle
-          </button>
+            {endSession.isPending ? "Sonlandırılıyor…" : "Sohbeti sonlandır"}
+          </Button>
         )}
       </div>
     </div>

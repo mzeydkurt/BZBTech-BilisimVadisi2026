@@ -19,7 +19,6 @@ export const EXAMPLE_QUERIES = [
   "Yeni müşterilere özel kampanyalar",
   "Kâr payı oranı ne demek?",
   "Katılma hesabı getirisi hangi bankada yüksek?",
-  "Murabaha nedir?",
 ] as const;
 
 interface ChatFormProps {
@@ -54,12 +53,12 @@ export function ChatForm({
   return (
     <div className="space-y-3">
       {showExamples && onExampleClick && (
-        <div className="flex flex-wrap justify-center gap-2">
+        <div className="mx-auto grid w-full max-w-lg grid-cols-1 gap-2 sm:grid-cols-2">
           {EXAMPLE_QUERIES.map((ornek) => (
             <button
               key={ornek}
               type="button"
-              className="rounded-md border border-border bg-surface px-2.5 py-1 text-left text-xs text-text-700 hover:border-brand-500 hover:text-brand-700"
+              className="flex min-h-[3rem] items-center justify-center rounded-lg border border-border bg-surface px-3 py-2 text-center text-xs leading-snug text-text-700 hover:border-brand-500 hover:text-brand-700"
               onClick={() => onExampleClick(ornek)}
             >
               {ornek}
