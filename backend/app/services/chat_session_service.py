@@ -168,7 +168,12 @@ def record_turn(
 
 def session_detail(oturum: ChatSession) -> ChatSessionDetail:
     msgs: list[ChatSessionMessageOut] = []
-    for m in oturum.messages:
+    # Savunma: relationship sırası bozulursa bile user → assistant.
+    sirali = sorted(
+        oturum.messages,
+        key=lambda m: (m.turn_index, 0 if m.role == "user" else 1, m.id),
+    )
+    for m in sirali:
         resp = None
         if m.response_json:
             try:

@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    admin,
     annotate,
     banks,
     campaigns,
@@ -18,6 +19,7 @@ from app.api.v1 import (
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+api_router.include_router(admin.router)
 api_router.include_router(banks.router)
 api_router.include_router(campaigns.router)
 api_router.include_router(products.router)

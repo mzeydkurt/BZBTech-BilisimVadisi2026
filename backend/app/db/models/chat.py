@@ -30,7 +30,8 @@ class ChatSession(Base):
         "ChatMessage",
         back_populates="session",
         cascade="all, delete-orphan",
-        order_by="ChatMessage.turn_index",
+        # id: aynı turda önce user (önce yazılır), sonra assistant.
+        order_by="ChatMessage.turn_index, ChatMessage.id",
     )
 
 
