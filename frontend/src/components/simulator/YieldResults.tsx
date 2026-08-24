@@ -2,7 +2,7 @@ import { ExternalLink } from "lucide-react";
 
 import { ExactTermMatchWarning } from "@/components/simulator/ExactTermMatchWarning";
 import { Button } from "@/components/ui/button";
-import { downloadCsv } from "@/lib/csv";
+import { downloadExcelWorkbook, downloadRichCsv } from "@/lib/csv";
 import { formatCurrencyTRY, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ParticipationYieldResponse } from "@/types/api";
@@ -23,32 +23,67 @@ export function YieldResults({
   const isSingleSource = result.offers.length <= 1;
   const ladder = [30, 90, 180, 360];
 
-  const exportCsv = () => {
-    downloadCsv(
-      `getiri-simulasyon-${result.term_days}gun.csv`,
-      [
-        "bank_name",
-        "product_name",
-        "annual_yield_gross_pct",
-        "gross_profit_try",
-        "withholding_try",
-        "net_profit_try",
-        "investor_share_pct",
-        "rate_term_label",
-        "source_url",
+  const exportData = (format: "csv" | "xlsx") => {
+    const base = `getiri-simulasyon-${result.term_days}gun`;
+    const headers = [
+      "Banka",
+      "Ürün",
+      "Yıllık brüt getiri (%)",
+      "Brüt kâr (TL)",
+      "Stopaj (TL)",
+      "Net kâr (TL)",
+      "Katılımcı payı (%)",
+      "Vade etiketi",
+      "Kaynak URL",
+    ];
+    const rows = result.offers.map((o) => [
+      o.bank_name,
+      o.product_name,
+      o.annual_yield_gross_pct,
+      o.gross_profit_try,
+      o.withholding_try,
+      o.net_profit_try,
+      o.investor_share_pct,
+      o.rate_term_label,
+      o.source_url,
+    ]);
+    const meta = {
+      Rapor: "Katılma hesabı getiri simülasyonu",
+      "Vade (gün)": result.term_days,
+      "Teklif sayısı": result.offers.length,
+      "Stopaj notu": result.withholding_note ?? "",
+      "Yöntem notu": result.method_note ?? "",
+    };
+    const missingSheet =
+      result.banks_without_data.length > 0
+        ? {
+            name: "Veri yok",
+            headers: ["Banka", "Neden"],
+            rows: result.banks_without_data.map((b) => [b.bank_name, b.reason]),
+          }
+        : null;
+
+    if (format === "csv") {
+      downloadRichCsv({
+        filename: `${base}.csv`,
+        meta,
+        headers,
+        rows,
+        extraSections: missingSheet
+          ? [{ title: "Veri yok", headers: missingSheet.headers, rows: missingSheet.rows }]
+          : [],
+      });
+      return;
+    }
+
+    downloadExcelWorkbook({
+      filename: `${base}.xlsx`,
+      meta,
+      sheets: [
+        { name: "Getiriler", headers, rows },
+        ...(missingSheet ? [missingSheet] : []),
       ],
-      result.offers.map((o) => [
-        o.bank_name,
-        o.product_name,
-        o.annual_yield_gross_pct,
-        o.gross_profit_try,
-        o.withholding_try,
-        o.net_profit_try,
-        o.investor_share_pct,
-        o.rate_term_label,
-        o.source_url,
-      ]),
-    );
+    });
   };
 
   return (
@@ -79,9 +114,14 @@ export function YieldResults({
             </div>
           )}
         </div>
-        <Button type="button" variant="secondary" size="sm" onClick={exportCsv}>
-          CSV indir
-        </Button>
+        <div className="flex gap-2">
+          <Button type="button" variant="secondary" size="sm" onClick={() => exportData("csv")}>
+            CSV indir
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => exportData("xlsx")}>
+            Excel indir
+          </Button>
+        </div>
       </div>
 
       {result.offers.map((offer) => (

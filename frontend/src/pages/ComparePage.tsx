@@ -17,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useBanks } from "@/hooks/useBanks";
 import { useCampaignCompare } from "@/hooks/useCampaignCompare";
 import { useProductCompare } from "@/hooks/useProductCompare";
-import { downloadCsv } from "@/lib/csv";
+import { downloadExcelWorkbook, downloadRichCsv } from "@/lib/csv";
 import type { ProductRankingRequest, RankedCampaign, RankedProduct } from "@/types/api";
 
 const DEFAULT_COMPARE_FORM: CompareFormState = {
@@ -86,78 +86,195 @@ function formFromParams(params: URLSearchParams): CompareFormState {
   };
 }
 
-function exportProductsCsv(items: RankedProduct[], filename: string) {
-  downloadCsv(
-    filename,
-    [
-      "rank",
-      "bank_name",
-      "product_name",
-      "rate_type",
-      "profit_rate_pct",
-      "investor_share_pct",
-      "allocation_fee_pct",
-      "annual_cost_pct",
-      "term_months",
-      "term_label",
-      "effective_date",
-      "rate_source",
-      "variant_label",
-      "account_tier",
-      "source_url",
-    ],
-    items.map((item) => [
-      item.rank,
-      item.bank_name,
-      item.product_name,
-      item.rate_type,
-      item.profit_rate_pct,
-      item.investor_share_pct,
-      item.allocation_fee_pct,
-      item.annual_cost_pct,
-      item.term_months,
-      item.term_label,
-      item.effective_date,
-      item.rate_source,
-      item.variant_label,
-      item.account_tier,
-      item.source_url,
-    ]),
-  );
+const PRODUCT_HEADERS = [
+  "Sıra",
+  "Banka",
+  "Ürün",
+  "Oran türü",
+  "Kâr payı (%)",
+  "Katılımcı payı (%)",
+  "Tahsis ücreti (%)",
+  "Yıllık maliyet (%)",
+  "Vade (ay)",
+  "Vade etiketi",
+  "Geçerlilik tarihi",
+  "Kaynak türü",
+  "Varyant",
+  "Hesap kademesi",
+  "Kaynak URL",
+] as const;
+
+const CAMPAIGN_HEADERS = [
+  "Sıra",
+  "Banka",
+  "Kampanya",
+  "Durum",
+  "Ödül (TL)",
+  "Nakit iade (%)",
+  "İndirim (%)",
+  "Taksit",
+  "Kâr payı (%)",
+  "Azami vade (ay)",
+  "Bitiş tarihi",
+  "Kaynak URL",
+] as const;
+
+function productRows(items: RankedProduct[]): unknown[][] {
+  return items.map((item) => [
+    item.rank,
+    item.bank_name,
+    item.product_name,
+    item.rate_type,
+    item.profit_rate_pct,
+    item.investor_share_pct,
+    item.allocation_fee_pct,
+    item.annual_cost_pct,
+    item.term_months,
+    item.term_label,
+    item.effective_date,
+    item.rate_source,
+    item.variant_label,
+    item.account_tier,
+    item.source_url,
+  ]);
 }
 
-function exportCampaignsCsv(items: RankedCampaign[], filename: string) {
-  downloadCsv(
-    filename,
-    [
-      "rank",
-      "bank_name",
-      "title",
-      "status",
-      "reward_amount_try",
-      "cashback_pct",
-      "discount_pct",
-      "installment_count",
-      "profit_rate_pct",
-      "term_months_max",
-      "end_date",
-      "source_url",
+function campaignRows(items: RankedCampaign[]): unknown[][] {
+  return items.map((item) => [
+    item.rank,
+    item.bank_name,
+    item.title,
+    item.status,
+    item.reward_amount_try,
+    item.cashback_pct,
+    item.discount_pct,
+    item.installment_count,
+    item.profit_rate_pct,
+    item.term_months_max,
+    item.end_date,
+    item.source_url,
+  ]);
+}
+
+function exportProducts(
+  items: RankedProduct[],
+  opts: {
+    format: "csv" | "xlsx";
+    criterion: string;
+    rateType: string;
+    winnerReason?: string | null;
+    warnings?: string[];
+    withoutData?: RankedProduct[];
+  },
+) {
+  const base = `urun-karsilastirma-${opts.criterion}`;
+  const meta = {
+    Rapor: "Ürün karşılaştırma",
+    Ölçüt: opts.criterion,
+    "Oran türü": opts.rateType,
+    "Kayıt sayısı": items.length,
+    Kazanan: opts.winnerReason ?? "",
+  };
+  const warningsSheet =
+    (opts.warnings?.length ?? 0) > 0
+      ? {
+          name: "Uyarılar",
+          headers: ["Uyarı"],
+          rows: (opts.warnings ?? []).map((w) => [w]),
+        }
+      : null;
+  const withoutSheet =
+    (opts.withoutData?.length ?? 0) > 0
+      ? {
+          name: "Veri yok",
+          headers: ["Banka", "Ürün", "Neden"],
+          rows: (opts.withoutData ?? []).map((p) => [
+            p.bank_name,
+            p.product_name,
+            p.missing_reason ?? "",
+          ]),
+        }
+      : null;
+
+  if (opts.format === "csv") {
+    downloadRichCsv({
+      filename: `${base}.csv`,
+      meta,
+      headers: [...PRODUCT_HEADERS],
+      rows: productRows(items),
+      extraSections: [
+        ...(warningsSheet
+          ? [{ title: "Uyarılar", headers: warningsSheet.headers, rows: warningsSheet.rows }]
+          : []),
+        ...(withoutSheet
+          ? [{ title: "Veri yok", headers: withoutSheet.headers, rows: withoutSheet.rows }]
+          : []),
+      ],
+    });
+    return;
+  }
+
+  downloadExcelWorkbook({
+    filename: `${base}.xlsx`,
+    meta,
+    sheets: [
+      { name: "Sıralama", headers: [...PRODUCT_HEADERS], rows: productRows(items) },
+      ...(warningsSheet ? [warningsSheet] : []),
+      ...(withoutSheet ? [withoutSheet] : []),
     ],
-    items.map((item) => [
-      item.rank,
-      item.bank_name,
-      item.title,
-      item.status,
-      item.reward_amount_try,
-      item.cashback_pct,
-      item.discount_pct,
-      item.installment_count,
-      item.profit_rate_pct,
-      item.term_months_max,
-      item.end_date,
-      item.source_url,
-    ]),
-  );
+  });
+}
+
+function exportCampaigns(
+  items: RankedCampaign[],
+  opts: {
+    format: "csv" | "xlsx";
+    criterion: string;
+    winnerReason?: string | null;
+    withoutData?: RankedCampaign[];
+  },
+) {
+  const base = `kampanya-karsilastirma-${opts.criterion}`;
+  const meta = {
+    Rapor: "Kampanya karşılaştırma",
+    Ölçüt: opts.criterion,
+    "Kayıt sayısı": items.length,
+    Kazanan: opts.winnerReason ?? "",
+  };
+  const withoutSheet =
+    (opts.withoutData?.length ?? 0) > 0
+      ? {
+          name: "Veri yok",
+          headers: ["Banka", "Kampanya", "Neden"],
+          rows: (opts.withoutData ?? []).map((c) => [
+            c.bank_name,
+            c.title,
+            c.missing_reason ?? "",
+          ]),
+        }
+      : null;
+
+  if (opts.format === "csv") {
+    downloadRichCsv({
+      filename: `${base}.csv`,
+      meta,
+      headers: [...CAMPAIGN_HEADERS],
+      rows: campaignRows(items),
+      extraSections: withoutSheet
+        ? [{ title: "Veri yok", headers: withoutSheet.headers, rows: withoutSheet.rows }]
+        : [],
+    });
+    return;
+  }
+
+  downloadExcelWorkbook({
+    filename: `${base}.xlsx`,
+    meta,
+    sheets: [
+      { name: "Sıralama", headers: [...CAMPAIGN_HEADERS], rows: campaignRows(items) },
+      ...(withoutSheet ? [withoutSheet] : []),
+    ],
+  });
 }
 
 export function ComparePage() {
@@ -227,19 +344,40 @@ export function ComparePage() {
 
               {productMutation.data.ranked.length > 0 ? (
                 <>
-                  <div className="flex justify-end">
+                  <div className="flex justify-end gap-2">
                     <Button
                       type="button"
                       variant="secondary"
                       size="sm"
                       onClick={() =>
-                        exportProductsCsv(
-                          productMutation.data.ranked,
-                          `urun-karsilastirma-${productMutation.data.criterion}.csv`,
-                        )
+                        exportProducts(productMutation.data.ranked, {
+                          format: "csv",
+                          criterion: productMutation.data.criterion,
+                          rateType: productMutation.data.rate_type,
+                          winnerReason: productMutation.data.winner_reason,
+                          warnings: productMutation.data.comparability_warnings ?? [],
+                          withoutData: productMutation.data.without_data,
+                        })
                       }
                     >
                       CSV indir
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() =>
+                        exportProducts(productMutation.data.ranked, {
+                          format: "xlsx",
+                          criterion: productMutation.data.criterion,
+                          rateType: productMutation.data.rate_type,
+                          winnerReason: productMutation.data.winner_reason,
+                          warnings: productMutation.data.comparability_warnings ?? [],
+                          withoutData: productMutation.data.without_data,
+                        })
+                      }
+                    >
+                      Excel indir
                     </Button>
                   </div>
                   <RankedProductTable
@@ -289,19 +427,36 @@ export function ComparePage() {
 
               {campaignMutation.data.ranked.length > 0 ? (
                 <>
-                  <div className="flex justify-end">
+                  <div className="flex justify-end gap-2">
                     <Button
                       type="button"
                       variant="secondary"
                       size="sm"
                       onClick={() =>
-                        exportCampaignsCsv(
-                          campaignMutation.data.ranked,
-                          `kampanya-karsilastirma-${campaignMutation.data.criterion}.csv`,
-                        )
+                        exportCampaigns(campaignMutation.data.ranked, {
+                          format: "csv",
+                          criterion: campaignMutation.data.criterion,
+                          winnerReason: campaignMutation.data.winner_reason,
+                          withoutData: campaignMutation.data.without_data,
+                        })
                       }
                     >
                       CSV indir
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() =>
+                        exportCampaigns(campaignMutation.data.ranked, {
+                          format: "xlsx",
+                          criterion: campaignMutation.data.criterion,
+                          winnerReason: campaignMutation.data.winner_reason,
+                          withoutData: campaignMutation.data.without_data,
+                        })
+                      }
+                    >
+                      Excel indir
                     </Button>
                   </div>
                   <RankedCampaignTable

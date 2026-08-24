@@ -25,6 +25,7 @@ interface Message {
   failed?: boolean;
   /** Başarısız turda yeniden deneme için. */
   retryQuery?: string;
+  turnIndex?: number;
 }
 
 function matchHref(m: ChatTopMatch): string {
@@ -46,9 +47,16 @@ function cleanAnswerText(text: string): string {
 }
 
 function messagesFromSession(msgs: ChatSessionMessage[]): Message[] {
-  return msgs.map((m) => ({
+  const sirali = [...msgs].sort((a, b) => {
+    if (a.turn_index !== b.turn_index) return a.turn_index - b.turn_index;
+    const ra = a.role === "user" ? 0 : 1;
+    const rb = b.role === "user" ? 0 : 1;
+    return ra - rb;
+  });
+  return sirali.map((m) => ({
     role: m.role,
     text: m.content,
+    turnIndex: m.turn_index,
     response:
       m.role === "assistant"
         ? (m.response_json ?? m.response ?? undefined)
@@ -347,9 +355,13 @@ export function ChatPage() {
         )}
 
         <div className="mx-auto flex max-w-2xl flex-col gap-4 px-2">
-          {messages.map((msg, index) =>
-            msg.role === "user" ? (
-              <div key={`u-${index}`} className="flex justify-end">
+          {messages.map((msg, index) => {
+            const key =
+              msg.turnIndex !== undefined
+                ? `${msg.turnIndex}-${msg.role}`
+                : `${msg.role}-${index}`;
+            return msg.role === "user" ? (
+              <div key={key} className="flex justify-end">
                 <div className="max-w-[85%] space-y-1">
                   <div className="rounded-2xl rounded-br-md bg-brand-700 px-4 py-2.5 text-sm leading-relaxed text-white">
                     {msg.text}
@@ -360,7 +372,7 @@ export function ChatPage() {
                 </div>
               </div>
             ) : (
-              <div key={`a-${index}`} className="flex justify-start">
+              <div key={key} className="flex justify-start">
                 <AssistantBubble
                   msg={msg}
                   onRetry={
@@ -370,8 +382,8 @@ export function ChatPage() {
                   }
                 />
               </div>
-            ),
-          )}
+            );
+          })}
           {mutation.isPending && (
             <div className="flex justify-start">
               <div className="rounded-2xl rounded-bl-md bg-surface px-4 py-3 text-sm text-text-500 ring-1 ring-border">

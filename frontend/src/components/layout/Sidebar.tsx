@@ -7,6 +7,7 @@ import {
   Calculator,
   MessageSquare,
   FlaskConical,
+  Shield,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
@@ -25,7 +26,7 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-brand-900">
+    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-border bg-brand-900">
       <div className="border-b border-white/10 px-4 py-4">
         <p className="text-sm font-semibold leading-tight text-white">
           KATİP
@@ -33,7 +34,7 @@ export function Sidebar() {
         <p className="text-xs text-white/70">Katılım Bankacılığı Kampanya Analiz Platformu</p>
       </div>
 
-      <nav className="flex-1 p-2" aria-label="Ana gezinme">
+      <nav className="min-h-0 flex-1 overflow-y-auto p-2" aria-label="Ana gezinme">
         <ul className="space-y-1">
           {NAV_ITEMS.map((item) => (
             <li key={item.to}>
@@ -57,8 +58,22 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      <div className="border-t border-white/10 px-4 py-3">
-        <p className="text-xs text-white/50">
+      <div className="mt-auto border-t border-white/10 p-2">
+        <NavLink
+          to="/admin"
+          className={({ isActive }) =>
+            cn(
+              "flex items-center gap-2 rounded px-3 py-2 text-sm transition-colors duration-150",
+              isActive
+                ? "bg-white/10 font-medium text-white"
+                : "text-white/70 hover:bg-white/5 hover:text-white",
+            )
+          }
+        >
+          <Shield className="h-4 w-4" aria-hidden="true" />
+          Admin
+        </NavLink>
+        <p className="mt-2 px-3 pb-2 text-xs text-white/50">
           Veriler bankaların kamuya açık sayfalarından toplanmıştır.
         </p>
       </div>

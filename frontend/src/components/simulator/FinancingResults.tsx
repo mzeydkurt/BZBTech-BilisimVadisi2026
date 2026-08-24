@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { downloadCsv } from "@/lib/csv";
+import { downloadExcelWorkbook, downloadRichCsv } from "@/lib/csv";
 import { formatCurrencyTRY, formatPercent, parseDecimal } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { BankFinancingOffer, FinancingSimulationResponse } from "@/types/api";
@@ -76,41 +76,106 @@ export function FinancingResults({ result }: { result: FinancingSimulationRespon
     total: parseDecimal(offer.total_cost_try ?? offer.total_payment_try) ?? 0,
   }));
 
-  const exportCsv = () => {
-    downloadCsv(
-      `taksit-simulasyon-${result.term_months}ay.csv`,
-      [
-        "bank_name",
-        "product_name",
-        "profit_rate_pct",
-        "monthly_payment_try",
-        "total_profit_try",
-        "total_payment_try",
-        "allocation_fee_try",
-        "total_cost_try",
-        "annual_cost_pct",
-        "source_url",
+  const exportData = (format: "csv" | "xlsx") => {
+    const base = `taksit-simulasyon-${result.term_months}ay`;
+    const headers = [
+      "Banka",
+      "Ürün",
+      "Kâr payı (%)",
+      "Aylık taksit (TL)",
+      "Toplam kâr payı (TL)",
+      "Toplam ödeme (TL)",
+      "Tahsis ücreti (TL)",
+      "Toplam maliyet (TL)",
+      "Yıllık maliyet (%)",
+      "Kaynak URL",
+    ];
+    const rows = result.offers.map((o) => [
+      o.bank_name,
+      o.product_name,
+      o.profit_rate_pct,
+      o.monthly_payment_try,
+      o.total_profit_try,
+      o.total_payment_try,
+      o.allocation_fee_try,
+      o.total_cost_try,
+      o.annual_cost_pct,
+      o.source_url,
+    ]);
+    const meta = {
+      Rapor: "Finansman taksit simülasyonu",
+      "Vade (ay)": result.term_months,
+      "Teklif sayısı": result.offers.length,
+      Not: result.method_note ?? "",
+    };
+    const best = result.offers.find((o) => o.is_best_offer);
+    const installments = best?.installments ?? [];
+    const installmentSheet =
+      installments.length > 0
+        ? {
+            name: "Taksit planı (en iyi)",
+            headers: ["Ay", "Taksit (TL)", "Kâr payı (TL)", "Anapara (TL)", "Kalan (TL)"],
+            rows: installments.map((r) => [
+              r.month,
+              r.installment,
+              r.profit_share,
+              r.principal,
+              r.remaining_balance,
+            ]),
+          }
+        : null;
+    const missingSheet =
+      result.banks_without_data.length > 0
+        ? {
+            name: "Veri yok",
+            headers: ["Banka", "Neden"],
+            rows: result.banks_without_data.map((b) => [b.bank_name, b.reason]),
+          }
+        : null;
+
+    if (format === "csv") {
+      downloadRichCsv({
+        filename: `${base}.csv`,
+        meta: { ...meta, "En iyi teklif": best?.bank_name ?? "" },
+        headers,
+        rows,
+        extraSections: [
+          ...(installmentSheet
+            ? [
+                {
+                  title: "Taksit planı (en iyi teklif)",
+                  headers: installmentSheet.headers,
+                  rows: installmentSheet.rows,
+                },
+              ]
+            : []),
+          ...(missingSheet
+            ? [{ title: "Veri yok", headers: missingSheet.headers, rows: missingSheet.rows }]
+            : []),
+        ],
+      });
+      return;
+    }
+
+    downloadExcelWorkbook({
+      filename: `${base}.xlsx`,
+      meta: { ...meta, "En iyi teklif": best?.bank_name ?? "" },
+      sheets: [
+        { name: "Teklifler", headers, rows },
+        ...(installmentSheet ? [installmentSheet] : []),
+        ...(missingSheet ? [missingSheet] : []),
       ],
-      result.offers.map((o) => [
-        o.bank_name,
-        o.product_name,
-        o.profit_rate_pct,
-        o.monthly_payment_try,
-        o.total_profit_try,
-        o.total_payment_try,
-        o.allocation_fee_try,
-        o.total_cost_try,
-        o.annual_cost_pct,
-        o.source_url,
-      ]),
-    );
+    });
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button type="button" variant="secondary" size="sm" onClick={exportCsv}>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="secondary" size="sm" onClick={() => exportData("csv")}>
           CSV indir
+        </Button>
+        <Button type="button" variant="secondary" size="sm" onClick={() => exportData("xlsx")}>
+          Excel indir
         </Button>
       </div>
 

@@ -3,6 +3,7 @@ import { Route, BrowserRouter as Router, Routes } from "react-router-dom";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AdminPage } from "@/pages/AdminPage";
 import { CampaignsPage } from "@/pages/CampaignsPage";
 import { CampaignDetailPage } from "@/pages/CampaignDetailPage";
 import { ChatPage } from "@/pages/ChatPage";
@@ -43,6 +44,7 @@ export default function App() {
               <Route path="/simulator" element={<SimulatorPage />} />
               <Route path="/chat" element={<ChatPage />} />
               <Route path="/extract" element={<ExtractPage />} />
+              <Route path="/admin" element={<AdminPage />} />
               <Route
                 path="*"
                 element={
