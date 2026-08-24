@@ -1,4 +1,6 @@
 import type {
+  AdminJob,
+  AdminJobCreateRequest,
   BankDetail,
   BankSummary,
   BDDKLimitCheckRequest,
@@ -18,6 +20,7 @@ import type {
   FinancingResponse,
   FinancingSimulationRequest,
   FinancingSimulationResponse,
+  HealthResponse,
   KatilimHesabiQuery,
   KatilimHesabiResponse,
   Page,
@@ -171,4 +174,9 @@ export const api = {
     del<void>(`/chat/sessions/${encodeURIComponent(sessionKey)}`),
 
   extract: (body: ExtractRequest) => post<ExtractResponse>("/extract", body),
+
+  adminHealth: () => get<HealthResponse>("/admin/health"),
+  adminJobs: (limit = 20) => get<AdminJob[]>("/admin/jobs", { limit }),
+  adminJob: (id: string) => get<AdminJob>(`/admin/jobs/${encodeURIComponent(id)}`),
+  createAdminJob: (body: AdminJobCreateRequest) => post<AdminJob>("/admin/jobs", body),
 };

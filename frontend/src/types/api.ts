@@ -19,6 +19,47 @@ export interface Page<T> {
   total_pages: number;
 }
 
+export interface HealthResponse {
+  status: string;
+  version: string;
+  db_ok: boolean;
+  campaign_count: number;
+}
+
+export type AdminJobKind =
+  | "campaign"
+  | "js_campaign"
+  | "product"
+  | "bank_pipeline"
+  | "campaign_all"
+  | "js_campaign_all"
+  | "product_all"
+  | "tkbb"
+  | "tkbb_seed"
+  | "llm_health";
+
+export type AdminJobStatus = "queued" | "running" | "succeeded" | "failed";
+
+export interface AdminJob {
+  id: string;
+  kind: AdminJobKind;
+  bank_code: string | null;
+  status: AdminJobStatus;
+  command: string[];
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  exit_code: number | null;
+  log: string;
+  error: string | null;
+  summary: string | null;
+}
+
+export interface AdminJobCreateRequest {
+  kind: AdminJobKind;
+  bank_code?: string | null;
+}
+
 // ==================== Bankalar ====================
 
 export type BddkStatus = "active" | "pre_launch";
