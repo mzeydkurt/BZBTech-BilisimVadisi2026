@@ -166,10 +166,7 @@ def _sablon_yanit(plan: QueryPlan, hits: tuple[SearchHit, ...]) -> str:
             parcalar.append(doc.title)
     bankalar = list(dict.fromkeys(v.doc.bank_name for v in hits))
     banka_metni = ", ".join(bankalar[:3])
-    return (
-        f"{banka_metni} bünyesinde sorunuza uyan {len(hits)} kampanya var. "
-        + " ".join(parcalar)
-    )
+    return f"{banka_metni} bünyesinde sorunuza uyan {len(hits)} kampanya var. " + " ".join(parcalar)
 
 
 async def _model_cagir(
@@ -240,6 +237,24 @@ async def generate_answer(
             direction_note=direction,
         )
 
+    #  Guard 4b — BOŞ YANIT SESSİZCE GEÇMEZ. Model HTTP 200 döndürüp metni
+    # boş bırakabiliyor: düşünme kipi açık kaldığında ya da `num_predict`
+    # yetersizken üretim bütçesi tükeniyor ve `content` boş geliyor. İstisna
+    # fırlatmadığı için yukarıdaki `except` bloğu bunu yakalamıyor; aşağıdaki
+    # guard'lar da boş dizeden geçtiği için kullanıcı BOŞ bir yanıt kutusu
+    # görüyor. Kullanıcı bunu "model bir şey demedi" diye değil "sistem bozuk"
+    # diye okur — oysa sıralı kanıtlar geçerlidir, yalnızca cümle yoktur.
+    if not metin.strip():
+        logger.warning("model_bos_yanit_dondu", model=model_name)
+        return GeneratedAnswer(
+            text=_sablon_yanit(plan, hits),
+            source="template",
+            model_error="Model boş yanıt döndürdü.",
+            model_name=model_name,
+            latency_ms=latency,
+            direction_note=direction,
+        )
+
     # Atıfları UI metninden silmeden önce çıkar (strip sonrası citations boş kalırdı).
     baglam_kimlikleri = {vurus.doc.campaign_id for vurus in hits}
     atiflar = tuple(
@@ -277,15 +292,18 @@ async def generate_answer(
             metin2, model_name2, latency2 = await _model_cagir(
                 provider, yeniden_istem, system=system
             )
-            atiflar = tuple(
-                sorted(
-                    {
-                        int(eslesme)
-                        for eslesme in _ATIF_RE.findall(metin2)
-                        if int(eslesme) in baglam_kimlikleri
-                    }
+            atiflar = (
+                tuple(
+                    sorted(
+                        {
+                            int(eslesme)
+                            for eslesme in _ATIF_RE.findall(metin2)
+                            if int(eslesme) in baglam_kimlikleri
+                        }
+                    )
                 )
-            ) or atiflar
+                or atiflar
+            )
             metin2 = strip_citation_markers(metin2)
             latency = (latency or 0) + (latency2 or 0)
             model_name = model_name2 or model_name
