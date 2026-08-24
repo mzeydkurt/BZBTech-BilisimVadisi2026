@@ -327,9 +327,7 @@ def _katilma_yanit(
     for ay in vadeler:
         vade_etiketi = KATILIM_HESABI_VADE_ETIKETI.get(ay, "aylik")
         hucre = f"{vade_etiketi}|{currency}"
-        vade_siralar.append(
-            (ay, sirala_katilma_satirlari(pivot.rows, hucre=hucre, limit=3))
-        )
+        vade_siralar.append((ay, sirala_katilma_satirlari(pivot.rows, hucre=hucre, limit=3)))
 
     kart_sirali = next((sira for ay, sira in vade_siralar if ay == kart_vade), [])
     vade_adi = _VADE_ADI.get(kart_vade, "aylık")
@@ -337,20 +335,14 @@ def _katilma_yanit(
     bank_ids = {
         b.code: b.id
         for b in session.scalars(
-            select(Bank).where(
-                Bank.code.in_([s.bank_code for s, _ in kart_sirali] or ["__yok__"])
-            )
+            select(Bank).where(Bank.code.in_([s.bank_code for s, _ in kart_sirali] or ["__yok__"]))
         )
     }
 
     products: list[ChatProductItem] = []
     top_adaylar: list[RankCandidate] = []
     for i, (satir, deger) in enumerate(kart_sirali):
-        kaynak = (
-            "TKBB Veri Peteği"
-            if "tkbb" in (satir.data_source or "")
-            else "banka sitesi"
-        )
+        kaynak = "TKBB Veri Peteği" if "tkbb" in (satir.data_source or "") else "banka sitesi"
         reason = f"{vade_adi.capitalize()} {oran_etiketi}: {_yuzde_yaz(deger)} ({kaynak})"
         products.append(
             ChatProductItem(
@@ -433,7 +425,41 @@ def _rejection_label(key: str) -> str:
 
 
 def _understood(plan: QueryPlan) -> list[UnderstoodFilter]:
+    """Sorgu sinyallerini arayüz çiplerine çevirir.
+
+    ⚠️ TAKSONOMİ SLUG'I TÜRKÇEYE BURADA ÇEVRİLMEZ. Okunur adlar
+    `frontend/src/lib/taxonomy.ts` içinde yaşıyor; backend'e ikinci bir sözlük
+    açmak, iki sözlüğün sessizce ıraksaması demek olurdu (Sprint 2'de
+    `PRODUCT_TYPES` bu yüzden tek yerde tutuldu). Eksen sinyallerinde `display`
+    slug'ın kendisidir; arayüz `taxonomyLabel()` uygular ve o işlev karşılığı
+    olmayan değeri olduğu gibi döndürdüğü için banka adı ve durum metni
+    dokunulmadan geçer.
+    """
     ciplar: list[UnderstoodFilter] = []
+
+    # ⚠️ TOPLAMA NİYETİ DE BİR ÇİPTİR. "En düşük kâr payı oranı hangi bankada?"
+    # sorusunda hiçbir süzgeç sinyali çıkmıyor; çip listesi boş kalırsa
+    # kullanıcı sistemin soruyu bir HESAP olarak anladığını hiç göremez ve
+    # yanıtın 608 kaydın tamamı üzerinden mi geldiğini bilemez.
+    if plan.aggregate is not None:
+        if plan.aggregate.kind == "count":
+            gosterim = "kayıt sayısı"
+        else:
+            alan_etiketi, _ = aggregate.FIELD_LABELS.get(
+                plan.aggregate.field or "", (plan.aggregate.field or "", "")
+            )
+            yon_metni = "en yüksek" if plan.aggregate.direction == "max" else "en düşük"
+            gosterim = f"{yon_metni} {alan_etiketi}"
+        ciplar.append(
+            UnderstoodFilter(
+                kind="aggregate",
+                value=plan.aggregate.kind,
+                label="Hesap",
+                display=gosterim,
+                evidence=plan.raw,
+            )
+        )
+
     for sinyal in plan.signals:
         if sinyal.kind == "numeric":
             alan, islec, deger = sinyal.value.split(":", 2)
@@ -568,8 +594,7 @@ def _sohbet_yanit(plan: QueryPlan, *, uyari: str | None, elapsed_ms: int) -> Cha
     folded = _fold(plan.raw)
     if any(k in folded for k in ("tesekkur", "sagol", "eyvallah")):
         metin = (
-            "Rica ederim. Başka bir kampanya, finansman veya katılma hesabı "
-            "sorusu sorabilirsiniz."
+            "Rica ederim. Başka bir kampanya, finansman veya katılma hesabı sorusu sorabilirsiniz."
         )
     elif any(k in folded for k in ("gorusuruz", "hosca kal", "bye")):
         metin = "Görüşmek üzere. İhtiyacınız olursa buradayım."
@@ -692,17 +717,14 @@ async def _bos_sonuc_anlat(
     yasakli: dict[str, str | None],
 ) -> AnswerBlock:
     """Boş sonuçta relaxation_hints → doğal cümle (+ isteğe bağlı anlatıcı)."""
-    sablon = relaxation_to_natural(
-        [(h.kind, h.value, h.label, h.hit_count) for h in hints]
-    )
+    sablon = relaxation_to_natural([(h.kind, h.value, h.label, h.hit_count) for h in hints])
     try:
         saglayici = get_provider(get_settings())
     except ValueError:
         saglayici = None
     facts = NarrationFacts(
         facts=tuple(
-            FactTriple(etiket=h.label, deger=str(h.hit_count), birim="kayıt")
-            for h in hints[:3]
+            FactTriple(etiket=h.label, deger=str(h.hit_count), birim="kayıt") for h in hints[:3]
         ),
         template_text=sablon,
         question=plan.raw,
@@ -814,18 +836,13 @@ def _product_bm25(
             continue
         urun_tipleri = set(plan.axis_filters.get("product_type", ()))
         if urun_tipleri and doc.product_type:
-            if not any(
-                tip in doc.product_type or doc.product_type in tip for tip in urun_tipleri
-            ):
+            if not any(tip in doc.product_type or doc.product_type in tip for tip in urun_tipleri):
                 continue
         # Katılma alanı: birikim / katılma ürünleri.
         if plan.source_domain == "katilma":
             tip = (doc.product_type or "").lower()
             ad = _fold(doc.name)
-            if not any(
-                k in tip or k in ad
-                for k in ("katilma", "birikim", "ara_donem", "katilim")
-            ):
+            if not any(k in tip or k in ad for k in ("katilma", "birikim", "ara_donem", "katilim")):
                 continue
         if plan.source_domain == "finansman":
             tip = (doc.product_type or "").lower()
@@ -867,8 +884,7 @@ def _top_from_products(
     for i, p in enumerate(products):
         path = (
             "/katilim-hesabi"
-            if p.rate_type in {"participation_yield", "profit_sharing_ratio"}
-            or domain == "katilma"
+            if p.rate_type in {"participation_yield", "profit_sharing_ratio"} or domain == "katilma"
             else f"/products/{p.product_id}"
         )
         reason = None
@@ -1070,9 +1086,7 @@ async def _aggregate_response(
 async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse:
     """Doğal dil sorusunu uçtan uca işler (oturum + çok tur + anlatıcı)."""
     baslangic = time.perf_counter()
-    oturum = chat_sessions.resolve_or_create(
-        session, req.session_id, title_hint=req.query
-    )
+    oturum = chat_sessions.resolve_or_create(session, req.session_id, title_hint=req.query)
     turn = chat_sessions.next_turn_index(oturum)
     onceki_plan = chat_sessions.previous_plan(oturum)
 
@@ -1235,9 +1249,13 @@ async def _process_chat_core(
 
     # ── compare → ürün ise rank_products ──────────────────
     if plan.intent == "compare":
-        urun_mu = bool(plan.axis_filters.get("product_type")) or bool(plan.rate_type) or any(
-            k in _fold(plan.raw)
-            for k in ("finansman", "katilma", "konut", "tasit", "ihtiyac", "getiri", "oran")
+        urun_mu = (
+            bool(plan.axis_filters.get("product_type"))
+            or bool(plan.rate_type)
+            or any(
+                k in _fold(plan.raw)
+                for k in ("finansman", "katilma", "konut", "tasit", "ihtiyac", "getiri", "oran")
+            )
         )
         if urun_mu:
             rate_type = plan.rate_type or "financing_rate"
@@ -1444,9 +1462,7 @@ async def _process_chat_core(
         # Katılma: participation_yield / profit_sharing_ratio öncelikli.
         if plan.source_domain == "katilma":
             oranlar = [
-                d
-                for d in oranlar
-                if d.rate_type in {"participation_yield", "profit_sharing_ratio"}
+                d for d in oranlar if d.rate_type in {"participation_yield", "profit_sharing_ratio"}
             ] or oranlar
         elif plan.source_domain == "finansman":
             oranlar = [d for d in oranlar if d.rate_type == "financing_rate"] or oranlar
