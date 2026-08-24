@@ -220,17 +220,53 @@ export interface CampaignDetail extends CampaignListItem {
   products: LinkedProduct[];
 }
 
-/**
- * `POST /campaigns/compare` istek gövdesi. ⚠️ Yanıt şeması bu geçişte
- * doğrulanmadı — hiçbir sayfa bu uca bağlanmıyor. Kullanmadan önce backend
- * kaynağından `CampaignRankingResponse` şeması teyit edilmeli.
- */
+export type CampaignRankingCriterion =
+  | "en_yuksek_odul"
+  | "en_dusuk_kar_payi"
+  | "en_uzun_vade"
+  | "en_yuksek_taksit"
+  | "en_yuksek_iade_orani"
+  | "en_yuksek_indirim";
+
+/** `POST /campaigns/compare` istek gövdesi (§5.7). */
 export interface CampaignCompareRequest {
-  criterion: string;
+  criterion: CampaignRankingCriterion | string;
   bank_codes?: string[] | null;
   product_type?: string | null;
   only_active?: boolean;
   limit?: number;
+}
+
+export interface RankedCampaign {
+  rank: number | null;
+  campaign_id: number;
+  title: string;
+  bank_code: string;
+  bank_name: string;
+  status: string;
+  reward_amount_try: string | null;
+  reward_type: string | null;
+  profit_rate_pct: string | null;
+  term_months_max: number | null;
+  installment_count: number | null;
+  cashback_pct: string | null;
+  discount_pct: string | null;
+  min_spend_try: string | null;
+  has_no_fee: boolean | null;
+  end_date: string | null;
+  source_url: string | null;
+  missing_reason: string | null;
+}
+
+export interface CampaignRankingResponse {
+  criterion: string;
+  sort_field: string;
+  descending: boolean;
+  winner: RankedCampaign | null;
+  winner_reason: string | null;
+  ranked: RankedCampaign[];
+  without_data: RankedCampaign[];
+  note: string;
 }
 
 // ==================== Ürünler ====================
@@ -392,6 +428,12 @@ export interface RankedProduct {
   evidence_text: string | null;
   source_url: string | null;
   missing_reason: string | null;
+  /** Oranın yürürlük / yayımlanma tarihi. */
+  effective_date?: string | null;
+  rate_source?: string | null;
+  is_binding?: boolean | null;
+  variant_label?: string | null;
+  account_tier?: string | null;
 }
 
 export interface ProductRankingResponse {
@@ -404,6 +446,8 @@ export interface ProductRankingResponse {
   ranked: RankedProduct[];
   without_data: RankedProduct[];
   note: string;
+  /** Karışık varyant/kademe sıralamasında kullanıcıya gösterilecek uyarılar. */
+  comparability_warnings?: string[];
 }
 
 // ==================== Finansmanlar (KATİP KAPI 6) ====================
@@ -495,12 +539,22 @@ export interface FinancingSimulationRequest {
   amount_try: string;
   term_months: number;
   product_type?: string;
+  bank_codes?: string[] | null;
 }
 
 export interface MissingDataBank {
   bank_code: string;
   bank_name: string;
   reason: string;
+}
+
+/** Eşit taksitli ödeme planının tek ay satırı. */
+export interface InstallmentRow {
+  month: number;
+  installment: string;
+  profit_share: string;
+  principal: string;
+  remaining_balance: string;
 }
 
 export interface BankFinancingOffer {
@@ -514,6 +568,10 @@ export interface BankFinancingOffer {
   monthly_payment_try: string;
   total_profit_try: string;
   total_payment_try: string;
+  allocation_fee_try?: string | null;
+  total_cost_try?: string | null;
+  annual_cost_pct?: string | null;
+  installments?: InstallmentRow[];
   is_best_offer: boolean;
   source_url: string | null;
   evidence_text: string | null;
@@ -533,6 +591,7 @@ export interface ParticipationYieldRequest {
   deposit_try: string;
   term_days: number;
   currency?: string;
+  bank_codes?: string[] | null;
 }
 
 export interface BankYieldOffer {
@@ -591,6 +650,38 @@ export interface ChatRequest {
   query: string;
   bank_code?: string | null;
   limit?: number;
+  /** Sunucu oturum anahtarı (`session_key`); yoksa yeni oturum açılır. */
+  session_id?: string | null;
+}
+
+export interface ChatSessionCreateResponse {
+  session_id: string;
+  title?: string | null;
+  created_at?: string;
+}
+
+export interface ChatSessionMessage {
+  turn_index: number;
+  role: "user" | "assistant";
+  content: string;
+  /** Assistant turlarında dolu; geçmiş yüklenince kartlar geri gelir. */
+  response_json?: ChatResponse | null;
+  /** Bazı backend sürümleri `response` adını kullanabilir. */
+  response?: ChatResponse | null;
+  intent?: string | null;
+  source_domain?: string | null;
+  answer_source?: string | null;
+  created_at?: string;
+}
+
+export interface ChatSessionDetail {
+  session_id?: string;
+  session_key?: string;
+  title: string | null;
+  ended_at: string | null;
+  created_at?: string;
+  last_activity_at?: string | null;
+  messages: ChatSessionMessage[];
 }
 
 export interface ChatMetric {
@@ -745,6 +836,9 @@ export interface ChatResponse {
   comparison: ChatComparisonBlock | null;
   source_domain?: string | null;
   top_matches?: ChatTopMatch[];
+  /** Sunucu oturum anahtarı — localStorage'da saklanır. */
+  session_id?: string | null;
+  turn_index?: number | null;
 }
 
 // ==================== Canlı Çıkarım ====================

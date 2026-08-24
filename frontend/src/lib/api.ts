@@ -3,11 +3,15 @@ import type {
   BankSummary,
   BDDKLimitCheckRequest,
   BDDKLimitCheckResponse,
+  CampaignCompareRequest,
   CampaignDetail,
   CampaignListItem,
   CampaignQuery,
+  CampaignRankingResponse,
   ChatRequest,
   ChatResponse,
+  ChatSessionCreateResponse,
+  ChatSessionDetail,
   ExtractRequest,
   ExtractResponse,
   FinancingQuery,
@@ -117,8 +121,15 @@ function get<T>(path: string, params?: Record<string, unknown>): Promise<T> {
   return request<T>(`${path}${params ? buildQuery(params) : ""}`);
 }
 
-function post<T>(path: string, body: unknown): Promise<T> {
-  return request<T>(path, { method: "POST", body: JSON.stringify(body) });
+function post<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>(path, {
+    method: "POST",
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+function del<T>(path: string): Promise<T> {
+  return request<T>(path, { method: "DELETE" });
 }
 
 export const api = {
@@ -130,6 +141,8 @@ export const api = {
   campaigns: (query: CampaignQuery) =>
     get<Page<CampaignListItem>>("/campaigns", query as Record<string, unknown>),
   campaign: (id: number) => get<CampaignDetail>(`/campaigns/${id}`),
+  compareCampaigns: (body: CampaignCompareRequest) =>
+    post<CampaignRankingResponse>("/campaigns/compare", body),
 
   products: (query: ProductQuery) => get<ProductOut[]>("/products", query as Record<string, unknown>),
   product: (id: number) => get<ProductDetailOut>(`/products/${id}`),
@@ -150,6 +163,12 @@ export const api = {
     post<BDDKLimitCheckResponse>("/simulator/bddk-check", body),
 
   chat: (body: ChatRequest) => post<ChatResponse>("/chat", body),
+  createChatSession: () => post<ChatSessionCreateResponse>("/chat/sessions", {}),
+  getChatSession: (sessionKey: string) =>
+    get<ChatSessionDetail>(`/chat/sessions/${encodeURIComponent(sessionKey)}`),
+  /** Oturumu sonlandırır (`ended_at`); satırları silmez. */
+  endChatSession: (sessionKey: string) =>
+    del<void>(`/chat/sessions/${encodeURIComponent(sessionKey)}`),
 
   extract: (body: ExtractRequest) => post<ExtractResponse>("/extract", body),
 };
