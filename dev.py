@@ -211,10 +211,17 @@ def scrape_js() -> int:
     """JS \"Daha fazla\" listelerini Playwright ile genişletir; detay httpx.
 
     Banka scraper dosyalarına Playwright gömülmez. Öncelik: Kuveyt, Dünya,
-    Albaraka, Vakıf.
+    Albaraka, Vakıf. `--rapor` ile docs/js_listing_kapsama.md üretir.
     """
     return _calistir(
         [_python(), "-m", "scripts.scrape_js_campaigns", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
+def js_kesif() -> int:
+    """JS liste genişletme keşfi → docs/js_listing_kesif.md."""
+    return _calistir(
+        [_python(), "-m", "scripts.js_listing_discover", *_ek_argumanlar()], cwd=BACKEND
     )
 
 
@@ -805,6 +812,7 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "web": (web, "Arayüzü başlatır (http://localhost:5173)"),
     "scrape": (scrape, "Tüm scraper'ları çalıştırır"),
     "scrape-js": (scrape_js, "JS liste (Daha fazla) + httpx detay — Playwright ayrı"),
+    "js-kesif": (js_kesif, "JS liste keşfi → docs/js_listing_kesif.md"),
     "scrape-deneme": (scrape_deneme, "Kazımayı veritabanına yazmadan dener"),
     "geri-doldur": (geri_doldur, "Banka kategorisini arşivden geri doldurur (ağa çıkmaz)"),
     "yeniden-isle": (yeniden_isle, "Temiz metni arşivden yeniden üretir (ağa çıkmaz)"),
