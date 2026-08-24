@@ -61,6 +61,34 @@ def get_provider(settings: Settings) -> LLMProvider:
     raise ValueError(f"Bilinmeyen LLM_PROVIDER: {settings.llm_provider!r}. Geçerli: {PROVIDERS}")
 
 
+def active_embedding_model(settings: Settings) -> str:
+    """Etkin sağlayıcının gömme modeli adı — TEK DOĞRULUK KAYNAĞI.
+
+    ⚠️ NEDEN VAR: `embeddings.model_name` hem YAZILIRKEN hem OKUNURKEN aynı
+    değeri vermek zorunda. İkisi de doğrudan `settings.embedding_model`
+    okuduğu için etiket, vektörü gerçekten üreten modelden BAĞIMSIZ kalıyordu
+    ve ölçüldü: EVREN'in `bge-m3-embed` modeliyle üretilmiş 1.248 vektör
+    `nomic-embed-text` etiketiyle kaydedilmişti (boyut 1024, oysa
+    `nomic-embed-text` 768 üretir).
+
+    Bugün çalışıyor gibi görünüyordu çünkü yazan ve okuyan AYNI yanlış etiketi
+    kullanıyordu. Ama airgap gösteriminde `LLM_PROVIDER=local` yapıldığı anda
+    sorgu vektörü 768 boyut olur, saklanan vektörler 1024 kalır ve
+    `cosine()` uzunluk uyuşmazlığında 0.0 döndürdüğü için **anlamsal kanal
+    hiçbir hata vermeden ölür**.
+
+    Args:
+        settings: `get_settings()` çıktısı.
+
+    Returns:
+        Etkin sağlayıcının gömme için kullandığı model adı.
+    """
+    ad = settings.llm_provider.strip().lower()
+    if ad == "evren":
+        return settings.evren_embedding_model
+    return settings.embedding_model
+
+
 __all__ = [
     "PROVIDERS",
     "EvrenProvider",
@@ -73,5 +101,6 @@ __all__ = [
     "LocalProvider",
     "MockProvider",
     "ModelInfo",
+    "active_embedding_model",
     "get_provider",
 ]

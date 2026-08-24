@@ -112,6 +112,21 @@ class EmbeddingStore:
         return len(self._vectors)
 
     @property
+    def dim(self) -> int:
+        """Saklanan vektörlerin boyutu; depo boşsa 0.
+
+        ⚠️ BOYUT DENETİMİ İÇİN GEREKLİ. `cosine()` uzunluk uyuşmazlığında
+        sessizce 0.0 döndürüyor; bu, farklı bir gömme modeliyle üretilmiş
+        vektörlerin bulunduğu bir depoda anlamsal kanalın **hiçbir hata
+        vermeden ölmesi** demek. Ölçüldü: EVREN'in `bge-m3-embed` modeliyle
+        üretilmiş 1.519 vektör `nomic-embed-text` etiketiyle kaydedilmişti
+        (1024 boyut; oysa `nomic-embed-text` 768 üretir).
+        """
+        for vektor in self._vectors.values():
+            return len(vektor)
+        return 0
+
+    @property
     def model_name(self) -> str:
         """Vektörlerin üretildiği model."""
         return self._model_name
