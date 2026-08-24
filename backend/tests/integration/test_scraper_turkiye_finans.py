@@ -24,6 +24,8 @@ from app.scrapers.banks.turkiye_finans import (
     BASE_URL,
     CAMPAIGN_DIR,
     CATEGORY_PAGES,
+    HAPPYCARD_LISTING,
+    HUB_PAGE,
     TurkiyeFinansScraper,
 )
 from app.scrapers.fetcher import Fetcher
@@ -203,8 +205,11 @@ class TestKesif:
         finally:
             scraper.close()
 
-        assert len(cekilen) == len(CATEGORY_PAGES) + 1
+        # hub + kategoriler + arşiv + Happy Card
+        assert len(cekilen) == len(CATEGORY_PAGES) + 3
         assert BITEN_URL in cekilen
+        assert _sayfa(HUB_PAGE) in cekilen
+        assert HAPPYCARD_LISTING in cekilen
 
     def test_sayfa_alinamazsa_digerleri_surer(
         self,

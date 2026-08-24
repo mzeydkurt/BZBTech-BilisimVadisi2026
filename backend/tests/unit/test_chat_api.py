@@ -321,3 +321,82 @@ class TestGovdeOnbellegi:
 
         ikinci = api_client.post("/api/v1/chat", json={"query": "market"}).json()
         assert ikinci["retrieval"]["corpus_size"] == 5
+
+
+class TestSprint5Eklemeleri:
+    """Sözleşmeye yalnızca alan eklenir; mevcut istemci kırılmaz."""
+
+    def test_yeni_alanlar_geriye_uyumlu(
+        self, api_client: httpx.Client, dolu_oturum: Session
+    ) -> None:
+        veri = api_client.post(
+            "/api/v1/chat", json={"query": "Kuveyt Türk market kampanyası"}
+        ).json()
+        assert veri["clarification_needed"] is False
+        assert "products" in veri
+        assert "glossary" in veri
+        assert "comparison" in veri
+        assert "direction_note" in veri
+
+    def test_tanim_niyeti(self, api_client: httpx.Client, dolu_oturum: Session) -> None:
+        veri = api_client.post(
+            "/api/v1/chat", json={"query": "Kâr payı oranı ne demek?"}
+        ).json()
+        assert veri["intent"] == "tanim"
+        assert veri["answer"]["source"] == "computed"
+        assert veri["glossary"]
+
+    def test_kapsam_disi(self, api_client: httpx.Client, dolu_oturum: Session) -> None:
+        veri = api_client.post("/api/v1/chat", json={"query": "Yarın hava nasıl?"}).json()
+        assert veri["intent"] == "kapsam_disi"
+        assert veri["answer"]["source"] == "refusal"
+        assert veri["results"] == []
+        assert veri["retrieval"]["semantic_used"] is False
+
+
+class TestKatibimEklemeleri:
+    """source_domain + top_matches — yalnızca ekleme."""
+
+    def test_source_domain_ve_top_matches(
+        self, api_client: httpx.Client, dolu_oturum: Session
+    ) -> None:
+        veri = api_client.post(
+            "/api/v1/chat", json={"query": "Kuveyt Türk market kampanyası"}
+        ).json()
+        assert "source_domain" in veri
+        assert veri["source_domain"] in {
+            "kampanya",
+            "finansman",
+            "katilma",
+            "tanim",
+            "kapsam_disi",
+        }
+        assert "top_matches" in veri
+        assert isinstance(veri["top_matches"], list)
+        assert len(veri["top_matches"]) <= 3
+
+    def test_tanim_source_domain(self, api_client: httpx.Client, dolu_oturum: Session) -> None:
+        veri = api_client.post("/api/v1/chat", json={"query": "Murabaha nedir?"}).json()
+        assert veri["source_domain"] == "tanim"
+        assert veri["intent"] == "tanim"
+
+    def test_katilma_source_domain(
+        self, api_client: httpx.Client, dolu_oturum: Session
+    ) -> None:
+        veri = api_client.post(
+            "/api/v1/chat",
+            json={
+                "query": (
+                    "Bana katılma hesapları hakkında bilgi verir misin "
+                    "birde aylık standart katılım hesabından en ideal hangisi"
+                )
+            },
+        ).json()
+        assert veri["source_domain"] == "katilma"
+        assert "top_matches" in veri
+        assert len(veri["top_matches"]) <= 3
+        # Ham paylaşım satırı dökümü değil: cevap Katılım Hesabı yoluna işaret eder.
+        assert "katılımcı payı %40" not in veri["answer"]["text"].lower()
+        note = veri["retrieval"].get("semantic_note") or ""
+        assert "katilim_hesabi" in note or "build_katilim" in note or "Katılma" in note or "pivot" in note.lower() or "katilma" in note.lower()
+

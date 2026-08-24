@@ -331,7 +331,7 @@ class TestCevapDenetimi:
         )
         assert cevap.source == "template"
         assert cevap.model_error == "servis yok"
-        assert "1 kampanya bulundu" in cevap.text
+        assert "1 kampanya var" in cevap.text
 
     @pytest.mark.asyncio
     async def test_saglayici_yoksa_sablon_yanit(self) -> None:
