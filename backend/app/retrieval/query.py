@@ -104,6 +104,80 @@ COUNT_MARKERS: Final[tuple[str, ...]] = (
 )
 COMPARE_MARKERS: Final[tuple[str, ...]] = ("karsilastir", "kiyasla", "hangisi daha", " ile ")
 
+# ── Tanım niyeti ──────────────────────────────────────────
+DEFINITION_MARKERS: Final[tuple[str, ...]] = (
+    "ne demek",
+    "ne anlama",
+    "nedir",
+    "anlami ne",
+    "anlamı ne",
+    "tanimi",
+    "tanımı",
+    "ne demektir",
+)
+
+# ── Oran türü işaretçileri ────────────────────────────────
+# ⚠️ Dağıtılan kâr payı ≠ kâr paylaşım oranı. Belirsizse aday listesi dolar;
+# sohbet netleştirme sorar (KAPI 2.3).
+RATE_TYPE_MARKERS: Final[dict[str, tuple[str, ...]]] = {
+    "financing_rate": (
+        "finansman orani",
+        "finansman kar payi",
+        "konut finansman",
+        "tasit finansman",
+        "ihtiyac finansman",
+        "finansman",
+    ),
+    "participation_yield": (
+        "katilma hesabi",
+        "katilim hesabi",  # yaygın yazım hatası → katılma
+        "standart katilma",
+        "standart katilim",
+        "dagitilan kar payi",
+        "getiri",
+        "vadeli mevduat",
+        "katilim fonu getirisi",
+    ),
+    "profit_sharing_ratio": (
+        "kar paylasim",
+        "paylasim orani",
+        "musteri payi",
+        "katilimci payi",
+        "90/10",
+        "98/2",
+    ),
+    "interest_free_benevolent_loan": (
+        "karz-i hasen",
+        "karzi hasen",
+        "karz ı hasen",
+        "faizsiz borc",
+    ),
+}
+
+# Konvansiyonel → katılım eşlemesi (sorgu REDDEDİLMEZ; arama kırılmasın).
+CONVENTIONAL_QUERY_MAP: Final[tuple[tuple[str, str], ...]] = (
+    ("vadeli mevduat", "katilma hesabi"),
+    ("faiz orani", "kar payi orani"),
+    ("faiz", "kar payi"),
+    ("mevduat", "katilim fonu"),
+    ("kredi faizi", "finansman kar payi"),
+)
+
+# Kapsam dışı — beyaz liste dışı VE açıkça yabancı alan.
+# ⚠️ Siyah liste kısa ve kapalı tutulur; "evlenecek çiftlere…" gibi
+# serbest metin araması search'te kalır (3C sözleşmesi).
+OUT_OF_DOMAIN_MARKERS: Final[tuple[str, ...]] = (
+    "hava nasil",
+    "hava durumu",
+    "yarin hava",
+    "bugun hava",
+    "mac sonucu",
+    "futbol skoru",
+    "yemek tarifi",
+    "film oner",
+    "sarki sozu",
+)
+
 # ── Durum işaretçileri ────────────────────────────────────
 # ⚠️ `unknown` ile `expired` AYRI. Tarihi bulunamayan kampanya "süresi dolmuş"
 # değildir; `compute_status()` bunları ayrı döndürüyor ve sorgu katmanı da
@@ -267,11 +341,154 @@ class QueryPlan:
     free_terms: tuple[str, ...] = ()
     aggregate: AggregateSpec | None = None
     signals: tuple[QuerySignal, ...] = ()
+    # Sprint 5: oran türü (tekil_sorgu / compare netleştirme).
+    rate_type: str | None = None
+    rate_type_candidates: tuple[str, ...] = ()
+    # Tanım niyetinde aranan terim (ham).
+    glossary_term: str | None = None
+    # Katibim: birincil kaynak alanı.
+    source_domain: str = "kampanya"
 
     @property
     def has_filters(self) -> bool:
         """Herhangi bir yapısal süzgeç çıkarıldı mı?"""
         return bool(self.bank_codes or self.axis_filters or self.numeric or self.statuses)
+
+
+# Kaynak alanı sinyalleri (LLM'siz).
+_KAMPANYA_SINYAL: Final[tuple[str, ...]] = (
+    "kampanya",
+    "kampanyalar",
+    "kart",
+    "nakit iade",
+    "nakit iadesi",
+    "cashback",
+    "mil",
+    "puan",
+    "hediye",
+    "indirim",
+    "bonus",
+)
+_FINANSMAN_SINYAL: Final[tuple[str, ...]] = (
+    "finansman",
+    "konut",
+    "tasit",
+    "ihtiyac",
+    "murabaha",
+    "ltv",
+)
+_KATILMA_SINYAL: Final[tuple[str, ...]] = (
+    "katilma",
+    "katilim hesabi",
+    "katilim hesab",
+    "standart katilma",
+    "standart katilim",
+    "getiri",
+    "kar paylasim",
+    "kar paylasimi",
+    "dagitilan kar",
+)
+
+# Katılma vadesi — uzun kalıp önce (3 aylık, "aylık"tan önce).
+_KATILMA_VADE: Final[tuple[tuple[tuple[str, ...], int], ...]] = (
+    (("3 aylik", "3 ay", "uc aylik"), 3),
+    (("6 aylik", "6 ay", "alti aylik"), 6),
+    (("yillik", "12 ay", "1 yil", "bir yil"), 12),
+    (("aylik", "1 ay", "bir aylik"), 1),
+)
+
+
+def resolve_source_domain(
+    katlanmis: str,
+    *,
+    intent: str,
+    rate_type: str | None,
+    axis_filters: dict[str, tuple[str, ...]],
+) -> str:
+    """Sorgu için birincil kaynak alanını seçer.
+
+    Returns:
+        kampanya | finansman | katilma | tanim | kapsam_disi
+    """
+    if intent == "kapsam_disi":
+        return "kapsam_disi"
+    if intent == "tanim":
+        return "tanim"
+
+    if rate_type == "participation_yield" or rate_type == "profit_sharing_ratio":
+        return "katilma"
+    if rate_type == "financing_rate":
+        return "finansman"
+
+    if any(s in katlanmis for s in _KATILMA_SINYAL):
+        return "katilma"
+    if any(s in katlanmis for s in _FINANSMAN_SINYAL):
+        return "finansman"
+    if any(s in katlanmis for s in _KAMPANYA_SINYAL):
+        return "kampanya"
+
+    urun = axis_filters.get("product_type", ())
+    if any("finansman" in d or d in {"kart"} for d in urun):
+        if any("birikim" in d or "katilma" in d for d in urun):
+            return "katilma"
+        if "kart" in urun and not any("finansman" in d for d in urun):
+            return "kampanya"
+        return "finansman"
+
+    # Finansal sinyal yoksa search bile kampanya varsayılanı (serbest RAG).
+    return "kampanya"
+
+
+def parse_katilma_vade(katlanmis: str) -> int | None:
+    """Sorgudan katılma vadesini okur (ay). Belirtilmemişse None.
+
+    Birden fazla vade geçiyorsa ilk eşleşeni döner (3 → 6 → 12 → 1 sırası).
+    Tüm vadeler için `parse_katilma_vadeler` kullanın.
+    """
+    for kaliplar, ay in _KATILMA_VADE:
+        if any(k in katlanmis for k in kaliplar):
+            return ay
+    return None
+
+
+def parse_katilma_vadeler(katlanmis: str) -> tuple[int, ...]:
+    """Sorguda geçen tüm katılma vadelerini döner (1, 3, 6, 12 sırasıyla).
+
+    "aylık" yalnız başına 1 ay demektir; "3 aylık" içindeki "aylık" sayılmaz.
+    """
+    bulunan: set[int] = set()
+    if any(k in katlanmis for k in ("3 aylik", "3 ay", "uc aylik")):
+        bulunan.add(3)
+    if any(k in katlanmis for k in ("6 aylik", "6 ay", "alti aylik")):
+        bulunan.add(6)
+    if any(k in katlanmis for k in ("yillik", "12 ay", "1 yil", "bir yil")):
+        bulunan.add(12)
+
+    kalan = katlanmis
+    for k in (
+        "3 aylik",
+        "3 ay",
+        "uc aylik",
+        "6 aylik",
+        "6 ay",
+        "alti aylik",
+        "12 ay",
+        "1 yil",
+        "bir yil",
+        "yillik",
+    ):
+        kalan = kalan.replace(k, " ")
+    if any(k in kalan for k in ("aylik", "1 ay", "bir aylik")):
+        bulunan.add(1)
+
+    return tuple(ay for ay in (1, 3, 6, 12) if ay in bulunan)
+
+
+def parse_katilma_varyant(katlanmis: str) -> str:
+    """standart → normal; ara ödemeli → ara_odemeli."""
+    if any(k in katlanmis for k in ("ara odeme", "ara donem", "ara odemeli")):
+        return "ara_odemeli"
+    return "normal"
 
 
 def _fold(text: str | None) -> str:
@@ -556,6 +773,121 @@ def _serbest_terimler(katlanmis: str, kullanilan: set[str]) -> tuple[str, ...]:
     return tuple(terimler)
 
 
+def _konvansiyonel_normalize(katlanmis: str) -> str:
+    """Sorgudaki konvansiyonel terimleri katılım eşdeğerine çevirir (arama için)."""
+    sonuc = katlanmis
+    for eski, yeni in sorted(CONVENTIONAL_QUERY_MAP, key=lambda ikili: -len(ikili[0])):
+        if eski in sonuc:
+            sonuc = sonuc.replace(eski, yeni)
+    return sonuc
+
+
+def _rate_type_adaylari(katlanmis: str) -> list[str]:
+    """Sorgudan olası rate_type adaylarını çıkarır (uzun işaretçi önce)."""
+    adaylar: list[str] = []
+    for tur, isaretciler in RATE_TYPE_MARKERS.items():
+        for isaretci in sorted(isaretciler, key=len, reverse=True):
+            if _kelime_var(katlanmis, isaretci) or isaretci in katlanmis:
+                if tur not in adaylar:
+                    adaylar.append(tur)
+                break
+    return adaylar
+
+
+def _tanim_mi(katlanmis: str) -> bool:
+    """Tanım sorusu mu?"""
+    return any(isaretci in katlanmis for isaretci in DEFINITION_MARKERS)
+
+
+def _tanim_terimi(raw: str, katlanmis: str) -> str | None:
+    """Tanım sorusundan terim parçasını çıkarır."""
+    temiz = katlanmis
+    for isaretci in DEFINITION_MARKERS:
+        temiz = temiz.replace(isaretci, " ")
+    for sw in ("bir", "bu", "su", "mi", "mu", "midir", "mudur", "nedir"):
+        temiz = re.sub(rf"(?<![a-z0-9]){sw}(?![a-z0-9])", " ", temiz)
+    terim = " ".join(temiz.split()).strip(" ?¿.,;:!")
+    if terim:
+        return terim
+    return raw.strip(" ?¿.,;:!") or None
+
+
+def _finansal_sinyal_var(
+    katlanmis: str,
+    *,
+    banka: bool,
+    eksen: bool,
+    kisit: bool,
+    durum: bool,
+    toplama: bool,
+) -> bool:
+    """Kapsam içi sinyal var mı? (beyaz liste)"""
+    if banka or eksen or kisit or durum or toplama:
+        return True
+    if any(isaretci in katlanmis for isaretci in COMPARE_MARKERS):
+        return True
+    if any(isaretci in katlanmis for isaretci in DEFINITION_MARKERS):
+        return True
+    if _rate_type_adaylari(katlanmis):
+        return True
+    # Kampanya / bankacılık anahtarları.
+    for kelime in (
+        "kampanya",
+        "banka",
+        "finansman",
+        "kar payi",
+        "oran",
+        "vade",
+        "taksit",
+        "katilma",
+        "katilim",
+        "hesap",
+        "tahsis",
+        "faiz",
+        "kredi",
+        "mevduat",
+        "iade",
+        "indirim",
+        "odul",
+        "masraf",
+        "kart",
+    ):
+        if _kelime_var(katlanmis, kelime) or kelime in katlanmis:
+            return True
+    return False
+
+
+def _kapsam_disi_mi(katlanmis: str, *, finansal: bool) -> bool:
+    """Açıkça yabancı alan ve finansal sinyal yoksa kapsam dışı."""
+    if finansal:
+        return False
+    return any(isaretci in katlanmis for isaretci in OUT_OF_DOMAIN_MARKERS)
+
+
+def _tekil_urun_sorusu(
+    katlanmis: str,
+    *,
+    banka_sayisi: int,
+    axis_filters: dict[str, tuple[str, ...]],
+    rate_adaylar: list[str],
+) -> bool:
+    """Tek banka + ürün/oran sinyali → tekil_sorgu.
+
+    ⚠️ 'kampanya' geçiyorsa kampanya aramasında kalır (TROY kart kampanyası).
+    """
+    if banka_sayisi != 1:
+        return False
+    if "kampanya" in katlanmis:
+        return False
+    if rate_adaylar:
+        return True
+    if any(ipucu in katlanmis for ipucu in ("orani", "oranlar", "ne kadar")):
+        return True
+    # Konut/taşıt/ihtiyaç finansmanı ürün soruları.
+    urun = axis_filters.get("product_type", ())
+    return any("finansman" in deger for deger in urun)
+
+
 def parse_query(raw: str) -> QueryPlan:
     """Türkçe sorguyu yapısal bir sorgu planına çevirir.
 
@@ -565,9 +897,9 @@ def parse_query(raw: str) -> QueryPlan:
     Returns:
         Süzgeçler, niyet, serbest arama terimleri ve her süzgecin kanıtı.
         Hiçbir sinyal bulunamazsa süzgeçsiz `search` planı döner — sorgu
-        REDDEDİLMEZ.
+        REDDEDİLMEZ (kapsam dışı hariç; o ayrı niyettir).
     """
-    katlanmis = _fold(raw)
+    katlanmis = _konvansiyonel_normalize(_fold(raw))
 
     banka_sinyalleri = _banka_kodlari(katlanmis)
     # ⚠️ Taksonomi eşleşmesi MASKELENMİŞ metin üzerinde yapılır: karşılaştırma
@@ -576,6 +908,8 @@ def parse_query(raw: str) -> QueryPlan:
     durum_sinyalleri = _durumlar(katlanmis)
     kisitlar = _sayisal_kisitlar(katlanmis)
     toplama = _toplama(katlanmis)
+    rate_adaylar = _rate_type_adaylari(katlanmis)
+    rate_type = rate_adaylar[0] if len(rate_adaylar) == 1 else None
 
     axis_filters: dict[str, tuple[str, ...]] = {}
     for sinyal in eksen_sinyalleri:
@@ -593,13 +927,60 @@ def parse_query(raw: str) -> QueryPlan:
         )
         for kisit in kisitlar
     )
+    if rate_type:
+        sinyaller.append(
+            QuerySignal(
+                kind="rate_type",
+                value=rate_type,
+                label="Oran türü",
+                evidence=rate_type,
+            )
+        )
 
-    if toplama is not None:
+    # Özgül ürün türü varken genel `finansman` yedeği düşer (çıplak sözcük kuralı).
+    if "product_type" in axis_filters:
+        degerler = axis_filters["product_type"]
+        ozgul = tuple(d for d in degerler if d != "finansman")
+        if ozgul and "finansman" in degerler:
+            axis_filters["product_type"] = ozgul
+            sinyaller = [
+                s for s in sinyaller if not (s.kind == "product_type" and s.value == "finansman")
+            ]
+
+    glossary_term: str | None = None
+    finansal = _finansal_sinyal_var(
+        katlanmis,
+        banka=bool(banka_sinyalleri),
+        eksen=bool(eksen_sinyalleri),
+        kisit=bool(kisitlar),
+        durum=bool(durum_sinyalleri),
+        toplama=toplama is not None,
+    )
+    if _tanim_mi(katlanmis):
+        niyet = "tanim"
+        glossary_term = _tanim_terimi(raw, katlanmis)
+    elif _kapsam_disi_mi(katlanmis, finansal=finansal):
+        niyet = "kapsam_disi"
+    elif toplama is not None:
         niyet = "aggregate"
     elif any(isaretci in katlanmis for isaretci in COMPARE_MARKERS) and len(banka_sinyalleri) > 1:
         niyet = "compare"
+    elif _tekil_urun_sorusu(
+        katlanmis,
+        banka_sayisi=len(banka_sinyalleri),
+        axis_filters=axis_filters,
+        rate_adaylar=rate_adaylar,
+    ):
+        niyet = "tekil_sorgu"
     else:
         niyet = "search"
+
+    source_domain = resolve_source_domain(
+        katlanmis,
+        intent=niyet,
+        rate_type=rate_type,
+        axis_filters=axis_filters,
+    )
 
     return QueryPlan(
         raw=raw.strip(),
@@ -611,6 +992,10 @@ def parse_query(raw: str) -> QueryPlan:
         free_terms=_serbest_terimler(katlanmis, set()),
         aggregate=toplama,
         signals=tuple(sinyaller),
+        rate_type=rate_type,
+        rate_type_candidates=tuple(rate_adaylar),
+        glossary_term=glossary_term,
+        source_domain=source_domain,
     )
 
 

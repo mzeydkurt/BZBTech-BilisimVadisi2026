@@ -169,11 +169,71 @@ class AggregateBlock(BaseModel):
     by_bank: dict[str, int] | None = None
 
 
+class ChatProductItem(BaseModel):
+    """Tekil ürün / oran kanıtı (results[] bozulmadan eklenir)."""
+
+    product_id: int
+    product_name: str
+    bank_code: str
+    bank_name: str
+    product_type: str | None = None
+    rate_type: str | None = None
+    rate_id: int | None = None
+    card_text: str
+    profit_rate_pct: Decimal | None = None
+    investor_share_pct: Decimal | None = None
+    term_months: int | None = None
+    source_url: str | None = None
+
+
+class ChatGlossaryItem(BaseModel):
+    """Tanım niyeti sonucu."""
+
+    term_id: int
+    term: str
+    definition: str
+    conventional_equivalent: str | None = None
+
+
+class ChatComparisonBlock(BaseModel):
+    """Ürün karşılaştırması — rank_products çıktısının taşıyıcısı."""
+
+    rate_type: str
+    criterion: str
+    winner_product_id: int | None = None
+    winner_bank_code: str | None = None
+    winner_reason: str | None = None
+    ranked: list[ChatProductItem] = Field(default_factory=list)
+    without_data: list[ChatProductItem] = Field(default_factory=list)
+    note: str | None = None
+
+
+class ChatTopMatch(BaseModel):
+    """Sohbet yanıtındaki en iyi eşleşmelerden biri (en fazla 3)."""
+
+    entity_type: str = Field(description="campaign | product | product_rate | glossary")
+    id: int
+    title: str
+    bank_name: str | None = None
+    score: Decimal = Field(description="0-100 arası göreli puan")
+    source_url: str | None = None
+    reason: str | None = Field(default=None, description="Neden seçildiği (kısa)")
+    detail_path: str | None = Field(
+        default=None,
+        description="Arayüz içi yol: /campaigns, /products/{id}, /katilim-hesabi",
+    )
+
+
 class ChatResponse(BaseModel):
-    """Kanıtlı arama yanıtı."""
+    """Kanıtlı arama yanıtı.
+
+    ⚠️ SÖZLEŞME DONDURULDU — yalnızca ekleme. Alan adı/tipi değiştirmek yasak.
+    """
 
     query: str
-    intent: str = Field(description="search | aggregate | compare")
+    intent: str = Field(
+        description="search | aggregate | compare | tanim | tekil_sorgu | kapsam_disi"
+    )
     understood: list[UnderstoodFilter] = Field(default_factory=list)
     answer: AnswerBlock
     aggregate: AggregateBlock | None = None
@@ -187,3 +247,16 @@ class ChatResponse(BaseModel):
             "(örn. 'faiz' yerine 'kâr payı'). Sorgu yine de çalıştırılır."
         ),
     )
+    # ── Sprint 5 eklemeleri (geriye dönük uyumlu) ─────────
+    clarification_needed: bool = False
+    clarification_question: str | None = None
+    direction_note: str | None = None
+    products: list[ChatProductItem] = Field(default_factory=list)
+    glossary: list[ChatGlossaryItem] = Field(default_factory=list)
+    comparison: ChatComparisonBlock | None = None
+    # ── Katibim eklemeleri ────────────────────────────────
+    source_domain: str | None = Field(
+        default=None,
+        description="kampanya | finansman | katilma | tanim | kapsam_disi",
+    )
+    top_matches: list[ChatTopMatch] = Field(default_factory=list)
