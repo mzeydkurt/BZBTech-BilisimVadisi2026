@@ -27,6 +27,12 @@ import argparse
 import asyncio
 import sys
 
+#  Windows konsolu varsayılan olarak cp1254 kullanıyor
+# `UnicodeEncodeError` ile ÇÖKÜYOR — yükleme TAMAMLANDIKTAN
+# sonra, yani iş bitmişken. `recover_database.py` ile aynı hata.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 from sqlalchemy import select
 
 from app.ai.providers import active_embedding_model

@@ -25,7 +25,7 @@ from app.logging_config import get_logger
 from app.retrieval.corpus import CampaignDoc, Corpus
 from app.retrieval.lexical import tokenize
 from app.retrieval.query import NumericConstraint, QueryPlan
-from app.retrieval.semantic import EmbeddingStore
+from app.retrieval.semantic import EmbeddingStore, SemanticHit
 
 logger = get_logger(__name__)
 
@@ -251,6 +251,8 @@ def search(
     *,
     query_vector: list[float] | None = None,
     store: EmbeddingStore | None = None,
+    semantic_hits: list[SemanticHit] | None = None,
+    semantic_source: str | None = None,
     limit: int = 8,
 ) -> SearchResult:
     """Sorgu planına göre kampanya getirir.
@@ -259,7 +261,14 @@ def search(
         plan: `parse_query()` çıktısı.
         corpus: Kurulu arama gövdesi.
         query_vector: Sorgunun gömme vektörü; yoksa anlamsal kanal atlanır.
-        store: Yüklü gömme deposu; boşsa anlamsal kanal atlanır.
+        store: Yüklü yerel gömme deposu; boşsa anlamsal kanal atlanır.
+        semantic_hits: Uzak depodan (Qdrant) HAZIR gelen anlamsal sonuçlar.
+            ⚠️ Verilirse `store` ve `query_vector` anlamsal kanal için
+            KULLANILMAZ. Qdrant araması ağ üzerinden ve `async` yapılıyor;
+            bu senkron işlevin içinden çağrılamaz, bu yüzden sonuç hazır
+            geçirilir. `store` yine de yerel yedek olarak verilebilir.
+        semantic_source: Anlamsal kanalın kaynağı ("qdrant" | "local");
+            yalnızca raporlama için.
         limit: Döndürülecek en fazla sonuç.
 
     Returns:
@@ -275,7 +284,12 @@ def search(
 
     anlamsal_sira: dict[int, int] = {}
     anlamsal_not: str | None = None
-    if store is None or store.is_empty:
+    if semantic_hits is not None:
+        # Uzak depo (Qdrant) zaten aradı; burada yalnızca sıraya çevrilir.
+        anlamsal_sira = {vurus.doc_id: sira for sira, vurus in enumerate(semantic_hits, start=1)}
+        if not semantic_hits:
+            anlamsal_not = f"Anlamsal kanal ({semantic_source or 'uzak depo'}) sonuç döndürmedi."
+    elif store is None or store.is_empty:
         anlamsal_not = (
             "Gömme vektörleri üretilmemiş; arama yalnızca sözcüksel kanalla yapıldı "
             "(`python dev.py gomme-uret`)."
