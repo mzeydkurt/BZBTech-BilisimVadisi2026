@@ -14,6 +14,7 @@ yuvarlaması API sınırını geçmez.
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -34,6 +35,10 @@ class ChatRequest(BaseModel):
         ),
     )
     limit: int = Field(default=8, ge=1, le=25, description="Döndürülecek en fazla kanıt")
+    session_id: str | None = Field(
+        default=None,
+        description="Sohbet oturum anahtarı (UUID). Yoksa yeni oturum açılır.",
+    )
 
 
 class UnderstoodFilter(BaseModel):
@@ -232,7 +237,7 @@ class ChatResponse(BaseModel):
 
     query: str
     intent: str = Field(
-        description="search | aggregate | compare | tanim | tekil_sorgu | kapsam_disi"
+        description=("search | aggregate | compare | tanim | tekil_sorgu | kapsam_disi | sohbet")
     )
     understood: list[UnderstoodFilter] = Field(default_factory=list)
     answer: AnswerBlock
@@ -257,6 +262,42 @@ class ChatResponse(BaseModel):
     # ── Katibim eklemeleri ────────────────────────────────
     source_domain: str | None = Field(
         default=None,
-        description="kampanya | finansman | katilma | tanim | kapsam_disi",
+        description="kampanya | finansman | katilma | tanim | kapsam_disi | sohbet",
     )
     top_matches: list[ChatTopMatch] = Field(default_factory=list)
+    # ── Oturum (eklemeli) ─────────────────────────────────
+    session_id: str | None = Field(default=None, description="Sohbet oturum anahtarı (UUID)")
+    turn_index: int | None = Field(default=None, description="Bu turdaki sıra numarası (0 tabanlı)")
+
+
+class ChatSessionCreateResponse(BaseModel):
+    """Yeni sohbet oturumu."""
+
+    session_id: str
+    title: str | None = None
+    created_at: str | None = None
+
+
+class ChatSessionMessageOut(BaseModel):
+    """Oturum geçmişindeki tek mesaj."""
+
+    turn_index: int
+    role: str
+    content: str
+    response_json: dict[str, Any] | ChatResponse | None = None
+    intent: str | None = None
+    source_domain: str | None = None
+    answer_source: str | None = None
+    created_at: str | None = None
+
+
+class ChatSessionDetail(BaseModel):
+    """Oturum + mesaj geçmişi."""
+
+    session_id: str | None = None
+    session_key: str | None = None
+    title: str | None = None
+    ended_at: str | None = None
+    created_at: str | None = None
+    last_activity_at: str | None = None
+    messages: list[ChatSessionMessageOut] = Field(default_factory=list)

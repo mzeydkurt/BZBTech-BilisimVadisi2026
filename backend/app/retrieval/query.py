@@ -116,6 +116,46 @@ DEFINITION_MARKERS: Final[tuple[str, ...]] = (
     "ne demektir",
 )
 
+# ── Sohbet niyeti (selam / teşekkür / kimsin) ─────────────
+# Finansal sinyal yok VE kısa sorgu (≤6 belirteç) iken,
+# kapsam_disi'dan ÖNCE çözülür. "merhaba, katılma hesabı açacağım" sohbete düşmez.
+_SOHBET_KALIPLARI: Final[tuple[str, ...]] = (
+    "merhaba",
+    "selam",
+    "selamlar",
+    "gunaydin",
+    "günaydın",
+    "iyi gunler",
+    "iyi günler",
+    "iyi aksamlar",
+    "iyi akşamlar",
+    "nasilsin",
+    "nasılsın",
+    "naber",
+    "ne haber",
+    "tesekkur",
+    "teşekkür",
+    "tesekkurler",
+    "teşekkürler",
+    "sagol",
+    "sağol",
+    "eyvallah",
+    "kimsin",
+    "sen kimsin",
+    "ne yapabilirsin",
+    "ne yaparsin",
+    "ne yapıyorsun",
+    "yardim et",
+    "yardım et",
+    "gorusuruz",
+    "görüşürüz",
+    "hosca kal",
+    "hoşça kal",
+    "bye",
+    "hello",
+    "hi",
+)
+
 # ── Oran türü işaretçileri ────────────────────────────────
 # ⚠️ Dağıtılan kâr payı ≠ kâr paylaşım oranı. Belirsizse aday listesi dolar;
 # sohbet netleştirme sorar (KAPI 2.3).
@@ -412,6 +452,8 @@ def resolve_source_domain(
     """
     if intent == "kapsam_disi":
         return "kapsam_disi"
+    if intent == "sohbet":
+        return "sohbet"
     if intent == "tanim":
         return "tanim"
 
@@ -799,6 +841,19 @@ def _tanim_mi(katlanmis: str) -> bool:
     return any(isaretci in katlanmis for isaretci in DEFINITION_MARKERS)
 
 
+def _sohbet_mi(katlanmis: str, *, finansal: bool) -> bool:
+    """Kısa selam/teşekkür/kimsin — finansal sinyal yoksa sohbet.
+
+    Belirteç sayısı ≤6; aksi halde 'merhaba, katılma hesabı açacağım' sohbete düşmez.
+    """
+    if finansal:
+        return False
+    belirtecler = [k for k in _KELIME_RE.findall(katlanmis) if k]
+    if len(belirtecler) > 6:
+        return False
+    return any(kalip in katlanmis for kalip in _SOHBET_KALIPLARI)
+
+
 def _tanim_terimi(raw: str, katlanmis: str) -> str | None:
     """Tanım sorusundan terim parçasını çıkarır."""
     temiz = katlanmis
@@ -959,6 +1014,8 @@ def parse_query(raw: str) -> QueryPlan:
     if _tanim_mi(katlanmis):
         niyet = "tanim"
         glossary_term = _tanim_terimi(raw, katlanmis)
+    elif _sohbet_mi(katlanmis, finansal=finansal):
+        niyet = "sohbet"
     elif _kapsam_disi_mi(katlanmis, finansal=finansal):
         niyet = "kapsam_disi"
     elif toplama is not None:
@@ -1010,3 +1067,130 @@ _KISIT_ETIKETLERI: Final[dict[str, str]] = {
     "cashback_pct": "Nakit iade",
     "discount_pct": "İndirim",
 }
+
+
+def merge_with_previous(plan: QueryPlan, previous: QueryPlan | None) -> QueryPlan:
+    """Yeni sorguda banka/ürün/oran türü yoksa önceki turdan devral.
+
+    Devralınan her süzgeç `signals` içinde `evidence=\"önceki soru\"` ile işaretlenir;
+    arayüz yanlış devralmayı gösterip kaldırabilir.
+    """
+    if previous is None:
+        return plan
+    # Sohbet / tanım / kapsam dışı — bağlam taşıma.
+    if plan.intent in {"sohbet", "tanim", "kapsam_disi"}:
+        return plan
+
+    from app.retrieval.relevance import is_follow_up_query
+
+    takip = is_follow_up_query(plan.raw)
+
+    bank_codes = plan.bank_codes
+    axis_filters = dict(plan.axis_filters)
+    rate_type = plan.rate_type
+    rate_candidates = plan.rate_type_candidates
+    free_terms = plan.free_terms
+    sinyaller = list(plan.signals)
+    degisti = False
+
+    if (not bank_codes or takip) and previous.bank_codes:
+        if not bank_codes:
+            bank_codes = previous.bank_codes
+            degisti = True
+            for kod in bank_codes:
+                sinyaller.append(
+                    QuerySignal(
+                        kind="bank",
+                        value=kod,
+                        label="Banka",
+                        evidence="önceki soru",
+                    )
+                )
+
+    if (not axis_filters or takip) and previous.axis_filters:
+        if not axis_filters:
+            axis_filters = dict(previous.axis_filters)
+            degisti = True
+            for eksen, degerler in axis_filters.items():
+                for deger in degerler:
+                    sinyaller.append(
+                        QuerySignal(
+                            kind=eksen,
+                            value=deger,
+                            label=eksen,
+                            evidence="önceki soru",
+                        )
+                    )
+        elif takip:
+            # Takip sorusunda eksik eksenleri tamamla.
+            for eksen, degerler in previous.axis_filters.items():
+                if eksen not in axis_filters:
+                    axis_filters[eksen] = degerler
+                    degisti = True
+                    for deger in degerler:
+                        sinyaller.append(
+                            QuerySignal(
+                                kind=eksen,
+                                value=deger,
+                                label=eksen,
+                                evidence="önceki soru",
+                            )
+                        )
+
+    if rate_type is None and not rate_candidates and previous.rate_type:
+        rate_type = previous.rate_type
+        rate_candidates = (previous.rate_type,)
+        degisti = True
+        sinyaller.append(
+            QuerySignal(
+                kind="rate_type",
+                value=rate_type,
+                label="Oran türü",
+                evidence="önceki soru",
+            )
+        )
+
+    if takip and previous.free_terms:
+        birlesik = list(dict.fromkeys([*previous.free_terms, *free_terms]))
+        if tuple(birlesik) != free_terms:
+            free_terms = tuple(birlesik)
+            degisti = True
+
+    if not degisti:
+        return plan
+
+    source_domain = resolve_source_domain(
+        _konvansiyonel_normalize(_fold(plan.raw)),
+        intent=plan.intent,
+        rate_type=rate_type,
+        axis_filters=axis_filters,
+    )
+    return QueryPlan(
+        raw=plan.raw,
+        intent=plan.intent,
+        bank_codes=bank_codes,
+        axis_filters=axis_filters,
+        numeric=plan.numeric,
+        statuses=plan.statuses,
+        free_terms=free_terms,
+        aggregate=plan.aggregate,
+        signals=tuple(sinyaller),
+        rate_type=rate_type,
+        rate_type_candidates=rate_candidates,
+        glossary_term=plan.glossary_term,
+        source_domain=source_domain,
+    )
+
+
+__all__ = [
+    "BANK_ALIASES",
+    "AggregateSpec",
+    "NumericConstraint",
+    "QueryPlan",
+    "QuerySignal",
+    "merge_with_previous",
+    "parse_katilma_vadeler",
+    "parse_katilma_varyant",
+    "parse_query",
+    "resolve_source_domain",
+]

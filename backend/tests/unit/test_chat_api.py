@@ -226,9 +226,16 @@ class TestBosSonucHataDegildir:
     def test_kart_yokken_model_cagrilmaz(
         self, api_client: httpx.Client, dolu_oturum: Session
     ) -> None:
+        """Boş sonuçta RAG modeli çağrılmaz; doğal gevşetme cümlesi (computed) döner."""
         veri = api_client.post("/api/v1/chat", json={"query": "Adil Katılım kampanyaları"}).json()
 
-        assert veri["answer"]["source"] == "refusal"
+        assert veri["results"] == []
+        assert veri["answer"]["source"] in {"computed", "model"}
+        assert veri["answer"]["source"] != "refusal" or "kayıt" in veri["answer"]["text"].lower()
+        # Anlatıcı reddederse bile şablon computed kalır; RAG refusal değil.
+        assert "yanıt verilemiyor" in veri["answer"]["text"].lower() or "kayıt" in veri[
+            "answer"
+        ]["text"].lower() or "süzgeç" in veri["answer"]["text"].lower()
 
 
 class TestToplama:

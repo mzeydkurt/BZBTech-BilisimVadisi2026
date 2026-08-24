@@ -37,7 +37,7 @@ _CHAT_PROMPT_PATH: Final[Path] = (
 _FALLBACK_SYSTEM: Final[str] = (
     "Sen Katibim'sin. SADECE KAYNAK kartlarına dayan. "
     "faiz/kredi/mevduat yazma; kâr payı/finansman/katılma hesabı kullan. "
-    "Her cümleye [N] atıf koy. Selamı selamla. En fazla 5 cümle."
+    "Köşeli parantez atıf koyma. Selamı selamla. En fazla 5 cümle."
 )
 
 _ATIF_RE: Final[re.Pattern[str]] = re.compile(r"\[(\d+)\]")
@@ -98,11 +98,11 @@ class GeneratedAnswer:
 
 
 def _baglam(hits: tuple[SearchHit, ...]) -> str:
-    """Getirilen kartları numaralı bağlama çevirir."""
+    """Getirilen kartları bağlama çevirir — DB id numarası yok."""
     parcalar: list[str] = []
-    for vurus in hits[:MAX_CONTEXT_CARDS]:
+    for sira, vurus in enumerate(hits[:MAX_CONTEXT_CARDS], start=1):
         doc = vurus.doc
-        parcalar.append(f"[{doc.campaign_id}] {doc.bank_name} — {doc.card_text.strip()}")
+        parcalar.append(f"Kart {sira}: {doc.bank_name} — {doc.card_text.strip()}")
     return "\n\n".join(parcalar)
 
 
@@ -147,18 +147,28 @@ def _yon_bozuk_mu(text: str, rate_type: str | None) -> bool:
 
 
 def _sablon_yanit(plan: QueryPlan, hits: tuple[SearchHit, ...]) -> str:
-    """Model olmadan üretilen yanıt — sayı üretmez."""
-    bankalar: list[str] = []
-    for vurus in hits:
-        if vurus.doc.bank_name not in bankalar:
-            bankalar.append(vurus.doc.bank_name)
-    banka_metni = ", ".join(bankalar[:4])
-    if len(bankalar) > 4:
-        banka_metni += f" ve {len(bankalar) - 4} banka daha"
+    """Model olmadan üretilen yanıt — sayı uydurmaz; özetlerden kısa anlatır."""
     _ = plan
+    if len(hits) == 1:
+        doc = hits[0].doc
+        ozet = (doc.summary or "").strip()
+        if ozet:
+            return f"{doc.bank_name} — {doc.title}: {ozet}"
+        return f"{doc.bank_name} kampanyası: {doc.title}."
+
+    parcalar: list[str] = []
+    for vurus in hits[:3]:
+        doc = vurus.doc
+        ozet = (doc.summary or "").strip()
+        if ozet:
+            parcalar.append(f"{doc.title}: {ozet}")
+        else:
+            parcalar.append(doc.title)
+    bankalar = list(dict.fromkeys(v.doc.bank_name for v in hits))
+    banka_metni = ", ".join(bankalar[:3])
     return (
-        f"Sorgunuzla eşleşen {len(hits)} kampanya var ({banka_metni}). "
-        "Ayrıntılar kartlarda; yerel model kapalı olduğu için cümle üretilmedi."
+        f"{banka_metni} bünyesinde sorunuza uyan {len(hits)} kampanya var. "
+        + " ".join(parcalar)
     )
 
 
@@ -184,12 +194,15 @@ async def generate_answer(
     *,
     provider: LLMProvider | None,
     forbidden_terms: dict[str, str | None],
+    previous_query: str | None = None,
 ) -> GeneratedAnswer:
     """Getirilen kartlardan Türkçe yanıt üretir.
 
     Guard 5: ters yönlü avantaj cümlesi → şablon.
     Guard 6: yasaklı terim → tek yeniden yazma turu; yine sızarsa şablon.
     """
+    from app.retrieval.relevance import strip_citation_markers
+
     if not hits:
         return GeneratedAnswer(
             text=(
@@ -199,6 +212,7 @@ async def generate_answer(
             source="refusal",
         )
 
+    # Yön notu yalnızca oran karşılaştırmasında.
     direction = yon_notu(plan.rate_type) if plan.rate_type else None
 
     if provider is None:
@@ -209,7 +223,10 @@ async def generate_answer(
         )
 
     baglam = _baglam(hits)
-    istem = f"KAYNAK KARTLARI:\n{baglam}\n\nSORU: {plan.raw}"
+    onceki = ""
+    if previous_query and previous_query.strip() and previous_query.strip() != plan.raw:
+        onceki = f"ÖNCEKİ SORU (bağlam): {previous_query.strip()}\n\n"
+    istem = f"{onceki}KAYNAK KARTLARI:\n{baglam}\n\nSORU: {plan.raw}"
     system = _system_prompt()
 
     try:
@@ -222,6 +239,8 @@ async def generate_answer(
             model_error=str(exc),
             direction_note=direction,
         )
+
+    metin = strip_citation_markers(metin)
 
     # Guard 5 — yön denetimi.
     if _yon_bozuk_mu(metin, plan.rate_type):
@@ -241,12 +260,13 @@ async def generate_answer(
         yeniden_istem = (
             f"{istem}\n\nÖNCEKİ YANIT (yasaklı terim içeriyor: {yasaklar}):\n{metin}\n\n"
             "Aynı içeriği katılım bankacılığı terimleriyle, yasaklı sözcükleri "
-            "kullanmadan yeniden yaz."
+            "kullanmadan yeniden yaz. Köşeli parantez atıf koyma."
         )
         try:
             metin2, model_name2, latency2 = await _model_cagir(
                 provider, yeniden_istem, system=system
             )
+            metin2 = strip_citation_markers(metin2)
             latency = (latency or 0) + (latency2 or 0)
             model_name = model_name2 or model_name
             uyarilar2 = check_terminology(metin2, forbidden_terms, source_text=baglam)

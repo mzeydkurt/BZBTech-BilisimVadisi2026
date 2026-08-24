@@ -16,6 +16,7 @@ from app.db.models.campaign_category import CampaignCategory
 from app.db.models.campaign_extraction import EXTRACTION_METHODS, CampaignExtraction
 from app.db.models.campaign_metric import CampaignMetric
 from app.db.models.campaign_product import CampaignProduct
+from app.db.models.chat import ChatMessage, ChatSession
 from app.db.models.entity_card import DEFAULT_EMBEDDING_DIM, Embedding, EntityCard
 from app.db.models.extraction_run import ExtractionRun
 from app.db.models.glossary import GlossaryTerm
@@ -45,6 +46,8 @@ __all__ = [
     "CampaignExtraction",
     "CampaignMetric",
     "CampaignProduct",
+    "ChatMessage",
+    "ChatSession",
     "Embedding",
     "EntityCard",
     "ExtractionRun",

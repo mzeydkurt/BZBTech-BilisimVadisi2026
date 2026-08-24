@@ -320,18 +320,27 @@ def build_corpus(session: Session) -> Corpus:
     }
 
     # Ürün oranı kartları — aynı ürünün farklı rate_type'ları ayrı belgedir.
+    # Eski effective_date satırları gövdeye girmez (arşiv DB'de kalır).
+    from app.services.product_rate_current import select_current_rates
+
     oran_kartlari = {
         kart.entity_id: kart.card_text
         for kart in session.scalars(
             select(EntityCard).where(EntityCard.entity_type == PRODUCT_RATE_ENTITY)
         )
     }
+    ham_oranlar = list(
+        session.execute(
+            select(ProductRate, Product, Bank)
+            .join(Product, Product.id == ProductRate.product_id)
+            .join(Bank, Bank.id == Product.bank_id)
+        ).all()
+    )
+    guncel_idler = {o.id for o in select_current_rates([oran for oran, _, _ in ham_oranlar])}
     rate_docs: dict[int, ProductRateDoc] = {}
-    for oran, urun, banka in session.execute(
-        select(ProductRate, Product, Bank)
-        .join(Product, Product.id == ProductRate.product_id)
-        .join(Bank, Bank.id == Product.bank_id)
-    ).all():
+    for oran, urun, banka in ham_oranlar:
+        if oran.id not in guncel_idler:
+            continue
         kart_metni = oran_kartlari.get(oran.id)
         if not kart_metni:
             # Kart yoksa yapısal alanlardan kısa metin — arama yine çalışsın.
