@@ -590,6 +590,15 @@ export interface BDDKLimitCheckResponse {
 export interface ChatRequest {
   query: string;
   bank_code?: string | null;
+  limit?: number;
+}
+
+export interface ChatMetric {
+  field: string;
+  label: string;
+  /** Decimal string (Pydantic). */
+  value: string;
+  unit: string;
 }
 
 export interface ChatResultItem {
@@ -597,18 +606,145 @@ export interface ChatResultItem {
   bank_code: string;
   bank_name: string;
   title: string;
+  status: string;
+  source_url: string;
   summary: string | null;
-  evidence_text: string | null;
+  card_text: string;
+  metrics: ChatMetric[];
+  channels: string[];
+  matched_terms: string[];
+}
+
+export interface UnderstoodFilter {
+  kind: string;
+  value: string;
+  label: string;
+  display: string;
+  evidence: string;
+}
+
+export interface UnverifiedNumberOut {
+  value: string;
+  cited: number[];
+}
+
+export interface TerminologyWarningOut {
+  term: string;
+  suggestion: string | null;
+}
+
+export interface AnswerBlock {
+  text: string;
+  source: "model" | "template" | "refusal" | "computed" | string;
+  citations: number[];
+  unverified_numbers: UnverifiedNumberOut[];
+  terminology_warnings: TerminologyWarningOut[];
+  is_grounded: boolean;
+  model_name: string | null;
+  model_error: string | null;
+  latency_ms: number | null;
+}
+
+export interface FilterRejection {
+  filter: string;
+  label: string;
+  count: number;
+}
+
+export interface RetrievalReport {
+  corpus_size: number;
+  returned: number;
+  lexical_used: boolean;
+  semantic_used: boolean;
+  semantic_note: string | null;
+  rejected: FilterRejection[];
+  total_rejected: number;
+  elapsed_ms: number;
+}
+
+export interface RelaxationHintOut {
+  kind: string;
+  value: string;
+  label: string;
+  hit_count: number;
+}
+
+export interface AggregateBlock {
+  kind: string;
+  field: string | null;
+  field_label: string | null;
+  value: string | null;
+  unit: string | null;
+  winner_campaign_id: number | null;
+  with_value: number;
+  without_value: number;
+  total: number;
+  tie_count: number;
+  by_bank: Record<string, number> | null;
+}
+
+export interface ChatProductItem {
+  product_id: number;
+  product_name: string;
+  bank_code: string;
+  bank_name: string;
+  product_type: string | null;
+  rate_type: string | null;
+  rate_id: number | null;
+  card_text: string;
+  profit_rate_pct: string | null;
+  investor_share_pct: string | null;
+  term_months: number | null;
   source_url: string | null;
-  /** ⚠️ Diğerlerinin aksine gerçek `float` — Decimal string DEĞİL. */
-  profit_rate_pct: number | null;
+}
+
+export interface ChatGlossaryItem {
+  term_id: number;
+  term: string;
+  definition: string;
+  conventional_equivalent: string | null;
+}
+
+export interface ChatComparisonBlock {
+  rate_type: string;
+  criterion: string;
+  winner_product_id: number | null;
+  winner_bank_code: string | null;
+  winner_reason: string | null;
+  ranked: ChatProductItem[];
+  without_data: ChatProductItem[];
+  note: string | null;
+}
+
+export interface ChatTopMatch {
+  entity_type: string;
+  id: number;
+  title: string;
+  bank_name: string | null;
+  score: string;
+  source_url: string | null;
+  reason: string | null;
+  detail_path: string | null;
 }
 
 export interface ChatResponse {
   query: string;
-  answer_text: string;
-  forbidden_terms_warning: string | null;
+  intent: string;
+  understood: UnderstoodFilter[];
+  answer: AnswerBlock;
+  aggregate: AggregateBlock | null;
   results: ChatResultItem[];
+  retrieval: RetrievalReport;
+  relaxation_hints: RelaxationHintOut[];
+  forbidden_terms_warning: string | null;
+  clarification_needed: boolean;
+  clarification_question: string | null;
+  direction_note: string | null;
+  products: ChatProductItem[];
+  glossary: ChatGlossaryItem[];
+  comparison: ChatComparisonBlock | null;
+  source_domain?: string | null;
+  top_matches?: ChatTopMatch[];
 }
 
 // ==================== Canlı Çıkarım ====================
