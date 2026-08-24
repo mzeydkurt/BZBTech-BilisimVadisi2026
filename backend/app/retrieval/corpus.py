@@ -25,7 +25,16 @@ from typing import Final
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Bank, Campaign, CampaignCategory, CampaignMetric, EntityCard, Product
+from app.db.models import (
+    Bank,
+    Campaign,
+    CampaignCategory,
+    CampaignMetric,
+    EntityCard,
+    GlossaryTerm,
+    Product,
+    ProductRate,
+)
 from app.logging_config import get_logger
 from app.retrieval.lexical import Bm25Index
 
@@ -33,6 +42,8 @@ logger = get_logger(__name__)
 
 CAMPAIGN_ENTITY: Final[str] = "campaign"
 PRODUCT_ENTITY: Final[str] = "product"
+PRODUCT_RATE_ENTITY: Final[str] = "product_rate"
+GLOSSARY_ENTITY: Final[str] = "glossary"
 
 
 @dataclass(frozen=True)
@@ -68,6 +79,36 @@ class ProductDoc:
 
 
 @dataclass(frozen=True)
+class ProductRateDoc:
+    """Ürün oranı kartı — aynı üründe birden çok rate_type ayrı döner."""
+
+    rate_id: int
+    product_id: int
+    bank_code: str
+    bank_name: str
+    product_name: str
+    product_type: str | None
+    rate_type: str
+    card_text: str
+    profit_rate_pct: Decimal | None
+    investor_share_pct: Decimal | None
+    term_months: int | None
+    source_url: str | None
+
+
+@dataclass(frozen=True)
+class GlossaryDoc:
+    """Sözlük terimi — tanım niyeti modele gitmeden buradan döner."""
+
+    term_id: int
+    term: str
+    definition: str
+    aliases: tuple[str, ...]
+    card_text: str
+    conventional_equivalent: str | None
+
+
+@dataclass(frozen=True)
 class Corpus:
     """Aranabilir gövde ve kurulu BM25 dizini."""
 
@@ -75,6 +116,8 @@ class Corpus:
     index: Bm25Index
     product_docs: dict[int, ProductDoc] | None = None
     product_index: Bm25Index | None = None
+    rate_docs: dict[int, ProductRateDoc] | None = None
+    glossary_docs: dict[int, GlossaryDoc] | None = None
 
     @property
     def size(self) -> int:
@@ -118,25 +161,27 @@ def invalidate_corpus() -> None:
     _cache_fingerprint = None
 
 
-def _parmak_izi(session: Session) -> tuple[int, int, int, int]:
+def _parmak_izi(session: Session) -> tuple[int, ...]:
     """Gövdenin değişip değişmediğini anlatan ucuz imza.
 
     ⚠️ ÖNBELLEK KOŞULSUZ TUTULAMAZ. Süreç ömrü boyunca saklanan bir gövde,
     `kart-uret` ya da `siniflandir` çalıştıktan sonra ESKİ metinlerle arama
-    yapmaya devam eder ve bunu hiçbir yerde bildirmez. Aynı sorun testlerde de
-    çıkıyor: bir testin kurduğu gövde, farklı bir veritabanı kullanan sonraki
-    teste sızıyor.
+    yapmaya devam eder ve bunu hiçbir yerde bildirmez.
 
-    Dört sayaç: kampanya kartı, en büyük kart id, kampanya sayısı, ürün kartı.
+    Sayaçlar: kampanya kartı, en büyük kart id, kampanya sayısı, ürün kartı,
+    oran kartı, glossary kartı — tür duyarlı bayatlık.
     """
-    kart_adedi = (
-        session.scalar(
-            select(func.count())
-            .select_from(EntityCard)
-            .where(EntityCard.entity_type == CAMPAIGN_ENTITY)
+    def _kart_sayisi(entity_type: str) -> int:
+        return int(
+            session.scalar(
+                select(func.count())
+                .select_from(EntityCard)
+                .where(EntityCard.entity_type == entity_type)
+            )
+            or 0
         )
-        or 0
-    )
+
+    kart_adedi = _kart_sayisi(CAMPAIGN_ENTITY)
     en_buyuk_kart = (
         session.scalar(
             select(func.max(EntityCard.id)).where(EntityCard.entity_type == CAMPAIGN_ENTITY)
@@ -144,15 +189,14 @@ def _parmak_izi(session: Session) -> tuple[int, int, int, int]:
         or 0
     )
     kampanya_adedi = session.scalar(select(func.count()).select_from(Campaign)) or 0
-    urun_kart = (
-        session.scalar(
-            select(func.count())
-            .select_from(EntityCard)
-            .where(EntityCard.entity_type == PRODUCT_ENTITY)
-        )
-        or 0
+    return (
+        int(kart_adedi),
+        int(en_buyuk_kart),
+        int(kampanya_adedi),
+        _kart_sayisi(PRODUCT_ENTITY),
+        _kart_sayisi(PRODUCT_RATE_ENTITY),
+        _kart_sayisi(GLOSSARY_ENTITY),
     )
-    return int(kart_adedi), int(en_buyuk_kart), int(kampanya_adedi), int(urun_kart)
 
 
 def _metrikler(metric: CampaignMetric | None) -> dict[str, Decimal]:
@@ -275,17 +319,88 @@ def build_corpus(session: Session) -> Corpus:
         d.product_id: f"{d.name}\n{d.bank_name}\n{d.card_text}" for d in product_docs.values()
     }
 
+    # Ürün oranı kartları — aynı ürünün farklı rate_type'ları ayrı belgedir.
+    oran_kartlari = {
+        kart.entity_id: kart.card_text
+        for kart in session.scalars(
+            select(EntityCard).where(EntityCard.entity_type == PRODUCT_RATE_ENTITY)
+        )
+    }
+    rate_docs: dict[int, ProductRateDoc] = {}
+    for oran, urun, banka in session.execute(
+        select(ProductRate, Product, Bank)
+        .join(Product, Product.id == ProductRate.product_id)
+        .join(Bank, Bank.id == Product.bank_id)
+    ).all():
+        kart_metni = oran_kartlari.get(oran.id)
+        if not kart_metni:
+            # Kart yoksa yapısal alanlardan kısa metin — arama yine çalışsın.
+            kart_metni = (
+                f"{banka.name} — {urun.name} · {oran.rate_type}"
+                + (
+                    f" · kâr payı %{oran.profit_rate_pct}"
+                    if oran.profit_rate_pct is not None
+                    else ""
+                )
+                + (
+                    f" · katılımcı payı %{oran.investor_share_pct}"
+                    if oran.investor_share_pct is not None
+                    else ""
+                )
+            )
+        rate_docs[oran.id] = ProductRateDoc(
+            rate_id=oran.id,
+            product_id=urun.id,
+            bank_code=banka.code,
+            bank_name=banka.name,
+            product_name=urun.name,
+            product_type=urun.product_type,
+            rate_type=oran.rate_type,
+            card_text=kart_metni,
+            profit_rate_pct=oran.profit_rate_pct,
+            investor_share_pct=oran.investor_share_pct,
+            term_months=oran.term_months,
+            source_url=None,
+        )
+
+    # Glossary — tanım niyeti; kart yoksa tanım metni kullanılır.
+    glossary_kartlari = {
+        kart.entity_id: kart.card_text
+        for kart in session.scalars(
+            select(EntityCard).where(EntityCard.entity_type == GLOSSARY_ENTITY)
+        )
+    }
+    glossary_docs: dict[int, GlossaryDoc] = {}
+    for terim in session.scalars(
+        select(GlossaryTerm).where(GlossaryTerm.is_forbidden_conventional.is_(False))
+    ).all():
+        if not terim.definition:
+            continue
+        kart_metni = glossary_kartlari.get(terim.id) or f"{terim.term}: {terim.definition}"
+        glossary_docs[terim.id] = GlossaryDoc(
+            term_id=terim.id,
+            term=terim.term,
+            definition=terim.definition,
+            aliases=tuple(terim.aliases or ()),
+            card_text=kart_metni,
+            conventional_equivalent=terim.conventional_equivalent,
+        )
+
     _cache = Corpus(
         docs=docs,
         index=Bm25Index(gövde),
         product_docs=product_docs or None,
         product_index=Bm25Index(urun_govde) if urun_govde else None,
+        rate_docs=rate_docs or None,
+        glossary_docs=glossary_docs or None,
     )
     _cache_fingerprint = imza
     logger.info(
         "arama_govdesi_kuruldu",
         kampanya=len(docs),
         urun=len(product_docs),
+        oran=len(rate_docs),
+        glossary=len(glossary_docs),
         kartsiz=kartsiz,
     )
     return _cache

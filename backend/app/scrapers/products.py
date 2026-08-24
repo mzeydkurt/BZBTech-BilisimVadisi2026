@@ -959,8 +959,29 @@ def product_external_key(url_slug: str, variant: str | None) -> str:
 
     Returns:
         `"{url_slug}#{variant|base}"`.
+
+    ⚠️ Site-geneli dropdown etiketleri (`Seçiniz`, `Tümü` …) gerçek varyant
+    değildir; `base`e düşülür — aksi hâlde aynı ürün farklı external_key ile
+    çoğalır.
     """
     parca = slugify(variant) if variant else None
+    _SAHTE: frozenset[str] = frozenset(
+        {
+            "",
+            "base",
+            "seciniz",
+            "secin",
+            "lutfen-seciniz",
+            "tumunu-sec",
+            "tumu",
+            "hepsi",
+            "genel",
+            "secim-yok",
+            "-",
+        }
+    )
+    if parca in _SAHTE:
+        parca = None
     return f"{url_slug}#{parca or 'base'}"
 
 

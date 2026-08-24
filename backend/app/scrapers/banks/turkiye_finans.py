@@ -81,6 +81,15 @@ BASE_URL: Final[str] = "https://www.turkiyefinans.com.tr"
 # Kampanya sayfalarının tamamı bu dizinde — kategori de detay da.
 CAMPAIGN_DIR: Final[str] = "/tr-tr/kampanyalar/Sayfalar/"
 
+# Hub liste (tüm kampanyalar) — kategori sayfalarında görünmeyen kayıtlar için.
+HUB_PAGE: Final[str] = "default.aspx"
+HUB_CATEGORY: Final[str] = "tum"
+
+# Happy Card — TF kredi kartı kampanyaları (ayrı origin).
+HAPPYCARD_BASE: Final[str] = "https://www.happycard.com.tr"
+HAPPYCARD_DIR: Final[str] = "/kampanyalar/Sayfalar/"
+HAPPYCARD_LISTING: Final[str] = f"{HAPPYCARD_BASE}{HAPPYCARD_DIR}default.aspx"
+
 # Kategori adı → dosya adı. Kategori, kampanyanın hangi sayfada bulunduğundan
 # çıkarılır; detay sayfası kategori bilgisi taşımıyor.
 CATEGORY_PAGES: Final[dict[str, str]] = {
@@ -105,7 +114,11 @@ ARCHIVE_CATEGORY: Final[str] = "biten"
 # `Biten-Kampanyalar` yazımlarının ikisini de kullanıyor); ADRESİN KENDİSİ
 # değiştirilmez.
 NON_CAMPAIGN_PAGES: Final[frozenset[str]] = frozenset(
-    {"default.aspx", ARCHIVE_PAGE.lower(), *(ad.lower() for ad in CATEGORY_PAGES.values())}
+    {
+        HUB_PAGE.lower(),
+        ARCHIVE_PAGE.lower(),
+        *(ad.lower() for ad in CATEGORY_PAGES.values()),
+    }
 )
 
 # Ürün sayfaları — yapısal oran tablolarının kaynağı.
@@ -171,7 +184,7 @@ class TurkiyeFinansScraper(BaseScraper):
     product_pages = PRODUCT_PAGES
 
     def discover(self) -> list[DiscoveredUrl]:
-        """Kategori ve arşiv sayfalarından kampanya adreslerini toplar.
+        """Hub, kategori, arşiv ve Happy Card listelerinden kampanya toplar.
 
         Returns:
             Keşfedilen kampanya adresleri (tekilleştirilmiş).
@@ -183,6 +196,8 @@ class TurkiyeFinansScraper(BaseScraper):
         for kategori, dosya in sayfalar:
             listing_url = f"{BASE_URL}{CAMPAIGN_DIR}{dosya}"
             arsiv = kategori == ARCHIVE_CATEGORY
+            # Hub "tum" taksonomi kategorisi değildir.
+            category_hint = None if kategori == HUB_CATEGORY else kategori
 
             for url in self._campaign_links(listing_url):
                 if url in seen:
@@ -194,34 +209,64 @@ class TurkiyeFinansScraper(BaseScraper):
                     DiscoveredUrl(
                         url=url,
                         doc_type="campaign",
-                        category_hint=kategori,
+                        category_hint=category_hint,
                         segment_hint="ticari" if kategori == "ticari" else "bireysel",
                         discovery_method="archive" if arsiv else "listing",
                     )
                 )
 
+        if self._include_happycard():
+            for url in self._campaign_links(HAPPYCARD_LISTING):
+                if url in seen:
+                    continue
+                seen.add(url)
+                discovered.append(
+                    DiscoveredUrl(
+                        url=url,
+                        doc_type="campaign",
+                        category_hint="kart",
+                        segment_hint="bireysel",
+                        discovery_method="listing",
+                    )
+                )
+
         return discovered
+
+    def _include_happycard(self) -> bool:
+        """Happy Card listesi kart/hub taramasında açılır."""
+        if not self.categories:
+            return True
+        return any(k.casefold() in {"kart", HUB_CATEGORY} for k in self.categories)
 
     def _selected_pages(self) -> list[tuple[str, str]]:
         """Taranacak (kategori, dosya) çiftlerini belirler.
 
-        Arşiv daima EN SONA konur: böylece bir kampanya hem güncel hem biten
+        Hub başta, arşiv daima EN SONA: bir kampanya hem güncel hem biten
         listede görünürse güncel kategorisiyle kaydedilir.
         """
         tumu = list(CATEGORY_PAGES.items())
+        hub = (HUB_CATEGORY, HUB_PAGE)
+        arsiv = (ARCHIVE_CATEGORY, ARCHIVE_PAGE)
+
         if not self.categories:
-            return tumu
+            return [hub, *tumu, arsiv]
 
         istenen = {k.casefold() for k in self.categories}
-        secilen = [(ad, dosya) for ad, dosya in tumu if ad.casefold() in istenen]
+        secilen: list[tuple[str, str]] = []
+        if HUB_CATEGORY in istenen:
+            secilen.append(hub)
+        secilen.extend((ad, dosya) for ad, dosya in tumu if ad.casefold() in istenen)
+        if ARCHIVE_CATEGORY.casefold() in istenen:
+            secilen.append(arsiv)
+
         if not secilen:
             logger.warning(
                 "bilinmeyen_kategori",
                 banka=self.bank_code,
                 istenen=sorted(istenen),
-                gecerli_secenekler=[ad for ad, _ in tumu],
+                gecerli_secenekler=[HUB_CATEGORY, *[ad for ad, _ in tumu], ARCHIVE_CATEGORY],
             )
-            return tumu
+            return [hub, *tumu, arsiv]
         return secilen
 
     def _campaign_links(self, listing_url: str) -> list[str]:
@@ -271,12 +316,24 @@ class TurkiyeFinansScraper(BaseScraper):
         """Adres bir kampanya DETAY sayfası mı?
 
         Kategori sayfaları detayla aynı dizinde olduğu için dosya adına
-        bakılarak elenir.
+        bakılarak elenir. Happy Card (ayrı origin) de kabul edilir.
         """
+        parts = urlsplit(url)
+        path = parts.path
+        host = parts.netloc.lower().removeprefix("www.")
+
+        if host == "happycard.com.tr":
+            if not path.startswith(HAPPYCARD_DIR):
+                return False
+            if not path.lower().endswith(".aspx"):
+                return False
+            if "/" in path[len(HAPPYCARD_DIR) :]:
+                return False
+            dosya = path.rsplit("/", 1)[-1]
+            return dosya.lower() != HUB_PAGE.lower()
+
         if not is_same_site(url, BASE_URL):
             return False
-
-        path = urlsplit(url).path
         if not path.startswith(CAMPAIGN_DIR):
             return False
         if not path.lower().endswith(".aspx"):
