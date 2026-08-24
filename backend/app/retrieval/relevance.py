@@ -25,12 +25,34 @@ def _fold(text: str) -> str:
     return ascii_fold_tr(lower_tr(text or ""))
 
 
+def _banka_alias_tokenlari() -> frozenset[str]:
+    """Banka adı parçaları başlık alaka anahtarı olmasın (sert bank_code süzgecini boşaltır)."""
+    from app.retrieval.query import BANK_ALIASES
+
+    tokenlar: set[str] = set()
+    for kod, takma in BANK_ALIASES.items():
+        tokenlar.add(_fold(kod.replace("_", " ")))
+        for parca in kod.split("_"):
+            if len(parca) >= 4:
+                tokenlar.add(_fold(parca))
+        for ad in takma:
+            folded = _fold(ad)
+            tokenlar.add(folded)
+            for parca in folded.split():
+                if len(parca) >= 4:
+                    tokenlar.add(parca)
+    return frozenset(tokenlar)
+
+
 def _baslik_anahtarlari(plan: QueryPlan) -> tuple[str, ...]:
     anahtarlar: list[str] = []
+    banka_token = _banka_alias_tokenlari()
     for sektor in plan.axis_filters.get("sector", ()):
         anahtarlar.extend(_SEKTOR_BASLIK.get(sektor, ()))
     for terim in plan.free_terms:
         if terim in {"kampanya", "kampanyasi", "kampanyalar", "bahseder", "misin", "bana", "nedir"}:
+            continue
+        if terim in banka_token or _fold(terim) in banka_token:
             continue
         if len(terim) >= 4:
             anahtarlar.append(terim)

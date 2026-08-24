@@ -80,3 +80,13 @@ alınmıştır. Kazıma sırasında:
 
 Banka adları ve markaları ilgili kurumlara aittir; bu projede yalnızca veri
 kaynağını göstermek amacıyla kullanılmıştır.
+
+## Yerel LLM ve gömme (Sprint 5)
+
+| Bileşen | Lisans | Bağlantı | Kullanım |
+|---|---|---|---|
+| [Ollama](https://ollama.com) | MIT | https://github.com/ollama/ollama | Yerel model sunucusu |
+| `qwen2.5:7b` (sohbet) | Apache-2.0 (Qwen) | https://ollama.com/library/qwen2.5 | `LOCAL_LLM_MODEL` |
+| `nomic-embed-text` | Apache-2.0 | https://ollama.com/library/nomic-embed-text · https://huggingface.co/nomic-ai/nomic-embed-text-v1.5 | `EMBEDDING_MODEL` / `embeddings` tablosu |
+
+Tam pip denetimi: [`docs/dependency_licenses.md`](docs/dependency_licenses.md).

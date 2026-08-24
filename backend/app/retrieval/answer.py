@@ -240,6 +240,17 @@ async def generate_answer(
             direction_note=direction,
         )
 
+    # Atıfları UI metninden silmeden önce çıkar (strip sonrası citations boş kalırdı).
+    baglam_kimlikleri = {vurus.doc.campaign_id for vurus in hits}
+    atiflar = tuple(
+        sorted(
+            {
+                int(eslesme)
+                for eslesme in _ATIF_RE.findall(metin)
+                if int(eslesme) in baglam_kimlikleri
+            }
+        )
+    )
     metin = strip_citation_markers(metin)
 
     # Guard 5 — yön denetimi.
@@ -266,6 +277,15 @@ async def generate_answer(
             metin2, model_name2, latency2 = await _model_cagir(
                 provider, yeniden_istem, system=system
             )
+            atiflar = tuple(
+                sorted(
+                    {
+                        int(eslesme)
+                        for eslesme in _ATIF_RE.findall(metin2)
+                        if int(eslesme) in baglam_kimlikleri
+                    }
+                )
+            ) or atiflar
             metin2 = strip_citation_markers(metin2)
             latency = (latency or 0) + (latency2 or 0)
             model_name = model_name2 or model_name
@@ -290,17 +310,6 @@ async def generate_answer(
                 latency_ms=latency,
                 direction_note=direction,
             )
-
-    baglam_kimlikleri = {vurus.doc.campaign_id for vurus in hits}
-    atiflar = tuple(
-        sorted(
-            {
-                int(eslesme)
-                for eslesme in _ATIF_RE.findall(metin)
-                if int(eslesme) in baglam_kimlikleri
-            }
-        )
-    )
 
     return GeneratedAnswer(
         text=metin,

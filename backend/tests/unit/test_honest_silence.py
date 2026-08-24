@@ -97,7 +97,13 @@ class TestHonestSilence:
         assert veri["intent"] == "search"
         assert veri["answer"]["unverified_numbers"] == []
         if not veri["results"]:
-            assert veri["answer"]["source"] in {"refusal", "template", "model"}
+            # Boş sonuç anlatıcısı `computed` dönebilir; sayı uydurmaz.
+            assert veri["answer"]["source"] in {
+                "refusal",
+                "template",
+                "model",
+                "computed",
+            }
 
     def test_rate_type_belirsiz_netlestirir(
         self, api_client: httpx.Client, seeded_session: Session

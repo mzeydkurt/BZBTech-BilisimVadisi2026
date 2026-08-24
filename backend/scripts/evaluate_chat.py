@@ -49,6 +49,7 @@ async def _olc(limit: int | None) -> dict:
     netlestirme_hedef = 0
     gecikmeler: list[int] = []
     niyet_dagilim: Counter[str] = Counter()
+    semantic_kullanan = 0
 
     with SessionLocal() as session:
         for kayit in gold:
@@ -56,6 +57,8 @@ async def _olc(limit: int | None) -> dict:
             yanit = await process_chat_query(session, ChatRequest(query=kayit["query"]))
             gecikmeler.append(int((time.perf_counter() - bas) * 1000))
             niyet_dagilim[yanit.intent] += 1
+            if yanit.retrieval.semantic_used:
+                semantic_kullanan += 1
 
             if yanit.intent == kayit["expected_intent"]:
                 dogru_niyet += 1
@@ -84,11 +87,15 @@ async def _olc(limit: int | None) -> dict:
         "n": len(gold),
         "provider": settings.llm_provider,
         "embedding_model": settings.embedding_model,
+        "semantic_used_count": semantic_kullanan,
+        "semantic_used_rate": semantic_kullanan / n,
         "intent_acc": dogru_niyet / n,
         "hallucination_rate": halusinasyon / n,
         "silence_rate": (dogru_susma / susma_hedef) if susma_hedef else None,
         "silence_n": susma_hedef,
-        "clarification_acc": (netlestirme_isabet / netlestirme_hedef) if netlestirme_hedef else None,
+        "clarification_acc": (
+            (netlestirme_isabet / netlestirme_hedef) if netlestirme_hedef else None
+        ),
         "clarification_n": netlestirme_hedef,
         "avg_latency_ms": sum(gecikmeler) / len(gecikmeler) if gecikmeler else 0,
         "intent_dist": dict(niyet_dagilim),
@@ -104,6 +111,10 @@ def _rapor(ozet: dict) -> str:
         "",
         f"- Sağlayıcı: `{ozet['provider']}`",
         f"- Gömme modeli ayarı: `{ozet['embedding_model']}`",
+        f"- Anlamsal kanal (`semantic_used=true`): "
+        f"**{ozet['semantic_used_count']}/{ozet['n']}** "
+        f"({ozet['semantic_used_rate']:.3f})",
+        "- Lexical kanal: BM25 her zaman açık",
         f"- Gold soru sayısı: **{ozet['n']}**",
         f"- Doğru niyet oranı: **{ozet['intent_acc']:.3f}**",
         f"- Halüsinasyon oranı (unverified_numbers dolu): **{ozet['hallucination_rate']:.3f}**",
