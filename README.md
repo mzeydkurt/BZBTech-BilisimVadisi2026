@@ -244,7 +244,8 @@ devrik paylaşım tablosu, Albaraka'da JS ile yüklenen 9 kampanya)
 
 ## SPRINT 3 — devam ediyor
 
-Yapay zekâ çıkarım katmanı. Şimdiye kadar tamamlananlar:
+Yapay zekâ katmanı: yerel model entegrasyonu ve kanıta dayalı doğal dil
+sorgulama.
 
 | Alan | Durum | Sonuç |
 |---|---|---|
@@ -252,21 +253,186 @@ Yapay zekâ çıkarım katmanı. Şimdiye kadar tamamlananlar:
 | Kural tabanlı çıkarım | ✅ | **4.508 çıkarım**, kanıt metniyle |
 | Değerlendirme ve ablasyon altyapısı | ✅ | Üç kip karşılaştırmalı ölçülüyor |
 | Varlık kartı üretimi | ✅ | 1.253 kart |
+| Yerel LLM'in sağlayıcıya bağlanması | ✅ | Ollama · `qwen3:8b` · Apache-2.0 · **bulut yok** |
+| Gömme sağlayıcısı | ✅ | `nomic-embed-text` · 768 boyut · Apache-2.0 |
+| Sorgu anlama katmanı | ✅ | **30 soruluk sorgu kümesi** · kural katmanı **30/30** |
+| Hibrit erişim (BM25 + gömme + RRF) | ✅ | Sorgu başına **3-5 ms** · FTS5 kullanılmadı |
+| Toplama sorularının SQL yanıtı | ✅ | Üstünlük ve sayma; **model çağrılmaz** |
+| Cevap üretimi ve kanıt guard'ı | ✅ | Doğrulanamayan sayı işaretlenir |
+| Kanıtlı Arama arayüzü | ✅ | İki bölmeli çalışma alanı |
 
 `rule_only` kipinin gold set'e karşı ölçülmüş temel çizgisi:
 **kör alt küme F1 0,785** · mikro F1 0,809 · makro F1 0,773 ·
 halüsinasyon oranı 0,171 · doğru susma oranı 0,913.
 
-Devam eden işler — **tamamlanmadan bu bölüme sayı yazılmaz:**
+### Yerel model — bulut servisi yok
 
-| Alan | Durum |
+Şartname dış servise bağımlılığı yasaklıyor; çıkarım ve yanıt üretimi
+tamamen `localhost`ta çalışıyor.
+
+| | |
 |---|---|
-| Yerel LLM'in (Ollama) sağlayıcıya bağlanması | ⏳ |
-| Prompt ince ayarı ve tam çıkarım çalıştırması | ⏳ |
-| `llm_only` / `hybrid` ablasyon ölçümü | ⏳ |
-| Kanıta dayalı doğal dil sorgulama (RAG) | ⏳ |
-| Kapalı ağ (airgap) doğrulaması | ⏳ |
+| Çalışma ortamı | Ollama (MIT) |
+| Üretim modeli | `qwen3:8b` — Apache-2.0 |
+| Gömme modeli | `nomic-embed-text` — Apache-2.0 |
+| Ölçülen hız | 7,5 tok/s (GTX 1650, 4 GB VRAM · %57 CPU offload) |
 
+Model seçimi ölçümle yapıldı: iki Apache-2.0 aday aynı Türkçe kampanya
+metniyle karşılaştırıldı. İkisi de **sıfır Çince karakter** üretti, ikisi de
+doğru kartı gösterdi, ikisi de uydurma sayı yazmadı; `qwen3:8b` kart metnini
+kopyalamak yerine gerçekten sentezlediği için seçildi.
+
+> **Qwen2.5-14B bilinçli olarak kullanılmadı.** Gerekçe donanım değil mimari:
+> aşağıdaki tasarımda model hiçbir sayı üretmiyor. Doğruluk deterministik
+> erişimden, kural tabanlı çıkarıcıdan ve kanıt guard'ından geliyor; model
+> büyüklüğü yalnızca cümlenin akıcılığını etkiliyor. Model `.env` içinde tek
+> satırla değişir.
+
+⚠️ **Sessiz bir hata bulundu ve düzeltildi.** Sağlayıcı OpenAI uyumlu
+`/v1/chat/completions` ucunu kullanıyordu. Düşünen modellerde bu uç, düşünme
+çıktısını `content` alanına koymuyor: HTTP 200 dönüyor, `content` **boş**
+geliyor ve hiçbir alan çıkarılamıyor — hata mesajı yok, yalnızca F1 sıfıra
+düşüyor. Üretim çağrısı Ollama'nın `/api/chat` ucuna, `think: false`
+parametresiyle taşındı; boş yanıt artık hata fırlatıyor.
+
+### Kanıta dayalı sorgulama — model sayı üretmez
+
+Tasarımın çekirdek kuralı: **kullanıcıya gösterilen her rakam
+`campaign_metrics` satırından gelir.** Model yalnızca yönlendirme yapar ve
+cümle kurar.
+
+| Katman | Yöntem | Model kullanır mı? |
+|---|---|---|
+| Sorgu anlama | Taksonomi sözlüğü + sayı/karşılaştırma kalıpları | Hayır (son çare) |
+| Erişim | BM25 + gömme, Reciprocal Rank Fusion | Yalnızca sorgu vektörü |
+| Sert süzgeç | Banka · durum · 4 eksen · sayısal eşik | Hayır |
+| Toplama (en düşük / kaç tane) | SQL | **Hayır** |
+| Cevap cümlesi | Yerel model | Evet |
+| Denetim | Sayı doğrulama · terim guard'ı | Hayır |
+
+**Toplama soruları erişime hiç girmez.** "En düşük kâr payı hangi bankada?"
+sorusunda en benzer 8 kart getirilip modele okutulsaydı, model yalnızca o 8
+kartın en küçüğünü söylerdi — 608 kampanyanın gerçek en küçüğünü değil. Yanıt
+makul görünür, kaynak da gösterir, ama yanlıştır ve yanlışlığı hiçbir yerde
+bildirilmez. Hesap tüm kayıtlar üzerinde SQL ile yapılır:
+
+> Kâr payı oranı bakımından uç değer **%0** ve Dünya Katılım bankasının
+> "PttAVM.com'da Peşin Fiyatına 3 Taksit Fırsatı!" kampanyasına ait. Aynı
+> değeri taşıyan **135 kampanya** daha var. Hesap, bu alanda değeri bulunan
+> **148 kampanya** üzerinden yapıldı; **460 kampanyada** alan çıkarılamadığı
+> için hesaba katılmadı.
+
+Üç şey cümlede bilinçli olarak duruyor: beraberlik sayısı, hesaba giren kayıt
+sayısı, hesaba **girmeyen** kayıt sayısı. "En düşük oran %0" ifadesi, 148 kayıt
+üzerinden mi 608 kayıt üzerinden mi söylendiği bilinmeden değersizdir.
+`NULL` sıfır sayılmaz.
+
+**Sert süzgeç bir kapıdır, puan değil.** "Kâr payı %2'nin altında" diyen bir
+sorguda %4,20'lik kampanya, metni ne kadar benzerse benzesin listeye girmez.
+
+### Sorgu kümesi — 30 soru, gerçek veride ölçüldü
+
+Kümedeki her soru için beklenen süzgeçler elle yazıldı; sorular
+**gold set'ten türetilmedi** (sızıntı olurdu). Kural katmanı beklenen
+süzgeçlerin **30/30**'unu çıkarıyor.
+
+| | |
+|---|---|
+| Gövde kurulumu | 205 ms (süreç başına bir kez) |
+| Sorgu başına süre | **3-5 ms** |
+| Arama gövdesi | 608 kart |
+
+⚠️ **FTS5 kullanılmadı.** SQLite'a özgüdür ve "PostgreSQL'e geçişte yalnızca
+`DATABASE_URL` değişir" kuralını bozar. Saf Python BM25 bu boyutta
+milisaniyenin altında çalışıyor.
+
+### Sorgu katmanında yakalanan sessiz hatalar
+
+Dördü de hata fırlatmadan yanlış sonuç üretiyordu; her biri için regresyon
+testi var.
+
+| Bulgu | Etki | Önlem |
+|---|---|---|
+| `term_months_max` işaretçisi `" ay"`, `normalize_text()` baştaki boşluğu siliyor | Kalan `"ay"` **"kâr p-ay-ı"** içine uyuyor; "en düşük kâr payı" sorusu vade üzerinden yanıtlanıp **"en düşük kâr payı 1"** diyordu | İşaretçiler kelime sınırında aranıyor |
+| Taksonomi anahtarı `altın`, `altında` sözcüğüne uyuyor | "%2'nin **altında**" ifadesi sektör süzgeci ekliyor, 7 finansman kampanyasının tamamı eleniyor, **0 sonuç** | Karşılaştırma işaretçileri taksonomi eşleşmesinden önce maskeleniyor — bir simgenin iki rolü olamaz |
+| Sert süzgeç, en ilgili 120 adaya uygulanıyordu | Seçici süzgeç havuzu boşaltıyor; "Kuveyt Türk'te market kampanyası" **0 sonuç** dönüyordu | Süzgeç gövdenin tamamına uygulanıyor, sıralama sonra yapılıyor |
+| Arama gövdesi önbelleği hiç geçersizleşmiyordu | `kart-uret` sonrası arama ESKİ metinlerle çalışmaya devam ediyordu | Üç sayaçlık parmak izi denetimi |
+
+### Boş sonuç sessizce gevşetilmez
+
+Bir sorgunun süzgeçleri kesişmiyorsa sonuç boş kalır — ama **hangi süzgecin
+kaldırılmasıyla kaç sonuç çıkacağı** yanıtta döner:
+
+```
+"KT'de akaryakıt indirimi olan kampanyalar"  ->  0 sonuç
+   Sektör: akaryakıt  süzgecini kaldır  ->  11 sonuç
+   Fayda:  indirim    süzgecini kaldır  ->   3 sonuç
+```
+
+Sonucu kendi başına gevşetmek, kullanıcının sormadığı soruyu yanıtlamak
+olurdu; boş göstermek ise "banka bunu yapmıyor" izlenimi verirdi. Karar
+kullanıcıya bırakılır.
+
+### Kanıtlı Arama arayüzü
+
+Sekmenin adı **"Akıllı Arama" değil "Kanıtlı Arama"**: bu sekme arama değil,
+kaynağı gösterilebilir yanıt üretiyor.
+
+Yerleşim iki bölmeli — solda soru, yorum ve yanıt; sağda kanıt. Dört unsur:
+
+1. **"Anladığım" çipleri.** Sistem soruyu hangi süzgeçlere çevirdiğini gösterir
+   (`Banka: Kuveyt Türk ×` `Sektör: Market ×`); her çipin ipucunda sorgunun o
+   süzgeci üreten parçası yazar ve çip kaldırılınca sorgu yeniden çalışır.
+   Yanlış anlaşılma görünür ve düzeltilebilir hâle gelir.
+2. **Tıklanabilir atıf.** Yanıttaki `[496]` sağdaki ilgili satırı vurgular.
+3. **Erişim şeffaflık şeridi.** `608 karttan 5 getirildi · sözcüksel ·
+   584 kayıt süzgeçlere takıldı · 5 ms`
+4. **Gerçek veriden seçilmiş örnek sorular.** Hepsi bu veri setinde
+   yanıtlanabiliyor; boş ekran yerine çalışan bir başlangıç.
+
+Yanıtın kaynağı her zaman yazılı: `yerel model` · `hesaplanmış` (SQL) ·
+`model kapalı` (şablon) · `kanıt yok` (reddetme). Model erişilemediğinde
+sistem çökmez, sıralı kanıtlar gösterilmeye devam eder.
+
+### Sahada düzeltilen altyapı hataları
+
+| Bulgu | Etki | Önlem |
+|---|---|---|
+| Göç `0011` kısıt adını sabit yazıyordu | Ad veritabanına göre 3 ya da 5 kat önek taşıyor; **boş veritabanında `migrate` hiç tamamlanmıyordu** | Ad çalışma anında `sqlite_master`'dan okunuyor |
+| `conftest.py`'de ortam bloğu `app.*` içe aktarmalarının altındaydı | `get_settings()` içe aktarma sırasında önbelleğe giriyor; `LLM_PROVIDER=mock` ataması etkisiz kalıyor ve 3 test gerçek modele çıkmaya çalışıyordu | Blok içe aktarmaların üstüne alındı |
+| `frontend/package.json`'da `typecheck` betiği yoktu | `dev.py lint` onu çağırıyor; **arayüz tip denetimi hiç çalışmıyormuş** | Betik eklendi |
+| `.env`'deki model adı kurulu değildi, gömme modeli bir Hugging Face adıydı | `llm-saglik` False dönüyor, gömme çağrısı 404 verirdi | İkisi de kurulu Ollama modellerine çevrildi |
+
+### Yeni veri bulgusu — `konut_finansmani` etiketi sıfır
+
+608 kampanyanın **hiçbiri** `konut_finansmani` etiketi taşımıyor. Şartnamenin
+8 zorunlu ürün türünden tek sıfır olan bu:
+
+| Tür | Etiket | | Tür | Etiket |
+|---|---|---|---|---|
+| `kart` | 451 | | `finansman` | 7 |
+| `alisveris_puani` | 86 | | `yatirim_urunu` | 6 |
+| `yeni_musteri` | 45 | | `tasit_finansmani` | 3 |
+| `ihtiyac_finansmani` | 9 | | **`konut_finansmani`** | **0** |
+
+İkinci bulgu: Kuveyt Türk'ün 47 kampanyasının hiçbirinde `market_gida`
+etiketi yok (veri setinde toplam 44 market etiketi var).
+
+> Bu bir erişim hatası **değil**, sınıflandırma kapsamı boşluğudur. Erişim
+> katmanı doğru davranıyor; eksik olan `taxonomy.py` sözlüğü. Sözlük
+> genişletilip `python dev.py siniflandir` çalıştırıldığında ağa çıkmadan
+> düzelir. Sorgu kümesindeki üç `konut_finansmani` sorusu kümede **kalıyor**:
+> boş-sonuç yolunu doğru sınıyorlar.
+
+### Devam eden işler — tamamlanmadan bu bölüme sayı yazılmaz
+
+| Alan | Durum | Not |
+|---|---|---|
+| Gömme vektörlerinin üretilmesi | ⏳ | `embeddings` tablosu boş; **anlamsal kanal henüz kapalı**, arama sözcüksel kanalla çalışıyor ve bu durum arayüzde bildiriliyor |
+| Prompt ince ayarı ve tam çıkarım çalıştırması | ⏳ | 608 kampanya · bu donanımda ~6-8 saat |
+| `llm_only` / `hybrid` ablasyon ölçümü | ⏳ | Tam çalıştırmadan sonra |
+| Sorgu kümesinde erişim isabeti (recall@k) | ⏳ | |
+| Kapalı ağ (airgap) doğrulaması ve videosu | ⏳ | |
 
 ---
 
@@ -287,6 +453,40 @@ Tüm bağımlılıkların tam listesi ve lisansları için:
 [`LICENSES.md`](LICENSES.md) ·
 [`backend/requirements.txt`](backend/requirements.txt) ·
 [`frontend/package.json`](frontend/package.json)
+
+### Yerel LLM kurulumu — opsiyonel
+
+**Model olmadan da sistem tam çalışır.** Kural tabanlı çıkarım, taksonomi,
+erişim ve toplama yanıtları modelden bağımsızdır; Kanıtlı Arama sekmesi de
+sıralı kanıtları göstermeye devam eder, yalnızca özet cümle üretilmez ve bu
+durum arayüzde açıkça yazar.
+
+1. Ollama'yı kurun: <https://ollama.com/download>
+2. İki modeli indirin — üretim ve gömme ayrı modellerdir:
+
+   ```bash
+   ollama pull qwen3:8b            # yanıt üretimi   · Apache-2.0 · ~5,2 GB
+   ollama pull nomic-embed-text    # gömme (768 boyut) · Apache-2.0 · ~274 MB
+   ```
+
+3. `.env` dosyasında sağlayıcıyı açın:
+
+   ```env
+   LLM_PROVIDER=local
+   LOCAL_LLM_BASE_URL=http://localhost:11434/v1
+   LOCAL_LLM_MODEL=qwen3:8b
+   EMBEDDING_MODEL=nomic-embed-text
+   ```
+
+4. Doğrulayın: `python dev.py llm-saglik`
+
+⚠️ `LOCAL_LLM_MODEL`, `ollama list` çıktısındaki adla **birebir** aynı olmalı.
+Kurulu olmayan bir ad yazıldığında `health()` sessizce `False` döner ve
+çıkarım hiç çalışmaz.
+
+> **Hiçbir bulut servisi veya ücretli API kullanılmamaktadır.** Model
+> `localhost` üzerinde çalışır; veri kurumdan çıkmaz. Çalışma ortamı Ollama
+> (MIT), kullanılan modellerin ikisi de Apache License 2.0'dır.
 
 ### Adım adım çalıştırma
 
@@ -504,7 +704,7 @@ etikette: `TAŞIT FINANSMANI(1-48 AY)`, `KONUT FINANSMANI (…/1-120 AY)`.
 ### Diğer
 
 ```bash
-python dev.py llm-saglik     # LLM sağlayıcısının durumu (SPRINT 3A: mock)
+python dev.py llm-saglik     # yerel modele ulaşılıyor mu, model yüklü mü
 python dev.py bicimle        # kodu biçimlendir (ruff format + fix)
 python dev.py derle-web      # arayüzü üretim için derle
 python dev.py migrate-geri   # son göçü geri al (VERİ SİLEBİLİR, onay ister)
