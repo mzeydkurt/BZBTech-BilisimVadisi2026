@@ -19,7 +19,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.providers import get_provider
+from app.ai.providers import active_embedding_model, get_provider
 from app.ai.providers.base import LLMProvider, LLMProviderError
 from app.ai.validation.terminology import check_terminology, load_forbidden_terms
 from app.config import get_settings
@@ -745,7 +745,8 @@ def _embedding_store(session: Session) -> EmbeddingStore:
     return EmbeddingStore.load(
         session,
         entity_type=CAMPAIGN_ENTITY,
-        model_name=get_settings().embedding_model,
+        # Yazan taraf ile AYNI kaynak; ikisi ıraksarsa kanal sessizce boşalır.
+        model_name=active_embedding_model(get_settings()),
     )
 
 

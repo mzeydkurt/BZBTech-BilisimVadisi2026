@@ -280,6 +280,22 @@ def search(
             "Gömme vektörleri üretilmemiş; arama yalnızca sözcüksel kanalla yapıldı "
             "(`python dev.py gomme-uret`)."
         )
+    elif query_vector and store.dim and len(query_vector) != store.dim:
+        # ⚠️ SESSİZ ÖLÜM ÖNLEMİ. Boyutlar uyuşmuyorsa `cosine()` her karşılaştırmada
+        # 0.0 döndürür; kanal çalışıyor görünür ama hiçbir şey bulmaz. Bu durum
+        # gömmelerin başka bir modelle üretildiğini gösterir.
+        anlamsal_not = (
+            f"Anlamsal kanal atlandı: sorgu vektörü {len(query_vector)} boyut, "
+            f"kayıtlı vektörler {store.dim} boyut ({store.model_name}). "
+            "Gömmeler farklı bir modelle üretilmiş — `python dev.py gomme-uret` "
+            "ile yeniden üretilmeli."
+        )
+        logger.warning(
+            "gomme_boyutu_uyusmuyor",
+            sorgu=len(query_vector),
+            kayitli=store.dim,
+            model=store.model_name,
+        )
     elif not query_vector:
         anlamsal_not = "Sorgu vektörü üretilemedi; anlamsal kanal atlandı."
     else:
