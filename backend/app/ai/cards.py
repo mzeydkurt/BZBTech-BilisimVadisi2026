@@ -278,9 +278,11 @@ def build_product_card(session: Session, product: Product) -> str:
     if sinirlar:
         satirlar.append(_bas_harf_buyut(", ".join(sinirlar)) + ".")
 
-    # Oran özetleri (en fazla 3 satır)
+    # Oran özetleri — yalnızca güncel bant satırları (en fazla 3).
+    from app.services.product_rate_current import select_current_rates
+
     oran_ozetleri: list[str] = []
-    for oran in list(product.rates)[:3]:
+    for oran in select_current_rates(list(product.rates))[:3]:
         if oran.profit_rate_pct is None:
             continue
         parca = f"kâr payı %{_sayi_metni(str(oran.profit_rate_pct))}"

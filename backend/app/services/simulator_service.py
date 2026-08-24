@@ -24,6 +24,7 @@ from app.schemas.simulator import (
     BankYieldOffer,
     FinancingSimulationRequest,
     FinancingSimulationResponse,
+    InstallmentRow,
     MissingDataBank,
     ParticipationYieldRequest,
     ParticipationYieldResponse,
@@ -59,6 +60,40 @@ def _annuite_taksit(anapara: Decimal, aylik_oran: Decimal, vade: int) -> Decimal
 
     carpan = (Decimal(1) + aylik_oran) ** vade
     return _kurusla(anapara * aylik_oran * carpan / (carpan - Decimal(1)))
+
+
+def _odeme_plani(
+    anapara: Decimal, aylik_oran: Decimal, vade: int, taksit: Decimal
+) -> list[InstallmentRow]:
+    """Eşit taksitli amortisman tablosunu üretir.
+
+    Her ay: kâr payı = kalan × r; anapara = taksit − kâr payı.
+    Son ayda yuvarlama farkı anaparaya yedirilerek bakiye sıfırlanır.
+    """
+    kalan = anapara
+    satirlar: list[InstallmentRow] = []
+    for ay in range(1, vade + 1):
+        kar = _kurusla(kalan * aylik_oran) if aylik_oran > 0 else Decimal("0.00")
+        if ay == vade:
+            anapara_payi = kalan
+            odeme = _kurusla(anapara_payi + kar)
+            kalan = Decimal("0.00")
+        else:
+            anapara_payi = _kurusla(taksit - kar)
+            if anapara_payi > kalan:
+                anapara_payi = kalan
+            odeme = taksit
+            kalan = _kurusla(kalan - anapara_payi)
+        satirlar.append(
+            InstallmentRow(
+                month=ay,
+                installment=odeme,
+                profit_share=kar,
+                principal=anapara_payi,
+                remaining_balance=kalan,
+            )
+        )
+    return satirlar
 
 
 def _kaynak_url(session: Session, urun: Product) -> str | None:
@@ -152,16 +187,23 @@ def calculate_financing_simulation(
         bddk_vade_notu = f"BDDK azami vade ({bant}): {azami_vade} ay."
 
     bankalar = list(session.scalars(select(Bank).order_by(Bank.code)))
+    if req.bank_codes:
+        istenen = set(req.bank_codes)
+        bankalar = [b for b in bankalar if b.code in istenen]
     teklifler: list[BankFinancingOffer] = []
     eksikler: list[MissingDataBank] = []
+    tahsis_dahil = False
 
     for banka in bankalar:
+        from app.services.product_rate_current import select_current_rates
+
         satirlar = list(
             session.scalars(
                 select(ProductRate)
                 .join(Product, ProductRate.product_id == Product.id)
                 .where(
                     Product.bank_id == banka.id,
+                    Product.is_active.is_(True),
                     Product.product_type == req.product_type,
                     ProductRate.rate_type == "financing_rate",
                     # ⚠️ %0 finansman GERÇEKTİR (Albaraka Togg kampanyası:
@@ -171,6 +213,8 @@ def calculate_financing_simulation(
                 )
             )
         )
+        # Aynı bandın eski kazıma tarihleri DB'de kalır; teklifte yalnızca güncel.
+        satirlar = select_current_rates(satirlar)
 
         # Tutar bandı yayımlanmışsa istenen tutar bandın dışındaysa oran geçersizdir.
         satirlar = [
@@ -196,8 +240,16 @@ def calculate_financing_simulation(
             continue
 
         urun = session.get(Product, oran.product_id)
-        aylik = _annuite_taksit(req.amount_try, oran.profit_rate_pct / _YUZDE, req.term_months)
-        toplam = _kurusla(aylik * Decimal(req.term_months))
+        aylik_oran = oran.profit_rate_pct / _YUZDE
+        aylik = _annuite_taksit(req.amount_try, aylik_oran, req.term_months)
+        plan = _odeme_plani(req.amount_try, aylik_oran, req.term_months, aylik)
+        toplam = _kurusla(sum((s.installment for s in plan), Decimal(0)))
+
+        tahsis: Decimal | None = None
+        if oran.allocation_fee_pct is not None:
+            tahsis = _kurusla(req.amount_try * oran.allocation_fee_pct / _YUZDE)
+            tahsis_dahil = True
+        toplam_maliyet = _kurusla(toplam + (tahsis or Decimal(0)))
 
         teklifler.append(
             BankFinancingOffer(
@@ -211,6 +263,10 @@ def calculate_financing_simulation(
                 monthly_payment_try=aylik,
                 total_profit_try=_kurusla(toplam - req.amount_try),
                 total_payment_try=toplam,
+                allocation_fee_try=tahsis,
+                total_cost_try=toplam_maliyet,
+                annual_cost_pct=oran.annual_cost_pct,
+                installments=plan,
                 source_url=_kaynak_url(session, urun) if urun else None,
                 evidence_text=oran.evidence_text,
             )
@@ -218,16 +274,27 @@ def calculate_financing_simulation(
 
     en_iyi: str | None = None
     if teklifler:
-        kazanan = min(teklifler, key=lambda t: t.total_payment_try)
+        kazanan = min(teklifler, key=lambda t: t.total_cost_try)
         kazanan.is_best_offer = True
         en_iyi = kazanan.bank_code
-        teklifler.sort(key=lambda t: t.total_payment_try)
+        teklifler.sort(key=lambda t: t.total_cost_try)
 
-    method = (
-        "Eşit taksitli (annüite) plan; taksit = P·r·(1+r)^n/((1+r)^n−1). "
-        "Oranlar bankaların kendi yayımladığı tablolardan okundu; tahsis "
-        "ücreti ve sigorta gibi ek maliyetler bu hesaba dahil değildir."
-    )
+    if tahsis_dahil:
+        method = (
+            "Eşit taksitli (annüite) plan; taksit = P·r·(1+r)^n/((1+r)^n−1). "
+            "Aylık oran, bankanın yayımladığı aylık kâr payı oranıdır. "
+            "Tahsis ücreti (allocation_fee_pct × tutar) toplam maliyete "
+            "dahil edilmiştir; annual_cost_pct bankanın yayımladığı yıllık "
+            "toplam maliyet oranıdır. Sigorta gibi ek maliyetler bu hesaba "
+            "dahil değildir."
+        )
+    else:
+        method = (
+            "Eşit taksitli (annüite) plan; taksit = P·r·(1+r)^n/((1+r)^n−1). "
+            "Aylık oran, bankanın yayımladığı aylık kâr payı oranıdır. "
+            "Tahsis ücreti bu tekliflerde yayımlanmadığı için toplam maliyete "
+            "eklenemedi; sigorta gibi ek maliyetler de dahil değildir."
+        )
     if bddk_vade_notu:
         method = f"{method} {bddk_vade_notu}"
 
@@ -252,6 +319,9 @@ def calculate_participation_yield(
     """
     istenen_ay = max(1, round(req.term_days / 30))
     bankalar = list(session.scalars(select(Bank).order_by(Bank.code)))
+    if req.bank_codes:
+        istenen = set(req.bank_codes)
+        bankalar = [b for b in bankalar if b.code in istenen]
     teklifler: list[BankYieldOffer] = []
     eksikler: list[MissingDataBank] = []
 
@@ -259,12 +329,15 @@ def calculate_participation_yield(
     donem = Decimal(req.term_days) / _YIL_GUN
 
     for banka in bankalar:
+        from app.services.product_rate_current import select_current_rates
+
         satirlar = list(
             session.scalars(
                 select(ProductRate)
                 .join(Product, ProductRate.product_id == Product.id)
                 .where(
                     Product.bank_id == banka.id,
+                    Product.is_active.is_(True),
                     ProductRate.rate_type == "participation_yield",
                     ProductRate.currency == req.currency,
                     ProductRate.profit_rate_pct.is_not(None),
@@ -272,6 +345,7 @@ def calculate_participation_yield(
                 )
             )
         )
+        satirlar = select_current_rates(satirlar)
         satirlar = [
             o
             for o in satirlar
@@ -342,3 +416,8 @@ def calculate_participation_yield(
 
 # check_bddk_limits: `bddk_limits_service` üzerinden yeniden dışa aktarılır
 # (yukarıdaki import). Koda gömülü LTV matrisi YOKTUR.
+__all__ = [
+    "calculate_financing_simulation",
+    "calculate_participation_yield",
+    "check_bddk_limits",
+]

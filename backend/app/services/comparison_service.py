@@ -117,6 +117,39 @@ def _normalize(
     return oran if yuksek_iyi else _YUZDE - oran
 
 
+def _varyant_etiketi(urun: Product, oran: ProductRate) -> str | None:
+    """Ürün varyant etiketini, yoksa oran satırındaki ham varyantı döndürür."""
+    return urun.variant_label or oran.variant
+
+
+def _karsilastirilabilirlik_uyarilari(satirlar: list[RankedProduct]) -> list[str]:
+    """Farklı varyant/kademe karışınca kullanıcıya gösterilecek uyarıları üretir.
+
+    Sigortalı ile sigortasız oranları aynı listede sıralamak "en ucuz" sonucunu
+    yanıltıcı kılar; uyarı sıralamayı engellemez, şeffaflık sağlar.
+    """
+    uyarilar: list[str] = []
+    if len(satirlar) < 2:
+        return uyarilar
+
+    varyantlar = {s.variant_label for s in satirlar if s.variant_label}
+    if len(varyantlar) > 1:
+        uyarilar.append(
+            "Sıralamada farklı ürün varyantları birlikte yer alıyor "
+            f"({', '.join(sorted(varyantlar))}). Sigortalı/sigortasız gibi "
+            "ayrımlar doğrudan karşılaştırılamayabilir."
+        )
+
+    kademeler = {s.account_tier for s in satirlar if s.account_tier}
+    if len(kademeler) > 1:
+        uyarilar.append(
+            "Sıralamada farklı hesap kademeleri (account_tier) birlikte yer "
+            f"alıyor ({', '.join(sorted(kademeler))}). Kademeler arası oran "
+            "karşılaştırması yanıltıcı olabilir."
+        )
+    return uyarilar
+
+
 def _agirlikli_skor(
     satirlar: list[RankedProduct], agirliklar: RankingWeights
 ) -> dict[int, Decimal]:
@@ -199,7 +232,13 @@ def rank_products(
         select(ProductRate, Product, Bank)
         .join(Product, ProductRate.product_id == Product.id)
         .join(Bank, Product.bank_id == Bank.id)
-        .where(ProductRate.rate_type == rate_type, ProductRate.currency == currency)
+        .where(
+            ProductRate.rate_type == rate_type,
+            ProductRate.currency == currency,
+            # ⚠️ Pasif ürün sıralamaya GİRMEZ — sayfadan kalkmış ürün "en ucuz"
+            # ilan edilmemeli.
+            Product.is_active.is_(True),
+        )
     )
     if product_type:
         stmt = stmt.where(Product.product_type == product_type)
@@ -218,9 +257,16 @@ def rank_products(
             (ProductRate.amount_max.is_(None)) | (ProductRate.amount_max >= amount_try),
         )
 
+    from app.services.product_rate_current import select_current_rates
+
+    ham_satirlar = list(session.execute(stmt).all())
+    guncel_idler = {o.id for o in select_current_rates([oran for oran, _, _ in ham_satirlar])}
+
     kaynaklar: dict[int, str] = {}
     satirlar: list[RankedProduct] = []
-    for oran, urun, banka in session.execute(stmt).all():
+    for oran, urun, banka in ham_satirlar:
+        if oran.id not in guncel_idler:
+            continue
         if urun.source_document_id and urun.source_document_id not in kaynaklar:
             belge = session.get(SourceDocument, urun.source_document_id)
             if belge:
@@ -243,6 +289,11 @@ def rank_products(
                 currency=oran.currency,
                 evidence_text=oran.evidence_text,
                 source_url=kaynaklar.get(urun.source_document_id or -1),
+                effective_date=oran.effective_date,
+                rate_source=oran.rate_source,
+                is_binding=oran.is_binding,
+                variant_label=_varyant_etiketi(urun, oran),
+                account_tier=oran.account_tier,
             )
         )
 
@@ -296,6 +347,7 @@ def rank_products(
             f"olduğu için sıralamaya alınmadı. Oranlar bankaların kendi yayımladığı "
             f"tablolardan okundu; her satırın kanıt metni ve kaynak sayfası yanıttadır."
         ),
+        comparability_warnings=_karsilastirilabilirlik_uyarilari(sirali),
     )
 
 

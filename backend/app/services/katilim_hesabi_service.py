@@ -92,12 +92,19 @@ def build_katilim_hesabi(
     if term_months is not None:
         stmt = stmt.where(ProductRate.term_months == term_months)
 
+    ham = list(session.execute(stmt).all())
+    from app.services.product_rate_current import select_current_rates
+
+    guncel = {o.id for o in select_current_rates([oran for oran, _ in ham])}
+
     # banka_kodu -> data_source -> {"aylik|TRY": Decimal, ...}
     banka_adlari: dict[str, str] = {}
     kaynak_hucreleri: dict[str, dict[str, dict[str, Decimal]]] = {}
     anomali_notlari: list[str] = []
 
-    for oran, banka in session.execute(stmt).all():
+    for oran, banka in ham:
+        if oran.id not in guncel:
+            continue
         if oran.term_months not in KATILIM_HESABI_VADE_ETIKETI:
             continue
         deger = getattr(oran, deger_alani)

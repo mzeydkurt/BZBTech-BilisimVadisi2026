@@ -13,10 +13,19 @@ from app.core.vocab import RATE_TYPES
 from app.db.models.bank import Bank
 from app.db.models.product import Product
 from app.schemas.compare import ProductRankingRequest, ProductRankingResponse
-from app.schemas.product import ProductDetailOut, ProductOut
+from app.schemas.product import ProductDetailOut, ProductOut, ProductRateOut
 from app.services.comparison_service import RankingError, rank_products
+from app.services.product_rate_current import select_current_rates
 
 router = APIRouter(prefix="/products", tags=["products"])
+
+
+def _guncel_oranlar(urun: Product, rate_type: str | None = None) -> list[ProductRateOut]:
+    """Yalnızca her bandın en yeni tarihli oranını döner (eski kazımalar gizlenir)."""
+    ham = select_current_rates(list(urun.rates))
+    if rate_type:
+        ham = [o for o in ham if o.rate_type == rate_type]
+    return [ProductRateOut.model_validate(o) for o in ham]
 
 
 def _urun_cikti(urun: Product, rate_type: str | None = None) -> ProductOut:
@@ -24,8 +33,7 @@ def _urun_cikti(urun: Product, rate_type: str | None = None) -> ProductOut:
     cikti = ProductOut.model_validate(urun)
     cikti.bank_code = urun.bank.code if urun.bank else None
     cikti.bank_name = urun.bank.name if urun.bank else None
-    if rate_type:
-        cikti.rates = [o for o in cikti.rates if o.rate_type == rate_type]
+    cikti.rates = _guncel_oranlar(urun, rate_type)
     return cikti
 
 
@@ -137,6 +145,7 @@ def get_product(product_id: int, db: DbSession) -> ProductDetailOut:
     cikti = ProductDetailOut.model_validate(urun)
     cikti.bank_code = urun.bank.code if urun.bank else None
     cikti.bank_name = urun.bank.name if urun.bank else None
+    cikti.rates = _guncel_oranlar(urun)
     if urun.source_document is not None:
         cikti.source_url = urun.source_document.url
         cikti.source_fetched_at = urun.source_document.fetched_at.isoformat()
