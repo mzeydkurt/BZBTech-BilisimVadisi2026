@@ -1,9 +1,19 @@
 """LLM sağlayıcıları ve fabrikası.
 
-⚠️ BURAYA BULUT SAĞLAYICI EKLENMEZ — `gemini.py`, `openai.py`, API anahtarı
-okuyan hiçbir dosya. Şartname madde 8 ücretli hizmeti, madde 5.9 dış bağımlılığı
-kısıtlıyor. Genişletilebilirlik iddiası soyutlamanın kendisiyle kanıtlanır:
-yeni bir sağlayıcı `LLMProvider` arayüzünü uygulayarak eklenebilir.
+⚠️ TİCARİ BULUT SAĞLAYICI EKLENMEZ — `gemini.py`, `openai.py`, ücretli bir
+API anahtarı okuyan hiçbir dosya. Şartname madde 8 ücretli hizmeti, madde 5.9
+dış bağımlılığı kısıtlıyor.
+
+⚠️ `evren.py` BU KURALIN İSTİSNASI DEĞİL, KAPSAMI DIŞINDA. EVREN, TEKNOFEST
+2026 kapsamında Savunma Sanayii Başkanlığı tarafından yarışmacı takımlara
+tahsis edilmiş, kotasız ve ücretsiz bir çıkarım servisidir — ne ücretli bir
+hizmet ne de üçüncü taraf bir buluttur. Gerekçe `evren.py` başında.
+
+⚠️ `local` YOLU KALDIRILMAZ. On-prem / airgap gösterimi ona bağlıdır; EVREN
+üretim kalitesi, Ollama kapalı ağ kanıtı içindir.
+
+Genişletilebilirlik iddiası soyutlamanın kendisiyle kanıtlanır: yeni bir
+sağlayıcı `LLMProvider` arayüzünü uygulayarak eklenir, çağıran kod değişmez.
 """
 
 from __future__ import annotations
@@ -19,11 +29,12 @@ from app.ai.providers.base import (
     LLMUnavailableError,
     ModelInfo,
 )
+from app.ai.providers.evren import EvrenProvider
 from app.ai.providers.local import LocalProvider
 from app.ai.providers.mock import MockProvider
 from app.config import Settings
 
-PROVIDERS: Final[tuple[str, ...]] = ("local", "mock")
+PROVIDERS: Final[tuple[str, ...]] = ("evren", "local", "mock")
 
 
 def get_provider(settings: Settings) -> LLMProvider:
@@ -45,11 +56,14 @@ def get_provider(settings: Settings) -> LLMProvider:
         return MockProvider(mode=settings.mock_llm_mode)
     if ad == "local":
         return LocalProvider(settings)
+    if ad == "evren":
+        return EvrenProvider(settings)
     raise ValueError(f"Bilinmeyen LLM_PROVIDER: {settings.llm_provider!r}. Geçerli: {PROVIDERS}")
 
 
 __all__ = [
     "PROVIDERS",
+    "EvrenProvider",
     "LLMInvalidJSONError",
     "LLMProvider",
     "LLMProviderError",

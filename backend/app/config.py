@@ -98,6 +98,43 @@ class Settings(BaseSettings):
     # (274 MB) ve ikisi yan yana durabilir.
     embedding_model: str = "nomic-embed-text"
 
+    # ── EVREN — TEKNOFEST çıkarım servisi ─────────────────
+    # ⚠️ BU BİR TİCARİ BULUT SAĞLAYICI DEĞİLDİR. EVREN, TEKNOFEST 2026
+    # kapsamında T.C. Cumhurbaşkanlığı Savunma Sanayii Başkanlığı tarafından
+    # yarışmacı takımlara tahsis edilmiş, kotasız ve ücretsiz bir çıkarım
+    # servisidir (8 × NVIDIA H200, vLLM, BF16). `providers/__init__.py`
+    # başındaki "bulut sağlayıcı eklenmez" kuralının gerekçesi şartname
+    # madde 8 (ücretli hizmet) ve 5.9 (dış bağımlılık); EVREN ikisine de
+    # girmiyor — yarışmanın kendi altyapısıdır.
+    #
+    # ⚠️ YEREL YOL KALDIRILMADI. `LLM_PROVIDER=local` hâlâ çalışır durumda;
+    # on-prem / airgap gösterimi buna bağlıdır (devir rehberi bunu "%20'lik
+    # kriter" diye anıyor). EVREN üretim kalitesi, yerel Ollama kapalı ağ
+    # kanıtı içindir; ikisi arasında geçiş tek `.env` satırıdır.
+    #
+    # ⚠️ ANAHTAR KODA GÖMÜLMEZ. Varsayılan BOŞ; değer yalnızca `.env`
+    # içinden gelir ve `.env` `.gitignore`'dadır.
+    evren_base_url: str = "https://evren-llmapi.ssyz.org.tr/v1"
+    evren_api_key: str = ""
+    # `/v1/models` çıktısındaki adlar. `llm-fast` ölçümde `llm-large`'a
+    # üstün çıktı (1,6 sn / 5-5 doğru; large 4,7 sn ve tarihi normalize
+    # etmedi), bu yüzden varsayılan odur.
+    evren_model: str = "llm-fast"
+    evren_embedding_model: str = "bge-m3-embed"
+    # Yeniden sıralama modeli. Boş bırakılırsa erişim RRF sıralamasıyla
+    # kalır — yeniden sıralama bir iyileştirmedir, zorunluluk değil.
+    evren_rerank_model: str = "rerank"
+
+    # ── Qdrant vektör veritabanı ──────────────────────────
+    # ⚠️ QDRANT ZORUNLU DEĞİL. Erişilemediğinde arama `embeddings` tablosuna
+    # düşer ve bu durum yanıtta bildirilir; kapalı ağ gösterimi bu yüzden
+    # Qdrant olmadan da çalışır. Sessizce tek kanala düşmek yasak.
+    qdrant_url: str = ""
+    qdrant_api_key: str = ""
+    qdrant_collection: str = "katip_kartlari"
+    # `local` | `qdrant` — `qdrant` seçilse bile erişilemezse yerele düşülür.
+    vector_backend: str = "local"
+
     # ── Türetilmiş değerler ───────────────────────────────
 
     @property
