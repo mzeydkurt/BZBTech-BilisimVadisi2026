@@ -545,6 +545,17 @@ def sohbet_degerlendir() -> int:
     )
 
 
+def qdrant_yukle() -> int:
+    """`embeddings` tablosundaki vektörleri Qdrant'a yükler.
+
+    ⚠️ Gömmeyi YENİDEN ÜRETMEZ; kaynak yerel tablodur ve EVREN'e istek
+    gitmez. Sıra: `gomme-uret` (EVREN) → `qdrant-yukle` (yalnızca aktarım).
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.push_qdrant", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
 def gomme_uret() -> int:
     """entity_cards → embeddings (mevcut semantic kanalı doldurur).
 
@@ -868,6 +879,7 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
         "Sohbet gold set ölçümü → docs/sprint5_evaluation.md",
     ),
     "gomme-uret": (gomme_uret, "Kart gömmelerini üretir (embeddings tablosu)"),
+    "qdrant-yukle": (qdrant_yukle, "Gömmeleri Qdrant'a yükler (ağa çıkar, gömme üretmez)"),
     "kesif-endpoint": (kesif_endpoint, "Kampanya listesi JSON uçlarını arar (Playwright)"),
     "kesif-hesaplayici": (
         kesif_hesaplayici,
