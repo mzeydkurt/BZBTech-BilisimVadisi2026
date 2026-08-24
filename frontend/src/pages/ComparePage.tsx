@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { CompareForm, type CompareFormState } from "@/components/compare/CompareForm";
 import { RankedProductTable } from "@/components/compare/RankedProductTable";
@@ -37,8 +38,30 @@ function toRequest(form: CompareFormState): ProductRankingRequest {
   };
 }
 
+function formFromParams(params: URLSearchParams): CompareFormState {
+  const bank = params.get("bank");
+  const rateType = params.get("rate_type");
+  return {
+    ...DEFAULT_COMPARE_FORM,
+    bank_codes: bank ? [bank] : [],
+    rate_type:
+      rateType === "participation_yield" ||
+      rateType === "profit_sharing_ratio" ||
+      rateType === "financing_rate"
+        ? rateType
+        : DEFAULT_COMPARE_FORM.rate_type,
+    criterion:
+      rateType === "participation_yield"
+        ? "en_yuksek_getiri"
+        : rateType === "profit_sharing_ratio"
+          ? "en_yuksek_paylasim_orani"
+          : DEFAULT_COMPARE_FORM.criterion,
+  };
+}
+
 export function ComparePage() {
-  const [form, setForm] = useState<CompareFormState>(DEFAULT_COMPARE_FORM);
+  const [searchParams] = useSearchParams();
+  const [form, setForm] = useState<CompareFormState>(() => formFromParams(searchParams));
   const { data: banks } = useBanks();
   const mutation = useProductCompare();
 

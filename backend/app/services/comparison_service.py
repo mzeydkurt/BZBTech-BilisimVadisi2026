@@ -15,6 +15,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.rate_direction import avantajli_yon
 from app.core.vocab import RATE_TYPE_COMPARABLE_FIELD
 from app.db.models.bank import Bank
 from app.db.models.campaign import Campaign
@@ -89,6 +90,16 @@ def _dogrula(rate_type: str, criterion: str) -> tuple[str, bool]:
             f"{criterion!r} ölçütü yalnızca {gerekli_tur!r} oranlarında anlamlıdır; "
             f"{rate_type!r} istendi. Farklı oran türleri aynı sıralamaya giremez."
         )
+    # ⚠️ Yön tek kaynaktan (`rate_direction`). Karz-ı hasen zaten
+    # RATE_TYPE_COMPARABLE_FIELD dışında; buraya gelmez.
+    yon = avantajli_yon(rate_type)
+    if yon is not None and criterion in {
+        "en_dusuk_kar_payi",
+        "en_yuksek_getiri",
+        "en_yuksek_paylasim_orani",
+    }:
+        # yon True → yüksek iyi → azalan sıralama; yon False → düşük iyi → artan.
+        azalan = yon
     return alan, azalan
 
 

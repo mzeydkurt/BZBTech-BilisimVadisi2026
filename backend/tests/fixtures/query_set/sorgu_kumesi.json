@@ -165,10 +165,10 @@
     },
     {
       "soru": "Türkiye Finans'ın ihtiyaç finansmanı oranları",
-      "intent": "search",
+      "intent": "tekil_sorgu",
       "bank_codes": ["turkiye_finans"],
       "axis": {"product_type": ["ihtiyac_finansmani"]},
-      "not": "Yapısal oran tablosu olan tek banka."
+      "not": "Sprint 5: tek banka + finansman oranı → tekil_sorgu (ürün/oran gövdesi)."
     },
     {
       "soru": "Dünya Katılım'da elektronik alışverişine kampanya",

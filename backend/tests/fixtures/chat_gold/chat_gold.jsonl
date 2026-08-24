@@ -1,0 +1,35 @@
+{"query": "Ziraat Katılım'ın konut finansmanı oranı ne?", "expected_intent": "tekil_sorgu", "expect_silence": false}
+{"query": "Kuveyt Türk mü daha avantajlı, Albaraka mı? oran karşılaştırması", "expected_intent": "compare", "expect_clarification": true, "expect_silence": true}
+{"query": "En yüksek nakit iade veren kampanyalar", "expected_intent": "aggregate", "expect_silence": false}
+{"query": "5.000 TL üzeri harcamalarda avantajlı kampanyalar", "expected_intent": "search", "expect_silence": false}
+{"query": "Yeni müşterilere özel kampanyalar", "expected_intent": "search", "expect_silence": false}
+{"query": "Kâr payı oranı ne demek?", "expected_intent": "tanim", "expect_silence": false}
+{"query": "Bitcoin kampanyası var mı?", "expected_intent": "search", "expect_silence": false}
+{"query": "Yarın hava nasıl?", "expected_intent": "kapsam_disi", "expect_silence": true}
+{"query": "Finansman nedir?", "expected_intent": "tanim", "expect_silence": false}
+{"query": "Katılma hesabı ne demek?", "expected_intent": "tanim", "expect_silence": false}
+{"query": "En düşük kâr payı oranı hangi kampanyada?", "expected_intent": "aggregate", "expect_silence": false}
+{"query": "Kuveyt Türk'te market kampanyası", "expected_intent": "search", "expect_silence": false}
+{"query": "Albaraka konut finansmanı oranı", "expected_intent": "tekil_sorgu", "expect_silence": false}
+{"query": "Vakıf Katılım ile Ziraat Katılım finansman karşılaştırması", "expected_intent": "compare", "expect_silence": false}
+{"query": "En uzun vadeli finansman hangi bankada?", "expected_intent": "aggregate", "expect_silence": false}
+{"query": "Emeklilere özel kampanyalar", "expected_intent": "search", "expect_silence": false}
+{"query": "Murabaha ne demek?", "expected_intent": "tanim", "expect_silence": false}
+{"query": "Bugün hava durumu nasıl?", "expected_intent": "kapsam_disi", "expect_silence": true}
+{"query": "En az 250 TL ödül veren market kampanyaları", "expected_intent": "search", "expect_silence": false}
+{"query": "Kâr paylaşım oranı ne demek?", "expected_intent": "tanim", "expect_silence": false}
+{"query": "Türkiye Finans taşıt finansmanı", "expected_intent": "tekil_sorgu", "expect_silence": false}
+{"query": "Katılım fonu ne demek?", "expected_intent": "tanim", "expect_silence": false}
+{"query": "En düşük faiz oranı hangi kampanyada?", "expected_intent": "aggregate", "expect_silence": false}
+{"query": "Vadeli mevduat kampanyası var mı diye bakıyorum", "expected_intent": "search", "expect_silence": false}
+{"query": "Kaç tane aktif kampanya var?", "expected_intent": "aggregate", "expect_silence": false}
+{"query": "Emlak Katılım ihtiyaç finansmanı oranı ne?", "expected_intent": "tekil_sorgu", "expect_silence": false}
+{"query": "Futbol maç sonucu ne oldu?", "expected_intent": "kapsam_disi", "expect_silence": true}
+{"query": "Tahsis ücreti ne demek?", "expected_intent": "tanim", "expect_silence": false}
+{"query": "Kuveyt Türk akaryakıt kampanyası", "expected_intent": "search", "expect_silence": false}
+{"query": "Albaraka mı avantajlı Kuveyt Türk mü finansman kâr payı", "expected_intent": "compare", "expect_silence": false}
+{"query": "Masrafsız finansman ne demek?", "expected_intent": "tanim", "expect_silence": false}
+{"query": "Süresi dolmuş kampanyalar", "expected_intent": "search", "expect_silence": false}
+{"query": "Hayat Finans eğitim finansmanı", "expected_intent": "tekil_sorgu", "expect_silence": false}
+{"query": "Yemek tarifi isterim", "expected_intent": "kapsam_disi", "expect_silence": true}
+{"query": "Kâr payı %2'nin altında olan finansman kampanyaları", "expected_intent": "search", "expect_silence": false}
