@@ -425,6 +425,28 @@ GLOSSARY_SEED: list[dict[str, Any]] = [
         "is_forbidden_conventional": False,
     },
     {
+        "term": "Katılım Bankası",
+        "conventional_equivalent": "İslami / faizsiz banka",
+        "category": "kurum",
+        "definition": (
+            "Faizsiz finans prensipleriyle çalışan banka kurumu. "
+            "Katılma hesabı (ürün) veya katılım fonu (fon sahipliği) ile karıştırılmamalıdır."
+        ),
+        "aliases": ["katilim bankasi", "katılım bankası", "islami banka"],
+        "is_forbidden_conventional": False,
+    },
+    {
+        "term": "Katılım Fonu",
+        "conventional_equivalent": "mevduat / fon sahipliği",
+        "category": "urun",
+        "definition": (
+            "Katılım bankasında fon sahiplerinin hesap tarafındaki genel adıdır. "
+            "Vadeli kâr-zarar ortaklıklı ürün ise katılma hesabıdır; kurum adı katılım bankasıdır."
+        ),
+        "aliases": ["katilim fonu", "katılım fonu"],
+        "is_forbidden_conventional": False,
+    },
+    {
         "term": "LTV (Kredi / Teminat Oranı)",
         "conventional_equivalent": "kredi/değer oranı",
         "category": "limit",

@@ -2,63 +2,70 @@
 
 MODELİN ÜRETTİĞİ HİÇBİR SAYI DENETİMSİZ GEÇMEZ. Yanıt metnindeki her
 rakam, atıf verilen kampanyanın kartında ya da `campaign_metrics` satırında
-bulunmak zorundadır. Bulunmuyorsa cümle "doğrulanamadı" işaretiyle döner ve
-arayüzde ayrı gösterilir. Bu, `app/ai/validation/` altındaki halüsinasyon
-guard'ının aynı ilkesi; yeniden yazılmadı, yeniden kullanıldı.
+bulunmak zorundadır. Bulunmuyorsa cümle "doğrulanamadı" işaretiyle döner.
 
-KART YOKSA MODEL HİÇ ÇAĞRILMAZ. Bağlamı boş bırakıp "yanıt yaz" demek,
-modeli kendi parametrik belleğinden uydurmaya davet etmektir — ve uydurduğu
-şey banka kampanyası olur. Boş sonuçta şablon reddetme cümlesi döner.
+KART YOKSA MODEL HİÇ ÇAĞRILMAZ. Boş sonuçta şablon reddetme cümlesi döner.
 
-MODEL ERİŞİLEMEZSE SİSTEM ÇÖKMEZ. `LLM_PROVIDER=mock`, airgap kipi ve
-Ollama kapalıyken şablon yanıt üretilir; sıralı sonuçlar yine döner. Yanıtın
-model tarafından mı şablondan mı geldiği çıktıda bildirilir.
+Guard 5: rate_type yön denetimi · Guard 6: terminoloji düzeltme turu.
+Sohbet promptu: `app/ai/prompts/chat_v1.txt` (3B system_v1'e dokunulmaz).
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Final
 
 from app.ai.providers.base import LLMProvider, LLMProviderError
 from app.ai.validation.terminology import TerminologyWarning, check_terminology
+from app.core.rate_direction import avantajli_yon, yon_notu
 from app.logging_config import get_logger
 from app.retrieval.query import QueryPlan
 from app.retrieval.search import SearchHit
 
 logger = get_logger(__name__)
 
-# Yanıtta en fazla kaç kart bağlama konur. 4096 token bağlamda 5 kart
-# (~1.500 karakter) güvenli sınır; fazlası istemi kırpılma riskine sokar.
 MAX_CONTEXT_CARDS: Final[int] = 5
+MAX_ANSWER_TOKENS: Final[int] = 480
 
-# Modelden istenecek en fazla token. Yanıt 3 cümle olduğu için düşük tutulur;
-# yüksek tutmak yavaşlatır ve modeli gevezeliğe iter.
-MAX_ANSWER_TOKENS: Final[int] = 320
-
-SYSTEM_PROMPT: Final[str] = (
-    "Sen katılım bankacılığı kampanyalarını inceleyen bir analiz asistanısın. "
-    "SADECE sana verilen KAYNAK kartlarına dayanarak TÜRKÇE yanıt ver.\n"
-    "KURALLAR:\n"
-    "1. Kaynakta olmayan hiçbir sayı, tarih, banka adı veya marka yazma.\n"
-    "2. Her cümlenin sonuna dayandığın kartın numarasını [N] biçiminde koy. "
-    "Sadece köşeli parantez ve sayı; başka işaret yok.\n"
-    "3. Kaynakta yanıt yoksa yalnızca şunu yaz: "
-    "Bu soruya elimizdeki veriyle yanıt verilemiyor.\n"
-    "4. Katılım bankacılığı terimleri kullan: kâr payı (faiz DEĞİL), "
-    "finansman (kredi DEĞİL), katılım fonu (mevduat DEĞİL).\n"
-    "5. En fazla 3 cümle yaz. Yorum ekleme, tavsiye verme.\n"
-    "6. Sadece Türkçe yaz."
+_CHAT_PROMPT_PATH: Final[Path] = (
+    Path(__file__).resolve().parents[1] / "ai" / "prompts" / "chat_v1.txt"
 )
 
-# Yanıttaki atıf işaretleri: [3], [12] …
+# Yedek — dosya okunamazsa (test ortamı) kullanılacak asgari kurallar.
+_FALLBACK_SYSTEM: Final[str] = (
+    "Sen Katibim'sin. SADECE KAYNAK kartlarına dayan. "
+    "faiz/kredi/mevduat yazma; kâr payı/finansman/katılma hesabı kullan. "
+    "Her cümleye [N] atıf koy. Selamı selamla. En fazla 5 cümle."
+)
+
 _ATIF_RE: Final[re.Pattern[str]] = re.compile(r"\[(\d+)\]")
-# Yanıttaki sayılar (yüzde ve binlik ayırıcı dahil).
 _SAYI_RE: Final[re.Pattern[str]] = re.compile(r"\d[\d.,]*")
-# Kaynakta aranırken göz ardı edilecek kısa sayılar (atıf numaralarıyla
-# karışan tek haneliler ve yıl benzeri kısa değerler denetim dışıdır).
 MIN_CHECKED_NUMBER_LENGTH: Final[int] = 2
+
+# Guard 5 — avantaj değerlendirme ifadeleri.
+_AVANTAJ_RE: Final[re.Pattern[str]] = re.compile(
+    r"(avantajl[ıi]|daha iyi|daha uygun|daha d[uü][sş][uü]k|daha y[uü]ksek|"
+    r"en avantajl[ıi]|en uygun)",
+    re.IGNORECASE,
+)
+_DUSUK_AVANTAJ_RE: Final[re.Pattern[str]] = re.compile(
+    r"\b(daha d[uü][sş][uü]k|en d[uü][sş][uü]k|d[uü][sş][uü]k.*avantaj)\b",
+    re.IGNORECASE,
+)
+_YUKSEK_AVANTAJ_RE: Final[re.Pattern[str]] = re.compile(
+    r"\b(daha y[uü]ksek|en y[uü]ksek|y[uü]ksek.*avantaj)\b",
+    re.IGNORECASE,
+)
+
+
+def _system_prompt() -> str:
+    """chat_v1.txt yükler; yoksa yedek."""
+    try:
+        return _CHAT_PROMPT_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return _FALLBACK_SYSTEM
 
 
 @dataclass(frozen=True)
@@ -74,18 +81,15 @@ class GeneratedAnswer:
     """Üretilen yanıt ve denetim sonuçları."""
 
     text: str
-    # "model" | "template" | "refusal"
+    # "model" | "template" | "refusal" | "computed"
     source: str
-    # Yanıtta atıf verilen kampanya kimlikleri (bağlamda gerçekten bulunanlar).
     citations: tuple[int, ...] = ()
-    # Kaynakta doğrulanamayan sayılar — arayüzde ayrı gösterilir.
     unverified_numbers: tuple[UnverifiedNumber, ...] = ()
-    # Konvansiyonel terim uyarıları (faiz / kredi / mevduat).
     terminology_warnings: tuple[TerminologyWarning, ...] = ()
-    # Model çağrısı başarısız olduysa nedeni.
     model_error: str | None = None
     model_name: str | None = None
     latency_ms: int | None = None
+    direction_note: str | None = None
 
     @property
     def is_grounded(self) -> bool:
@@ -94,12 +98,7 @@ class GeneratedAnswer:
 
 
 def _baglam(hits: tuple[SearchHit, ...]) -> str:
-    """Getirilen kartları numaralı bağlama çevirir.
-
-    Numara olarak `campaign_id` kullanılır: model atıf verdiğinde hangi
-    kampanyayı gösterdiği doğrudan çözülür ve arayüzde ilgili satır
-    vurgulanabilir. Sıra numarası kullanılsaydı eşleme kaybolurdu.
-    """
+    """Getirilen kartları numaralı bağlama çevirir."""
     parcalar: list[str] = []
     for vurus in hits[:MAX_CONTEXT_CARDS]:
         doc = vurus.doc
@@ -110,24 +109,11 @@ def _baglam(hits: tuple[SearchHit, ...]) -> str:
 def _sayilari_dogrula(
     text: str, hits: tuple[SearchHit, ...], citations: tuple[int, ...]
 ) -> tuple[UnverifiedNumber, ...]:
-    """Yanıttaki sayıların kaynakta geçtiğini doğrular.
-
-    ⚠️ ATIF NUMARALARI DENETİM DIŞIDIR. `[496]` ifadesindeki 496 bir veri
-    değeri değil, kaynak göstergesidir; kartta geçmediği için "uydurma"
-    sayılırsa her yanıt sahte uyarı üretir.
-
-    ⚠️ SAYI, ATIF VERİLEN KARTLARDA ARANIR — TÜM BAĞLAMDA DEĞİL. Model
-    [496]'ya atıf verip [497]'nin tutarını yazıyorsa bu da bir hatadır;
-    tüm bağlamda arasak fark etmezdik.
-    """
+    """Yanıttaki sayıların kaynakta geçtiğini doğrular."""
     atifsiz = _ATIF_RE.sub(" ", text)
     kart_metni = {vurus.doc.campaign_id: vurus.doc.card_text for vurus in hits}
-    # Atıf yoksa tüm bağlam kabul edilir; atıf eksikliği ayrı bir sorundur ve
-    # sayıyı iki kez cezalandırmak gereksiz.
     aranacak = [kart_metni[k] for k in citations if k in kart_metni] or list(kart_metni.values())
     havuz = " ".join(aranacak)
-    # Sayı biçimi kartta farklı yazılmış olabilir ("5.000" / "5000"); ayırıcılar
-    # atılarak karşılaştırılır.
     havuz_sade = re.sub(r"[.,\s]", "", havuz)
 
     bulunamayan: list[UnverifiedNumber] = []
@@ -143,13 +129,25 @@ def _sayilari_dogrula(
     return tuple(bulunamayan)
 
 
-def _sablon_yanit(plan: QueryPlan, hits: tuple[SearchHit, ...]) -> str:
-    """Model olmadan üretilen yanıt.
+def _yon_bozuk_mu(text: str, rate_type: str | None) -> bool:
+    """Avantaj cümlesi rate_type yönüne aykırı mı?"""
+    if not rate_type or not _AVANTAJ_RE.search(text):
+        return False
+    yon = avantajli_yon(rate_type)
+    if yon is None:
+        # Karz-ı hasen: avantaj cümlesi kurulmamalı.
+        return True
+    if yon is False and _YUKSEK_AVANTAJ_RE.search(text):
+        # Finansmanda "daha yüksek avantajlı" yanlış.
+        return True
+    if yon is True and _DUSUK_AVANTAJ_RE.search(text):
+        # Getiride "daha düşük avantajlı" yanlış.
+        return True
+    return False
 
-    ⚠️ ŞABLON YANIT SAYI ÜRETMEZ, yalnızca ne bulunduğunu sayar. Modelsiz
-    kipte "en avantajlı kampanya şu" gibi bir yorum üretmek, hesaplanmamış bir
-    iddia olurdu.
-    """
+
+def _sablon_yanit(plan: QueryPlan, hits: tuple[SearchHit, ...]) -> str:
+    """Model olmadan üretilen yanıt — sayı üretmez."""
     bankalar: list[str] = []
     for vurus in hits:
         if vurus.doc.bank_name not in bankalar:
@@ -159,10 +157,25 @@ def _sablon_yanit(plan: QueryPlan, hits: tuple[SearchHit, ...]) -> str:
         banka_metni += f" ve {len(bankalar) - 4} banka daha"
     _ = plan
     return (
-        f"Sorgunuzla eşleşen {len(hits)} kampanya bulundu ({banka_metni}). "
-        "Ayrıntılar ve kanıt metinleri sağdaki listede; yanıt metni yerel model "
-        "kapalı olduğu için üretilmedi."
+        f"Sorgunuzla eşleşen {len(hits)} kampanya var ({banka_metni}). "
+        "Ayrıntılar kartlarda; yerel model kapalı olduğu için cümle üretilmedi."
     )
+
+
+async def _model_cagir(
+    provider: LLMProvider,
+    istem: str,
+    *,
+    system: str,
+) -> tuple[str, str | None, int | None]:
+    """Model çağrısı; (metin, model_name, latency_ms)."""
+    yanit = await provider.generate(
+        istem,
+        system=system,
+        temperature=0.0,
+        max_tokens=MAX_ANSWER_TOKENS,
+    )
+    return yanit.text.strip(), yanit.model_name, yanit.latency_ms
 
 
 async def generate_answer(
@@ -174,16 +187,8 @@ async def generate_answer(
 ) -> GeneratedAnswer:
     """Getirilen kartlardan Türkçe yanıt üretir.
 
-    Args:
-        plan: Sorgu planı.
-        hits: Erişim sonuçları; boşsa model çağrılmaz.
-        provider: LLM sağlayıcısı; `None` ise şablon yanıt döner.
-        forbidden_terms: `load_forbidden_terms()` çıktısı.
-
-    Returns:
-        Yanıt metni, atıflar ve denetim sonuçları. Model hata verirse
-        `source="template"` ve `model_error` dolu döner — istisna YÜKSELMEZ,
-        çünkü sıralı sonuçlar hâlâ kullanıcıya gösterilebilir durumda.
+    Guard 5: ters yönlü avantaj cümlesi → şablon.
+    Guard 6: yasaklı terim → tek yeniden yazma turu; yine sızarsa şablon.
     """
     if not hits:
         return GeneratedAnswer(
@@ -194,30 +199,79 @@ async def generate_answer(
             source="refusal",
         )
 
+    direction = yon_notu(plan.rate_type) if plan.rate_type else None
+
     if provider is None:
-        return GeneratedAnswer(text=_sablon_yanit(plan, hits), source="template")
+        return GeneratedAnswer(
+            text=_sablon_yanit(plan, hits),
+            source="template",
+            direction_note=direction,
+        )
 
     baglam = _baglam(hits)
     istem = f"KAYNAK KARTLARI:\n{baglam}\n\nSORU: {plan.raw}"
+    system = _system_prompt()
 
     try:
-        yanit = await provider.generate(
-            istem,
-            system=SYSTEM_PROMPT,
-            temperature=0.0,
-            max_tokens=MAX_ANSWER_TOKENS,
-        )
+        metin, model_name, latency = await _model_cagir(provider, istem, system=system)
     except LLMProviderError as exc:
         logger.warning("yanit_uretilemedi", hata=str(exc), tip=type(exc).__name__)
         return GeneratedAnswer(
             text=_sablon_yanit(plan, hits),
             source="template",
             model_error=str(exc),
+            direction_note=direction,
         )
 
-    metin = yanit.text.strip()
+    # Guard 5 — yön denetimi.
+    if _yon_bozuk_mu(metin, plan.rate_type):
+        logger.info("yon_denetimi_sablona_dustu", rate_type=plan.rate_type)
+        return GeneratedAnswer(
+            text=_sablon_yanit(plan, hits),
+            source="template",
+            model_name=model_name,
+            latency_ms=latency,
+            direction_note=direction,
+        )
+
+    # Guard 6 — terminoloji; yalnızca gerçekten yasaklı varsa yeniden yaz.
+    uyarilar = check_terminology(metin, forbidden_terms, source_text=baglam)
+    if uyarilar:
+        yasaklar = ", ".join(sorted({u.term for u in uyarilar}))
+        yeniden_istem = (
+            f"{istem}\n\nÖNCEKİ YANIT (yasaklı terim içeriyor: {yasaklar}):\n{metin}\n\n"
+            "Aynı içeriği katılım bankacılığı terimleriyle, yasaklı sözcükleri "
+            "kullanmadan yeniden yaz."
+        )
+        try:
+            metin2, model_name2, latency2 = await _model_cagir(
+                provider, yeniden_istem, system=system
+            )
+            latency = (latency or 0) + (latency2 or 0)
+            model_name = model_name2 or model_name
+            uyarilar2 = check_terminology(metin2, forbidden_terms, source_text=baglam)
+            if uyarilar2 or _yon_bozuk_mu(metin2, plan.rate_type):
+                return GeneratedAnswer(
+                    text=_sablon_yanit(plan, hits),
+                    source="template",
+                    terminology_warnings=tuple(uyarilar2 or uyarilar),
+                    model_name=model_name,
+                    latency_ms=latency,
+                    direction_note=direction,
+                )
+            metin = metin2
+            uyarilar = []
+        except LLMProviderError:
+            return GeneratedAnswer(
+                text=_sablon_yanit(plan, hits),
+                source="template",
+                terminology_warnings=tuple(uyarilar),
+                model_name=model_name,
+                latency_ms=latency,
+                direction_note=direction,
+            )
+
     baglam_kimlikleri = {vurus.doc.campaign_id for vurus in hits}
-    # ⚠️ Bağlamda OLMAYAN atıf sayılmaz: model kart numarası uydurmuş olabilir.
     atiflar = tuple(
         sorted(
             {
@@ -233,7 +287,22 @@ async def generate_answer(
         source="model",
         citations=atiflar,
         unverified_numbers=_sayilari_dogrula(metin, hits, atiflar),
-        terminology_warnings=tuple(check_terminology(metin, forbidden_terms, source_text=baglam)),
-        model_name=yanit.model_name,
-        latency_ms=yanit.latency_ms,
+        terminology_warnings=tuple(uyarilar),
+        model_name=model_name,
+        latency_ms=latency,
+        direction_note=direction,
     )
+
+
+# Testlerin yön denetimine doğrudan erişmesi için.
+def check_direction(text: str, rate_type: str | None) -> bool:
+    """True = yön bozuk (şablona düşmeli)."""
+    return _yon_bozuk_mu(text, rate_type)
+
+
+__all__ = [
+    "GeneratedAnswer",
+    "UnverifiedNumber",
+    "check_direction",
+    "generate_answer",
+]

@@ -207,6 +207,17 @@ def scrape() -> int:
     return _calistir([_python(), "-m", "app.scrapers.run", *ekler], cwd=BACKEND)
 
 
+def scrape_js() -> int:
+    """JS \"Daha fazla\" listelerini Playwright ile genişletir; detay httpx.
+
+    Banka scraper dosyalarına Playwright gömülmez. Öncelik: Kuveyt, Dünya,
+    Albaraka, Vakıf.
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.scrape_js_campaigns", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
 def scrape_deneme() -> int:
     """Kazımayı veritabanına yazmadan dener."""
     return _calistir(
@@ -341,6 +352,22 @@ def urun_aciklama_doldur() -> int:
     """Finansman ürün açıklamalarını arşiv clean_text'ten doldurur (ağa çıkmaz)."""
     return _calistir(
         [_python(), "-m", "scripts.backfill_product_descriptions", *_ek_argumanlar()],
+        cwd=BACKEND,
+    )
+
+
+def urun_tekilestir() -> int:
+    """Aynı banka+ad+tür ürünlerini birleştirir; kopyayı pasife alır."""
+    return _calistir(
+        [_python(), "-m", "scripts.dedupe_products", *_ek_argumanlar()],
+        cwd=BACKEND,
+    )
+
+
+def urun_js_aciklama() -> int:
+    """Playwright ile ürün sayfasındaki Nedir?/tanıtım bloğunu doldurur."""
+    return _calistir(
+        [_python(), "-m", "scripts.scrape_product_descriptions_js", *_ek_argumanlar()],
         cwd=BACKEND,
     )
 
@@ -496,6 +523,32 @@ def degerlendir() -> int:
     return _calistir([_python(), "-m", "scripts.evaluate", *_ek_argumanlar()], cwd=BACKEND)
 
 
+# ── Sprint 5 (sohbet) ─────────────────────────────────────
+# ⚠️ 3B komutlarından AYRI bölüm. Merge conflict'i azaltmak için
+# sohbet-degerlendir / gomme-uret burada toplanır.
+
+
+def sohbet_degerlendir() -> int:
+    """Sohbet gold set'ine karşı uçtan uca ölçüm (ağa çıkmaz).
+
+    Çıktı: docs/sprint5_evaluation.md — docs/evaluation.md (çıkarım F1) ile karıştırılmaz.
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.evaluate_chat", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
+def gomme_uret() -> int:
+    """entity_cards → embeddings (mevcut semantic kanalı doldurur).
+
+    FAISS/vektör DB yok. source_hash=card_hash iken atlar.
+    LocalProvider.embed yoksa lexical-only devam eder.
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.build_embeddings", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
 def _ek_argumanlar() -> list[str]:
     """Komut adından sonraki argümanları alt betiğe geçirir.
 
@@ -632,6 +685,7 @@ _HAT_ADIMLARI: dict[str, tuple[str, bool]] = {
     # ad: (açıklama, ağa çıkar mı)
     "scrape": ("Kampanya sayfalarını çeker", True),
     "urun-kazi": ("Ürün/oran/limit sayfalarını çeker", True),
+    "tkbb-cek": ("TKBB katılma oranlarını çeker", True),
     "yeniden-isle": ("Temiz metni arşivden tazeler", False),
     "cikarim": ("Metinlerden alanları çıkarır", False),
     "siniflandir": ("Dört eksende sınıflandırır", False),
@@ -720,6 +774,7 @@ def boru_hatti() -> int:
 _HAT_MODULLERI: dict[str, tuple[str, list[str]]] = {
     "scrape": ("app.scrapers.run", []),
     "urun-kazi": ("scripts.scrape_products", []),
+    "tkbb-cek": ("scripts.scrape_tkbb", []),
     "yeniden-isle": ("scripts.reprocess_clean_text", []),
     "cikarim": ("scripts.extract", ["--sadece-kural"]),
     "siniflandir": ("scripts.categorize", []),
@@ -749,6 +804,7 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "api": (api, "Backend'i başlatır (http://localhost:8000)"),
     "web": (web, "Arayüzü başlatır (http://localhost:5173)"),
     "scrape": (scrape, "Tüm scraper'ları çalıştırır"),
+    "scrape-js": (scrape_js, "JS liste (Daha fazla) + httpx detay — Playwright ayrı"),
     "scrape-deneme": (scrape_deneme, "Kazımayı veritabanına yazmadan dener"),
     "geri-doldur": (geri_doldur, "Banka kategorisini arşivden geri doldurur (ağa çıkmaz)"),
     "yeniden-isle": (yeniden_isle, "Temiz metni arşivden yeniden üretir (ağa çıkmaz)"),
@@ -757,6 +813,11 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "urun-aciklama-doldur": (
         urun_aciklama_doldur,
         "Finansman açıklamalarını arşivden doldurur (ağa çıkmaz)",
+    ),
+    "urun-tekilestir": (urun_tekilestir, "Çoğalan finansman ürünlerini tekilleştirir"),
+    "urun-js-aciklama": (
+        urun_js_aciklama,
+        "Playwright ile ürün Nedir? açıklamasını doldurur",
     ),
     "finansman-metin-zenginlestir": (
         finansman_metin_zenginlestir,
@@ -793,6 +854,12 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "degerlendir": (degerlendir, "Gold set'e karşı F1 ölçer (ağa çıkmaz)"),
     "ablation": (ablation, "Üç kipi karşılaştırır, ablasyon tablosunu üretir"),
     "kart-uret": (kart_uret, "Varlık kartlarını üretir (ağa çıkmaz)"),
+    # ── Sprint 5 (sohbet) — 3B komutlarından ayrı ──
+    "sohbet-degerlendir": (
+        sohbet_degerlendir,
+        "Sohbet gold set ölçümü → docs/sprint5_evaluation.md",
+    ),
+    "gomme-uret": (gomme_uret, "Kart gömmelerini üretir (embeddings tablosu)"),
     "kesif-endpoint": (kesif_endpoint, "Kampanya listesi JSON uçlarını arar (Playwright)"),
     "kesif-hesaplayici": (
         kesif_hesaplayici,

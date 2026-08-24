@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.api.deps import DbSession
 from app.schemas.katilim_hesabi import KatilimHesabiResponse
 from app.services.katilim_hesabi_service import build_katilim_hesabi
+from app.services.tkbb_refresh import ensure_tkbb_fresh
 
 router = APIRouter(prefix="/katilim-hesabi", tags=["katilim-hesabi"])
 
@@ -37,8 +38,12 @@ def read_katilim_hesabi(
     banka, sütun `{vade}|{para_birimi}`. "Ara ödemeli" ürünün yalnızca 5
     bankada olduğu `not_offered_banks` ile açıkça işaretlenir — boş hücre
     değil, "bu ürün yok" notu.
+
+    Veri 24 saatten eskiyse aynı TKBB API yolu bir kilit ile yenilenir;
+    timeout/hatada mevcut satırlar dönmeye devam eder.
     """
     try:
+        ensure_tkbb_fresh(db)
         return build_katilim_hesabi(
             db,
             rate_type=rate_type,
