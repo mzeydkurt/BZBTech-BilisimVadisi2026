@@ -145,9 +145,7 @@ class QdrantStore:
         url = f"{self._base_url}{path}"
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.request(
-                    method, url, json=govde, headers=self._headers()
-                )
+                response = await client.request(method, url, json=govde, headers=self._headers())
         except httpx.HTTPError as exc:
             raise QdrantUnavailableError(f"Qdrant'a ulaşılamıyor: {exc}") from exc
 
@@ -278,13 +276,9 @@ class QdrantStore:
             "with_payload": True,
         }
         if entity_type:
-            govde["filter"] = {
-                "must": [{"key": "entity_type", "match": {"value": entity_type}}]
-            }
+            govde["filter"] = {"must": [{"key": "entity_type", "match": {"value": entity_type}}]}
 
-        yanit = await self._istek(
-            "POST", f"/collections/{self._collection}/points/search", govde
-        )
+        yanit = await self._istek("POST", f"/collections/{self._collection}/points/search", govde)
         satirlar = yanit.get("result") or []
 
         sonuc: list[SemanticHit] = []
