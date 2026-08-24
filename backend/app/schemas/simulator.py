@@ -38,6 +38,19 @@ class FinancingSimulationRequest(BaseModel):
         default="tasit_finansmani",
         description="Ürün türü: tasit_finansmani, konut_finansmani, ihtiyac_finansmani",
     )
+    bank_codes: list[str] | None = Field(
+        default=None, description="Yalnızca bu bankalar; boşsa tüm bankalar"
+    )
+
+
+class InstallmentRow(BaseModel):
+    """Eşit taksitli ödeme planının tek ay satırı."""
+
+    month: int = Field(ge=1, description="Taksit sırası (1…n)")
+    installment: Decimal = Field(description="Aylık taksit tutarı (TL)")
+    profit_share: Decimal = Field(description="Bu aydaki kâr payı (TL)")
+    principal: Decimal = Field(description="Bu aydaki anapara payı (TL)")
+    remaining_balance: Decimal = Field(description="Ödeme sonrası kalan bakiye (TL)")
 
 
 class BankFinancingOffer(BaseModel):
@@ -58,6 +71,18 @@ class BankFinancingOffer(BaseModel):
     monthly_payment_try: Decimal
     total_profit_try: Decimal
     total_payment_try: Decimal
+    allocation_fee_try: Decimal | None = Field(
+        default=None, description="Tahsis ücreti (TL); oran yoksa None"
+    )
+    total_cost_try: Decimal = Field(
+        description="Toplam ödeme + tahsis ücreti (sigorta hariç)"
+    )
+    annual_cost_pct: Decimal | None = Field(
+        default=None, description="Bankanın yayımladığı yıllık toplam maliyet (%)"
+    )
+    installments: list[InstallmentRow] = Field(
+        default_factory=list, description="Eşit taksitli amortisman tablosu"
+    )
     is_best_offer: bool = False
     source_url: str | None = None
     evidence_text: str | None = Field(default=None, description="Oranın okunduğu tablo satırı")
@@ -84,6 +109,9 @@ class ParticipationYieldRequest(BaseModel):
     deposit_try: Decimal = Field(gt=0, description="Yatırım tutarı")
     term_days: int = Field(gt=0, le=3650, description="Vade gün sayısı")
     currency: str = Field(default="TRY", description="Para birimi: TRY, USD, EUR, XAU, XAG")
+    bank_codes: list[str] | None = Field(
+        default=None, description="Yalnızca bu bankalar; boşsa tüm bankalar"
+    )
 
 
 class BankYieldOffer(BaseModel):

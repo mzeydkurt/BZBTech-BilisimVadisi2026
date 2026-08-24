@@ -12,8 +12,8 @@ modele hiç sorulmaz.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import replace
-
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -30,16 +30,31 @@ from app.db.models.bank import Bank
 from app.logging_config import get_logger
 from app.retrieval import aggregate
 from app.retrieval.answer import GeneratedAnswer, generate_answer
-from app.retrieval.corpus import CAMPAIGN_ENTITY, Corpus, GlossaryDoc, ProductDoc, ProductRateDoc, build_corpus
+from app.retrieval.corpus import (
+    CAMPAIGN_ENTITY,
+    Corpus,
+    GlossaryDoc,
+    ProductDoc,
+    ProductRateDoc,
+    build_corpus,
+)
 from app.retrieval.lexical import tokenize
+from app.retrieval.narrate import (
+    FactTriple,
+    NarrationFacts,
+    narrate,
+    relaxation_to_natural,
+)
 from app.retrieval.query import (
     AggregateSpec,
     QueryPlan,
+    merge_with_previous,
     parse_katilma_vadeler,
     parse_katilma_varyant,
     parse_query,
 )
 from app.retrieval.rank import RankCandidate, score_candidates
+from app.retrieval.relevance import filter_relevant_hits, strip_citation_markers
 from app.retrieval.search import SearchHit, SearchResult, filter_all, search
 from app.retrieval.semantic import EmbeddingStore
 from app.schemas.chat import (
@@ -62,6 +77,7 @@ from app.schemas.chat import (
 )
 from app.schemas.compare import CRITERIA
 from app.schemas.katilim_hesabi import KatilimHesabiRow
+from app.services import chat_session_service as chat_sessions
 from app.services.comparison_service import RankingError, rank_products
 from app.services.katilim_hesabi_service import build_katilim_hesabi
 
@@ -79,6 +95,14 @@ REJECTION_LABELS: dict[str, str] = {
 _KAPSAM_DISI_METIN = (
     "Bu soru katılım bankacılığı kampanya ve ürün kapsamının dışında. "
     "Kampanya, finansman, katılma hesabı veya kâr payı hakkında soru sorabilirsiniz."
+)
+
+_SOHBET_METIN = (
+    "Merhaba, ben Katibim — katılım bankacılığı kampanya, finansman ve "
+    "katılma hesabı asistanıyım. Bankalar arası oran karşılaştırması, "
+    "kampanya arama ve finansman simülasyonu yapabilirim. "
+    "Örnek: «En düşük konut finansmanı kâr payı hangi bankada?» veya "
+    "«Kuveyt Türk’te aktif kart kampanyaları»."
 )
 
 _NETLESTIRME_SORU = (
@@ -256,7 +280,7 @@ def _katilma_cevap_metni(
 def _katilma_yanit(
     session: Session,
     plan: QueryPlan,
-    req: ChatRequest,
+    _req: ChatRequest,
     *,
     uyari: str | None,
     elapsed_ms: int,
@@ -499,7 +523,7 @@ def _empty_retrieval(corpus_size: int, elapsed_ms: int, note: str | None = None)
 
 def _answer_block(cevap: GeneratedAnswer) -> AnswerBlock:
     return AnswerBlock(
-        text=cevap.text,
+        text=strip_citation_markers(cevap.text),
         source=cevap.source,
         citations=list(cevap.citations),
         unverified_numbers=[
@@ -530,13 +554,169 @@ def _sorgu_uyarisi(query: str, forbidden: dict[str, str | None]) -> str | None:
 
 
 def _provider_or_none(*, plan: QueryPlan) -> LLMProvider | None:
-    if plan.intent in {"aggregate", "tanim", "kapsam_disi"}:
+    if plan.intent in {"aggregate", "tanim", "kapsam_disi", "sohbet"}:
         return None
     try:
         return get_provider(get_settings())
     except ValueError as exc:
         logger.warning("saglayici_kurulamadi", hata=str(exc))
         return None
+
+
+def _sohbet_yanit(plan: QueryPlan, *, uyari: str | None, elapsed_ms: int) -> ChatResponse:
+    """Selam / teşekkür / kimsin — asla refusal dönmez."""
+    folded = _fold(plan.raw)
+    if any(k in folded for k in ("tesekkur", "sagol", "eyvallah")):
+        metin = (
+            "Rica ederim. Başka bir kampanya, finansman veya katılma hesabı "
+            "sorusu sorabilirsiniz."
+        )
+    elif any(k in folded for k in ("gorusuruz", "hosca kal", "bye")):
+        metin = "Görüşmek üzere. İhtiyacınız olursa buradayım."
+    else:
+        metin = _SOHBET_METIN
+    return _finalize(
+        ChatResponse(
+            query=plan.raw,
+            intent="sohbet",
+            understood=_understood(plan),
+            answer=AnswerBlock(text=metin, source="computed", is_grounded=True),
+            results=[],
+            retrieval=_empty_retrieval(0, elapsed_ms, "Sohbet niyeti; model çağrılmadı."),
+            forbidden_terms_warning=uyari,
+        ),
+        plan,
+    )
+
+
+def _facts_from_response(resp: ChatResponse, plan: QueryPlan) -> NarrationFacts:
+    """Computed yanıttan NarrationFacts üretir."""
+    facts: list[FactTriple] = []
+    if resp.aggregate and resp.aggregate.value is not None:
+        facts.append(
+            FactTriple(
+                etiket=resp.aggregate.field_label or "değer",
+                deger=str(resp.aggregate.value),
+                birim=resp.aggregate.unit or "",
+            )
+        )
+        facts.append(
+            FactTriple(
+                etiket="kayıt",
+                deger=str(resp.aggregate.with_value),
+                birim="adet",
+            )
+        )
+    for p in resp.products[:5]:
+        if p.profit_rate_pct is not None:
+            facts.append(
+                FactTriple(
+                    etiket=f"{p.bank_name} getiri",
+                    deger=str(p.profit_rate_pct),
+                    birim="%",
+                    kaynak_url=p.source_url,
+                )
+            )
+        elif p.investor_share_pct is not None:
+            facts.append(
+                FactTriple(
+                    etiket=f"{p.bank_name} katılımcı payı",
+                    deger=str(p.investor_share_pct),
+                    birim="%",
+                    kaynak_url=p.source_url,
+                )
+            )
+        if p.term_months is not None:
+            facts.append(
+                FactTriple(
+                    etiket=f"{p.bank_name} vade",
+                    deger=str(p.term_months),
+                    birim="ay",
+                )
+            )
+    for r in resp.results[:5]:
+        for m in r.metrics:
+            facts.append(
+                FactTriple(
+                    etiket=f"{r.bank_name} {m.label}",
+                    deger=str(m.value),
+                    birim=m.unit,
+                    kaynak_url=r.source_url,
+                )
+            )
+    return NarrationFacts(
+        facts=tuple(facts),
+        template_text=resp.answer.text,
+        question=plan.raw,
+        rate_type=plan.rate_type,
+    )
+
+
+async def _anlat_computed(
+    resp: ChatResponse,
+    plan: QueryPlan,
+    *,
+    yasakli: dict[str, str | None],
+) -> ChatResponse:
+    """computed cevapları anlatıcıdan geçirir; reddedilirse şablon kalır."""
+    if resp.answer.source != "computed":
+        return resp
+    if plan.intent in {"sohbet", "tanim", "kapsam_disi"} or resp.clarification_needed:
+        return resp
+    if resp.answer.text.startswith("Bu soru") or resp.answer.source == "refusal":
+        return resp
+    try:
+        saglayici = get_provider(get_settings())
+    except ValueError:
+        saglayici = None
+    sonuc = await narrate(
+        _facts_from_response(resp, plan),
+        provider=saglayici,
+        forbidden_terms=yasakli,
+    )
+    resp.answer = AnswerBlock(
+        text=sonuc.text,
+        source=sonuc.source if sonuc.source == "model" else "computed",
+        is_grounded=True,
+        model_name=sonuc.model_name,
+        model_error=sonuc.model_error,
+        latency_ms=sonuc.latency_ms,
+    )
+    return resp
+
+
+async def _bos_sonuc_anlat(
+    plan: QueryPlan,
+    hints: list[RelaxationHintOut],
+    *,
+    yasakli: dict[str, str | None],
+) -> AnswerBlock:
+    """Boş sonuçta relaxation_hints → doğal cümle (+ isteğe bağlı anlatıcı)."""
+    sablon = relaxation_to_natural(
+        [(h.kind, h.value, h.label, h.hit_count) for h in hints]
+    )
+    try:
+        saglayici = get_provider(get_settings())
+    except ValueError:
+        saglayici = None
+    facts = NarrationFacts(
+        facts=tuple(
+            FactTriple(etiket=h.label, deger=str(h.hit_count), birim="kayıt")
+            for h in hints[:3]
+        ),
+        template_text=sablon,
+        question=plan.raw,
+        rate_type=plan.rate_type,
+    )
+    sonuc = await narrate(facts, provider=saglayici, forbidden_terms=yasakli)
+    return AnswerBlock(
+        text=sonuc.text,
+        source=sonuc.source if sonuc.source == "model" else "computed",
+        is_grounded=True,
+        model_name=sonuc.model_name,
+        model_error=sonuc.model_error,
+        latency_ms=sonuc.latency_ms,
+    )
 
 
 def _embedding_store(session: Session) -> EmbeddingStore:
@@ -613,7 +793,9 @@ def _product_item(doc: ProductRateDoc) -> ChatProductItem:
     )
 
 
-def _product_bm25(corpus: Corpus, plan: QueryPlan, *, limit: int = 8) -> list[tuple[int, ProductDoc]]:
+def _product_bm25(
+    corpus: Corpus, plan: QueryPlan, *, limit: int = 8
+) -> list[tuple[int, ProductDoc]]:
     """Finansman / katılma için kullanılmayan product_index'i devreye alır."""
     if not corpus.product_index or not corpus.product_docs:
         return []
@@ -655,7 +837,9 @@ def _product_bm25(corpus: Corpus, plan: QueryPlan, *, limit: int = 8) -> list[tu
     return sonuc
 
 
-def _top_from_campaigns(hits: list[SearchHit] | tuple[SearchHit, ...], domain: str) -> list[ChatTopMatch]:
+def _top_from_campaigns(
+    hits: list[SearchHit] | tuple[SearchHit, ...], domain: str
+) -> list[ChatTopMatch]:
     adaylar = [
         RankCandidate(
             entity_type="campaign",
@@ -663,7 +847,7 @@ def _top_from_campaigns(hits: list[SearchHit] | tuple[SearchHit, ...], domain: s
             title=v.doc.title,
             bank_name=v.doc.bank_name,
             source_url=v.doc.source_url,
-            detail_path=f"/campaigns?id={v.doc.campaign_id}",
+            detail_path=f"/campaigns/{v.doc.campaign_id}",
             rank_index=i,
             is_active=v.doc.status == "active",
             intent_boost=0.1 if domain == "kampanya" else 0.0,
@@ -755,7 +939,7 @@ def _finalize(
                     title=r.title,
                     bank_name=r.bank_name,
                     source_url=r.source_url,
-                    detail_path=f"/campaigns?id={r.campaign_id}",
+                    detail_path=f"/campaigns/{r.campaign_id}",
                     rank_index=i,
                     is_active=r.status == "active",
                     reason=r.summary,
@@ -884,9 +1068,16 @@ async def _aggregate_response(
 
 
 async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse:
-    """Doğal dil sorusunu uçtan uca işler."""
+    """Doğal dil sorusunu uçtan uca işler (oturum + çok tur + anlatıcı)."""
     baslangic = time.perf_counter()
+    oturum = chat_sessions.resolve_or_create(
+        session, req.session_id, title_hint=req.query
+    )
+    turn = chat_sessions.next_turn_index(oturum)
+    onceki_plan = chat_sessions.previous_plan(oturum)
+
     plan = parse_query(req.query)
+    plan = merge_with_previous(plan, onceki_plan)
 
     if req.bank_code:
         plan = replace(plan, bank_codes=(req.bank_code,))
@@ -895,6 +1086,49 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
     uyari = _sorgu_uyarisi(req.query, yasakli)
     corpus = build_corpus(session)
     gecen = lambda: int((time.perf_counter() - baslangic) * 1000)  # noqa: E731
+
+    resp = await _process_chat_core(
+        session,
+        req,
+        plan=plan,
+        corpus=corpus,
+        uyari=uyari,
+        yasakli=yasakli,
+        baslangic=baslangic,
+        gecen=gecen,
+        previous_query=onceki_plan.raw if onceki_plan else None,
+    )
+    resp = await _anlat_computed(resp, plan, yasakli=yasakli)
+    resp.session_id = oturum.session_key
+    resp.turn_index = turn
+    chat_sessions.record_turn(
+        session,
+        oturum,
+        turn_index=turn,
+        user_text=req.query,
+        plan=plan,
+        response=resp,
+    )
+    session.commit()
+    return resp
+
+
+async def _process_chat_core(
+    session: Session,
+    req: ChatRequest,
+    *,
+    plan: QueryPlan,
+    corpus: Corpus,
+    uyari: str | None,
+    yasakli: dict[str, str | None],
+    baslangic: float,
+    gecen: Callable[[], int],
+    previous_query: str | None = None,
+) -> ChatResponse:
+    """Niyet dalları — oturum kaydı dış katmanda."""
+    # ── sohbet — asla refusal ─────────────────────────────
+    if plan.intent == "sohbet":
+        return _sohbet_yanit(plan, uyari=uyari, elapsed_ms=gecen())
 
     # ── kapsam_disi — modele HİÇ gitme ────────────────────
     if plan.intent == "kapsam_disi":
@@ -968,7 +1202,6 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
         )
 
     # ── katılma → Katılım Hesabı pivot (TKBB öncelikli) ───
-    # Ham product_rates dökümü (aynı ürünün onlarca paylaşım satırı) kullanılmaz.
     if plan.source_domain == "katilma":
         return _katilma_yanit(session, plan, req, uyari=uyari, elapsed_ms=gecen())
 
@@ -1092,7 +1325,7 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
                         note=ranking.note,
                     ),
                     retrieval=RetrievalReport(
-                        corpus_size=corpus.size,
+                        corpus_size=len(ranking.ranked) + len(ranking.without_data),
                         returned=len(products),
                         lexical_used=False,
                         semantic_used=False,
@@ -1105,8 +1338,6 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
                 plan,
                 top=_top_from_products(products, domain=plan.source_domain),
             )
-        # Kampanya karşılaştırması: mevcut arama yoluna düş.
-        # (iki banka + kampanya sinyali)
 
     # ── tekil_sorgu → ürün/oran kartları ──────────────────
     if plan.intent == "tekil_sorgu":
@@ -1220,7 +1451,7 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
         elif plan.source_domain == "finansman":
             oranlar = [d for d in oranlar if d.rate_type == "financing_rate"] or oranlar
 
-        products: list[ChatProductItem] = []
+        products = []
         if oranlar:
             products = [_product_item(d) for d in oranlar[: req.limit]]
         elif bm25:
@@ -1286,10 +1517,29 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
     depo = _embedding_store(session)
     vektor = await _query_vector(saglayici, plan) if not depo.is_empty else None
 
-    sonuc = search(plan, corpus, query_vector=vektor, store=depo, limit=req.limit)
-    cevap = await generate_answer(plan, sonuc.hits, provider=saglayici, forbidden_terms=yasakli)
+    # Geniş havuzdan çek, sonra alaka süzgeciyle kırp (dolgu kampanya yok).
+    ham = search(plan, corpus, query_vector=vektor, store=depo, limit=max(req.limit, 12))
+    alakali = filter_relevant_hits(ham.hits, plan, max_n=min(req.limit, 3))
+    sonuc = SearchResult(
+        hits=alakali,
+        filters=ham.filters,
+        lexical_used=ham.lexical_used,
+        semantic_used=ham.semantic_used,
+        corpus_size=ham.corpus_size,
+        semantic_note=ham.semantic_note,
+        relaxation_hints=ham.relaxation_hints if not alakali else (),
+    )
     results = _results(sonuc, plan)
     top = _top_from_campaigns(sonuc.hits, plan.source_domain)
+    hints = [
+        RelaxationHintOut(
+            kind=oneri.kind,
+            value=oneri.value,
+            label=oneri.label,
+            hit_count=oneri.hit_count,
+        )
+        for oneri in sonuc.relaxation_hints
+    ]
 
     # Kampanya birincil boşsa ve finansman/katılma henüz denenmediyse ürün yedek.
     if not results and plan.source_domain == "kampanya":
@@ -1326,6 +1576,31 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
                 top=_top_from_products(products, domain="finansman"),
             )
 
+    if not sonuc.hits:
+        bos = await _bos_sonuc_anlat(plan, hints, yasakli=yasakli)
+        return _finalize(
+            ChatResponse(
+                query=plan.raw,
+                intent=plan.intent,
+                understood=_understood(plan),
+                answer=bos,
+                results=[],
+                retrieval=_retrieval(sonuc, gecen()),
+                relaxation_hints=hints,
+                forbidden_terms_warning=uyari,
+            ),
+            plan,
+            top=top,
+        )
+
+    cevap = await generate_answer(
+        plan,
+        sonuc.hits,
+        provider=saglayici,
+        forbidden_terms=yasakli,
+        previous_query=previous_query,
+    )
+
     return _finalize(
         ChatResponse(
             query=plan.raw,
@@ -1334,15 +1609,7 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
             answer=_answer_block(cevap),
             results=results,
             retrieval=_retrieval(sonuc, gecen()),
-            relaxation_hints=[
-                RelaxationHintOut(
-                    kind=oneri.kind,
-                    value=oneri.value,
-                    label=oneri.label,
-                    hit_count=oneri.hit_count,
-                )
-                for oneri in sonuc.relaxation_hints
-            ],
+            relaxation_hints=hints,
             forbidden_terms_warning=uyari,
             direction_note=cevap.direction_note,
         ),

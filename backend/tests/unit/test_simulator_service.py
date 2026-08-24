@@ -461,3 +461,69 @@ class TestMusteriLehineSecim:
         assert [t.bank_code for t in sonuc.offers] == ["albaraka"]
         assert sonuc.offers[0].monthly_payment_try == Decimal("10000.00")
         assert sonuc.offers[0].total_profit_try == Decimal("0.00")
+
+
+# ── Ödeme planı ve tahsis ─────────────────────────────────
+
+
+class TestOdemePlaniVeTahsis:
+    def test_taksit_tablosu_vade_kadar_satir_uretir(self, seeded_session: Session) -> None:
+        _oran_ekle(
+            seeded_session, "albaraka", "Taşıt", profit_rate_pct=Decimal("3.05"), term_months=12
+        )
+
+        sonuc = calculate_financing_simulation(
+            seeded_session,
+            FinancingSimulationRequest(amount_try=Decimal("120000"), term_months=12),
+        )
+
+        teklif = sonuc.offers[0]
+        assert len(teklif.installments) == 12
+        assert teklif.installments[0].month == 1
+        assert teklif.installments[-1].remaining_balance == Decimal("0.00")
+        assert teklif.installments[-1].principal > 0
+        # Anapara payları toplamı finansman tutarına eşit olmalı
+        anapara_toplam = sum((s.principal for s in teklif.installments), Decimal(0))
+        assert anapara_toplam == Decimal("120000.00")
+
+    def test_tahsis_ucreti_toplam_maliyete_eklenir(self, seeded_session: Session) -> None:
+        _oran_ekle(
+            seeded_session,
+            "albaraka",
+            "Taşıt",
+            profit_rate_pct=Decimal("0"),
+            allocation_fee_pct=Decimal("0.50"),
+            annual_cost_pct=Decimal("12.00"),
+            term_months=12,
+        )
+
+        sonuc = calculate_financing_simulation(
+            seeded_session,
+            FinancingSimulationRequest(amount_try=Decimal("100000"), term_months=12),
+        )
+
+        teklif = sonuc.offers[0]
+        assert teklif.allocation_fee_try == Decimal("500.00")
+        assert teklif.total_payment_try == Decimal("100000.00")
+        assert teklif.total_cost_try == Decimal("100500.00")
+        assert teklif.annual_cost_pct == Decimal("12.00")
+        assert "tahsis" in sonuc.method_note.lower()
+        assert "sigorta" in sonuc.method_note.lower()
+
+    def test_banka_alt_kumesi_suzulur(self, seeded_session: Session) -> None:
+        _oran_ekle(seeded_session, "albaraka", "A", profit_rate_pct=Decimal("3.05"), term_months=36)
+        _oran_ekle(
+            seeded_session, "kuveyt_turk", "B", profit_rate_pct=Decimal("4.20"), term_months=36
+        )
+
+        sonuc = calculate_financing_simulation(
+            seeded_session,
+            FinancingSimulationRequest(
+                amount_try=Decimal("500000"),
+                term_months=36,
+                bank_codes=["albaraka"],
+            ),
+        )
+
+        assert [t.bank_code for t in sonuc.offers] == ["albaraka"]
+        assert "kuveyt_turk" not in {b.bank_code for b in sonuc.banks_without_data}

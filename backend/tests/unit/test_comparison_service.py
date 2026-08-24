@@ -7,6 +7,7 @@ Sıralamanın iki kırılgan noktası ölçülür:
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -14,9 +15,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.bank import Bank
+from app.db.models.campaign import Campaign
+from app.db.models.campaign_metric import CampaignMetric
 from app.db.models.product import Product, ProductRate
 from app.schemas.compare import RankingWeights
-from app.services.comparison_service import RankingError, rank_products
+from app.services.comparison_service import RankingError, rank_campaigns, rank_products
 
 
 def _oran_ekle(
@@ -254,3 +257,224 @@ class TestAgirliklar:
             RankingWeights(
                 rate_weight=Decimal("0"), fee_weight=Decimal("0"), term_weight=Decimal("0")
             )
+
+
+def test_pasif_urun_siralamaya_girmez(seeded_session: Session) -> None:
+    """⚠️ is_active=False ürün sayfadan kalkmıştır; sıralamada görünmemeli."""
+    _oran_ekle(
+        seeded_session,
+        "albaraka",
+        "Aktif",
+        profit_rate_pct=Decimal("4.00"),
+        term_months=36,
+    )
+    banka = seeded_session.scalar(select(Bank).where(Bank.code == "kuveyt_turk"))
+    assert banka is not None
+    urun = Product(
+        bank_id=banka.id,
+        external_key="kuveyt_turk:Pasif",
+        name="Pasif",
+        product_type="tasit_finansmani",
+        is_active=False,
+    )
+    seeded_session.add(urun)
+    seeded_session.flush()
+    seeded_session.add(
+        ProductRate(
+            product_id=urun.id,
+            band_key="Pasif",
+            rate_type="financing_rate",
+            profit_rate_pct=Decimal("2.00"),
+            term_months=36,
+            currency="TRY",
+            evidence_text="pasif kanıt",
+        )
+    )
+    seeded_session.flush()
+
+    sonuc = rank_products(
+        seeded_session, rate_type="financing_rate", criterion="en_dusuk_kar_payi"
+    )
+
+    assert [s.bank_code for s in sonuc.ranked] == ["albaraka"]
+    assert all(s.product_name != "Pasif" for s in sonuc.ranked + sonuc.without_data)
+
+
+def test_meta_alanlar_yanitta_dolu(seeded_session: Session) -> None:
+    """effective_date / rate_source / is_binding / variant / tier / term_label."""
+    banka = seeded_session.scalar(select(Bank).where(Bank.code == "albaraka"))
+    assert banka is not None
+    urun = Product(
+        bank_id=banka.id,
+        external_key="albaraka:Sigortali",
+        name="Sigortalı Taşıt",
+        product_type="tasit_finansmani",
+        variant_label="Sigortalı",
+    )
+    seeded_session.add(urun)
+    seeded_session.flush()
+    seeded_session.add(
+        ProductRate(
+            product_id=urun.id,
+            band_key="sigortali|36",
+            rate_type="financing_rate",
+            profit_rate_pct=Decimal("3.10"),
+            term_months=36,
+            term_label="36 Ay",
+            currency="TRY",
+            effective_date=date(2026, 8, 1),
+            rate_source="html_table",
+            is_binding=True,
+            account_tier="klasik",
+            evidence_text="36 Ay | %3,10",
+        )
+    )
+    seeded_session.flush()
+
+    sonuc = rank_products(
+        seeded_session, rate_type="financing_rate", criterion="en_dusuk_kar_payi"
+    )
+
+    satir = sonuc.ranked[0]
+    assert satir.effective_date == date(2026, 8, 1)
+    assert satir.rate_source == "html_table"
+    assert satir.is_binding is True
+    assert satir.variant_label == "Sigortalı"
+    assert satir.account_tier == "klasik"
+    assert satir.term_label == "36 Ay"
+
+
+def test_farkli_varyant_uyari_uretir(seeded_session: Session) -> None:
+    """Sigortalı ve sigortasız oranlar aynı listede → comparability_warnings."""
+    for kod, etiket, oran in (
+        ("albaraka", "Sigortalı", Decimal("3.05")),
+        ("kuveyt_turk", "Sigortasız", Decimal("3.50")),
+    ):
+        banka = seeded_session.scalar(select(Bank).where(Bank.code == kod))
+        assert banka is not None
+        urun = Product(
+            bank_id=banka.id,
+            external_key=f"{kod}:{etiket}",
+            name=etiket,
+            product_type="tasit_finansmani",
+            variant_label=etiket,
+        )
+        seeded_session.add(urun)
+        seeded_session.flush()
+        seeded_session.add(
+            ProductRate(
+                product_id=urun.id,
+                band_key=etiket,
+                rate_type="financing_rate",
+                profit_rate_pct=oran,
+                term_months=36,
+                currency="TRY",
+                evidence_text=f"{etiket} kanıt",
+            )
+        )
+    seeded_session.flush()
+
+    sonuc = rank_products(
+        seeded_session, rate_type="financing_rate", criterion="en_dusuk_kar_payi"
+    )
+
+    assert sonuc.comparability_warnings
+    assert any("varyant" in u.lower() for u in sonuc.comparability_warnings)
+
+
+def _kampanya_ekle(
+    session: Session,
+    *,
+    bank_code: str,
+    slug: str,
+    title: str,
+    status: str = "active",
+    reward: Decimal | None = None,
+    profit_rate: Decimal | None = None,
+) -> Campaign:
+    banka = session.scalar(select(Bank).where(Bank.code == bank_code))
+    assert banka is not None
+    kampanya = Campaign(
+        bank_id=banka.id,
+        external_slug=slug,
+        title=title,
+        source_url=f"https://example.test/{slug}",
+        status=status,
+        date_precision="exact",
+        date_evidence_text="Kampanya Dönemi: 01.01.2026 - 31.12.2026",
+        date_evidence_source="structured",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 12, 31),
+    )
+    session.add(kampanya)
+    session.flush()
+    if reward is not None or profit_rate is not None:
+        session.add(
+            CampaignMetric(
+                campaign_id=kampanya.id,
+                reward_amount_try=reward,
+                profit_rate_pct=profit_rate,
+            )
+        )
+    session.flush()
+    return kampanya
+
+
+class TestKampanyaSiralamasi:
+    """POST /campaigns/compare ölçütleri — `rank_campaigns` birim testleri."""
+
+    def test_en_yuksek_odul_azalan_siralar(self, seeded_session: Session) -> None:
+        _kampanya_ekle(
+            seeded_session,
+            bank_code="albaraka",
+            slug="kucuk-odul",
+            title="Küçük Ödül",
+            reward=Decimal("250"),
+        )
+        _kampanya_ekle(
+            seeded_session,
+            bank_code="kuveyt_turk",
+            slug="buyuk-odul",
+            title="Büyük Ödül",
+            reward=Decimal("10000"),
+        )
+        _kampanya_ekle(
+            seeded_session,
+            bank_code="vakif_katilim",
+            slug="odulsuz",
+            title="Ödülsüz",
+        )
+
+        sonuc = rank_campaigns(seeded_session, criterion="en_yuksek_odul")
+
+        assert [s.bank_code for s in sonuc.ranked] == ["kuveyt_turk", "albaraka"]
+        assert sonuc.winner is not None
+        assert sonuc.winner.reward_amount_try == Decimal("10000")
+        assert "ödül" in (sonuc.winner_reason or "").lower()
+        assert any(s.bank_code == "vakif_katilim" for s in sonuc.without_data)
+
+    def test_gecersiz_kampanya_olcutu_reddedilir(self, seeded_session: Session) -> None:
+        with pytest.raises(RankingError, match="criterion"):
+            rank_campaigns(seeded_session, criterion="en_avantajli")
+
+    def test_pasif_kampanya_only_active_ile_elenir(self, seeded_session: Session) -> None:
+        _kampanya_ekle(
+            seeded_session,
+            bank_code="albaraka",
+            slug="aktif",
+            title="Aktif",
+            reward=Decimal("100"),
+            status="active",
+        )
+        _kampanya_ekle(
+            seeded_session,
+            bank_code="kuveyt_turk",
+            slug="suresi-dolmus",
+            title="Süresi Dolmuş",
+            reward=Decimal("99999"),
+            status="expired",
+        )
+
+        sonuc = rank_campaigns(seeded_session, criterion="en_yuksek_odul", only_active=True)
+
+        assert [s.bank_code for s in sonuc.ranked] == ["albaraka"]

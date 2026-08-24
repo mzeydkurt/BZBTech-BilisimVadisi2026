@@ -104,6 +104,22 @@ class RankedProduct(BaseModel):
     evidence_text: str | None = None
     source_url: str | None = None
     missing_reason: str | None = Field(default=None, description="Veri yok grubundaysa nedeni")
+    # ── Karşılaştırılabilirlik meta verisi (ek alanlar) ──
+    effective_date: date | None = Field(
+        default=None, description="Oranın yürürlük / yayımlanma tarihi"
+    )
+    rate_source: str | None = Field(
+        default=None, description="Oran kaynağı: html_table, calculator_probe, …"
+    )
+    is_binding: bool | None = Field(
+        default=None, description="Oran bağlayıcı mı (hesaplayıcı türevi False)"
+    )
+    variant_label: str | None = Field(
+        default=None, description="Ürün/oran varyantı (ör. sigortalı / sigortasız)"
+    )
+    account_tier: str | None = Field(
+        default=None, description="Katılma hesabı bakiye kademesi"
+    )
 
 
 class ProductRankingResponse(BaseModel):
@@ -122,6 +138,13 @@ class ProductRankingResponse(BaseModel):
         default_factory=list, description="Ölçütün alanı boş olduğu için sıralanamayanlar"
     )
     note: str
+    comparability_warnings: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sıralamada karışık varyant/kademe (ör. sigortalı vs sigortasız) "
+            "bulunduğunda kullanıcıya gösterilecek uyarılar"
+        ),
+    )
 
 
 class CampaignRankingRequest(BaseModel):
