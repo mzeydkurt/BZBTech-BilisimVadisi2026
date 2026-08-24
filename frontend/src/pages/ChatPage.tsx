@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { ChatForm } from "@/components/chat/ChatForm";
 import { ChatMatchCard } from "@/components/chat/ChatResultCard";
 import { ForbiddenTermsAlert } from "@/components/chat/ForbiddenTermsAlert";
+import { EvidenceDisclosure } from "@/components/chat/EvidenceDisclosure";
+import { GroundingNotice } from "@/components/chat/GroundingNotice";
+import { RelaxationHints } from "@/components/chat/RelaxationHints";
+import { RetrievalStrip } from "@/components/chat/RetrievalStrip";
+import { UnderstoodChips } from "@/components/chat/UnderstoodChips";
 import { ErrorState } from "@/components/common/ErrorState";
 import { Button } from "@/components/ui/button";
 import { useBanks } from "@/hooks/useBanks";
@@ -16,7 +21,13 @@ import {
 } from "@/hooks/useChat";
 import { ApiError } from "@/lib/api";
 import { formatPercent } from "@/lib/format";
-import type { ChatResponse, ChatSessionMessage, ChatTopMatch } from "@/types/api";
+import type {
+  ChatResponse,
+  ChatSessionMessage,
+  ChatTopMatch,
+  RelaxationHintOut,
+  UnderstoodFilter,
+} from "@/types/api";
 
 interface Message {
   role: "user" | "assistant";
@@ -27,6 +38,9 @@ interface Message {
   retryQuery?: string;
   turnIndex?: number;
 }
+
+/** Çip kaldırıldıktan sonra kalan sorgu bu uzunluğun altındaysa çalıştırılmaz. */
+const MIN_REFINE_LENGTH = 2;
 
 function matchHref(m: ChatTopMatch): string {
   if (m.detail_path) return m.detail_path;
@@ -140,9 +154,12 @@ function CopyButton({ text }: { text: string }) {
 function AssistantBubble({
   msg,
   onRetry,
+  onRefine,
 }: {
   msg: Message;
   onRetry?: () => void;
+  /** Bir süzgeç çipi kaldırıldığında sorguyu o ifade olmadan yeniden çalıştırır. */
+  onRefine?: (query: string) => void;
 }) {
   if (msg.failed) {
     return (
@@ -199,6 +216,54 @@ function AssistantBubble({
         </div>
       </div>
       <TopMatchCards data={data} />
+
+      {/*
+        ⚠️ Backend bu üç bloğu ZATEN üretiyordu; arayüz onları kullanmadığı için
+        atıyordu. Sistemin soruyu nasıl anladığı, hangi süzgecin ne elediği ve
+        hangi sayının doğrulanamadığı gizlenemez — kaynağı gösterilemeyen bir
+        finansal iddia gösterilemez.
+      */}
+      <UnderstoodChips
+        filters={data.understood}
+        onRemove={(filtre) => {
+          if (!onRefine) return;
+          const temiz = data.query
+            .replace(new RegExp(filtre.evidence, "gi"), " ")
+            .replace(/\s+/g, " ")
+            .trim();
+          if (temiz.length >= MIN_REFINE_LENGTH) onRefine(temiz);
+        }}
+      />
+
+      <GroundingNotice answer={data.answer} />
+
+      {/*
+        Kanıt metni KATLANABİLİR ama VAR. `TopMatchCards` yalnızca başlık ve
+        bağlantı gösteriyor; yanıtın hangi cümleye dayandığı bankanın sayfasına
+        gidilmeden görülemiyordu.
+      */}
+      <EvidenceDisclosure results={data.results} />
+
+      {data.results.length === 0 && data.relaxation_hints.length > 0 && (
+        <RelaxationHints
+          hints={data.relaxation_hints}
+          understood={data.understood}
+          onRelax={(oneri: RelaxationHintOut) => {
+            if (!onRefine) return;
+            const cip: UnderstoodFilter | undefined = data.understood.find(
+              (filtre) => filtre.kind === oneri.kind,
+            );
+            if (!cip) return;
+            const temiz = data.query
+              .replace(new RegExp(cip.evidence, "gi"), " ")
+              .replace(/\s+/g, " ")
+              .trim();
+            if (temiz.length >= MIN_REFINE_LENGTH) onRefine(temiz);
+          }}
+        />
+      )}
+
+      <RetrievalStrip report={data.retrieval} />
     </div>
   );
 }
@@ -375,6 +440,7 @@ export function ChatPage() {
               <div key={key} className="flex justify-start">
                 <AssistantBubble
                   msg={msg}
+                  onRefine={(yeni) => runQuery(yeni)}
                   onRetry={
                     msg.failed && msg.retryQuery
                       ? () => runQuery(msg.retryQuery!, { replaceFailedIndex: index })
