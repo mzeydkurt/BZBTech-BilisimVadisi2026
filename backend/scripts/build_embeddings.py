@@ -17,7 +17,7 @@ import sys
 
 from sqlalchemy import select
 
-from app.ai.providers import get_provider
+from app.ai.providers import active_embedding_model, get_provider
 from app.ai.providers.base import LLMProviderError
 from app.config import get_settings
 from app.db.models import Embedding, EntityCard
@@ -44,7 +44,10 @@ async def _gom(
         print(f"Sağlayıcı kurulamadı: {exc}")
         return 1
 
-    model_name = settings.embedding_model
+    # ⚠️ ETİKET, VEKTÖRÜ GERÇEKTEN ÜRETEN MODELDEN GELİR. `settings.embedding_model`
+    # okumak, EVREN ile üretilmiş bir vektörü `nomic-embed-text` diye
+    # etiketliyordu (bkz. `active_embedding_model` gerekçesi).
+    model_name = active_embedding_model(settings)
     yazilan = 0
     atlanan = 0
 
