@@ -144,6 +144,62 @@ def previous_plan(
     return None, None
 
 
+def previous_focus(
+    oturum: ChatSession,
+    parent_completion_id: str | None = None,
+) -> str | None:
+    """Önceki cevabın İŞARET ETTİĞİ bankayı döndürür (varsa).
+
+    "Peki onun koşulları neler?" sorusundaki "onun", önceki SORUNUN süzgecine
+    değil, önceki CEVABIN adını verdiği kuruma işaret eder. Ölçüldü: "taşıt
+    finansmanında en uzun vade hangi bankada" → "Vakıf Katılım" cevabı
+    alındıktan sonra takip sorusu tüm bankalarda arıyor, alakasız yanıt
+    dönüyordu.
+
+    Yalnızca TEK bir kurum açıkça öne çıktığında döner; belirsizse None
+    (yanlış kuruma bağlamak, hiç bağlamamaktan kötüdür).
+    """
+    hedef: ChatMessage | None = None
+    if parent_completion_id:
+        for msg in oturum.messages:
+            if msg.completion_id == parent_completion_id:
+                hedef = msg
+                break
+    else:
+        for msg in reversed(oturum.messages):
+            if msg.role == "assistant" and msg.response_json:
+                hedef = msg
+                break
+    if hedef is None or not hedef.response_json:
+        return None
+
+    try:
+        govde = json.loads(hedef.response_json)
+    except json.JSONDecodeError:
+        return None
+
+    sonuclar = govde.get("results") or []
+    toplama = govde.get("aggregate") or {}
+    kazanan = toplama.get("winner_campaign_id")
+
+    # 1) Toplama sorusunun kazananı — en güçlü işaret.
+    if kazanan is not None:
+        for r in sonuclar:
+            if r.get("campaign_id") == kazanan and r.get("bank_code"):
+                return str(r["bank_code"])
+
+    # 2) Tek sonuç varsa o.
+    if len(sonuclar) == 1 and sonuclar[0].get("bank_code"):
+        return str(sonuclar[0]["bank_code"])
+
+    # 3) Tüm sonuçlar aynı bankadansa o.
+    kodlar = {r.get("bank_code") for r in sonuclar if r.get("bank_code")}
+    if len(kodlar) == 1:
+        return str(next(iter(kodlar)))
+
+    return None
+
+
 def record_turn(
     session: Session,
     oturum: ChatSession,
