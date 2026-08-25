@@ -216,6 +216,18 @@ OUT_OF_DOMAIN_MARKERS: Final[tuple[str, ...]] = (
     "yemek tarifi",
     "film oner",
     "sarki sozu",
+    # ⚠️ Kripto / borsa yatırım tavsiyesi KAPSAM DIŞI. Ölçüldü: "Bitcoin alsam
+    # mı?" `search` niyetine düşüyor ve model ürün kartlarına dayanarak cevap
+    # üretiyordu. Bir finansal kurum aracının kripto ya da hisse tavsiyesi
+    # vermesi hem kapsam hem uyum sorunudur.
+    #
+    # ⚠️ "döviz" BİLİNÇLİ OLARAK EKLENMEDİ: `yatirim_birikim` sektörünün
+    # gerçek anahtar kelimesi ve meşru kampanya sorgularında geçiyor.
+    "bitcoin",
+    "kripto",
+    "hisse senedi",
+    "borsada",
+    "borsa endeks",
 )
 
 # ── Durum işaretçileri ────────────────────────────────────
