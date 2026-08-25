@@ -171,6 +171,7 @@ def _parmak_izi(session: Session) -> tuple[int, ...]:
     Sayaçlar: kampanya kartı, en büyük kart id, kampanya sayısı, ürün kartı,
     oran kartı, glossary kartı — tür duyarlı bayatlık.
     """
+
     def _kart_sayisi(entity_type: str) -> int:
         return int(
             session.scalar(

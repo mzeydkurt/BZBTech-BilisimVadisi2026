@@ -641,6 +641,8 @@ testi var.
 | `model_id` arayüzden **hiç gönderilmiyordu** | Model seçici ekranda duruyor, durumu tutuluyor, ama istek gövdesine konmuyordu. Sunucu tarafı doğruydu — seçim tamamen **ölü bir kontroldü** ve hata da vermiyordu | `ChatPage` istek gövdesine `model_id` ve `parent_completion_id` ekliyor; oturum sınırlarında zincir sıfırlanıyor |
 | Ürün yedeği rastlantısal **tek terim** eşleşmesinde tetikleniyordu | "bana bir şiir yaz" sorgusu `returned=0` olduğu hâlde 8 ürün döndürüp Hayat Finans tanıtım metni üretiyordu: `bana` simgesi **"Bana Bunu Al"** ürünüyle eşleşiyor. Puan eşiği ayırt etmiyor — çöp 6.98 > gerçek 7.73 | **Kapsama** kapısı: eşleşen anlamlı terimler, sorgunun anlamlı terimlerinin en az yarısını kapsamalı. Tek simgeli meşru arama (`Togg`) engellenmez. `bana` STOPWORDS'e **eklenmedi** — gerçek bir ürün adı |
 | Çip ipucu devralınan bağlamı "sorguda geçen ifade" gibi gösteriyordu | *"Sorgudaki 'önceki cevap' ifadesinden çıkarıldı"* yazıyordu; devralınan süzgeç sorguda geçen bir ifade değil. Kullanıcı yanlış devralmayı fark edemez | İpucu kaynağa göre ayrışıyor: "Bu soruda belirtilmedi; önceki yanıtın işaret ettiği kurumdan alındı" |
+| `oran_gecerli()` koruması **etkisizdi** | `parse_tr_rate` içinde `return oran if oran_gecerli(oran) else oran` yazılmış — iki dalda da aynı değer dönüyor, geçerlilik denetimi hiç çalışmıyordu. Bu ayrıştırıcı 6 banka API bağdaştırıcısında kullanılıyor | Ölü koşul kaldırıldı. ⚠️ `else None` yazmak **doğru değil**: aynı ayrıştırıcı aylık kâr payı oranı için de yıllık maliyet oranı için de kullanılıyor; `oran_gecerli` aylık aralığı (%0,05–%15) doğrular, yıllık maliyet meşru olarak %30–80 bandındadır ve `None`'a düşerdi. Geçerlilik, büyüklüğün ne olduğunu bilen yerde (runner) denetlenir |
+| `float(None)` sessizce varsayılana düşüyordu | `strategies.py`: `int(float(api.get("amount")))` — `amount` yoksa `TypeError`, ve onu saran `except Exception` hatayı yutup tutarı sessizce 200.000₺ yapıyordu | `None` açıkça denetleniyor; varsayılana düşme hâlâ var ama artık gerekçesi belli |
 
 ### Hesaplayıcı oran verisi — kök neden ve karantina
 
@@ -750,25 +752,34 @@ Tam sözleşme: <http://localhost:8000/docs>
 |---|---|
 | `pytest` | **1.757 geçiyor** · 10 kırık · 1 atlanan |
 | `pytest` (integration hariç) | **1.562 geçiyor**, kırık yok |
-| `ruff check` (`app` + `tests`) | ⚠️ **72 bulgu** |
-| `ruff format --check` | ⚠️ **29 dosya biçimlendirilmemiş** |
-| `mypy app` | ⚠️ **10 hata / 9 dosya** (177 dosya tarandı) |
+| `ruff check` (`app` + `tests`) | ✅ temiz |
+| `ruff format --check` | ✅ 275 dosya biçimli |
+| `mypy app` | ✅ temiz (177 dosya) |
 | `tsc -b --noEmit` | ✅ temiz |
 | Üretim derlemesi | ✅ başarılı |
 
-Tek komut: `python dev.py lint` (ruff · format · mypy · tsc) ve
+Tek komut: `python dev.py lint` (ruff · format · mypy · tsc, **exit 0**) ve
 `python dev.py test`.
 
-⚠️ **`python dev.py lint` şu an geçmiyor.** Yukarıdaki sayılar ölçüldü, tahmin
-değil. Bulgular sohbet, erişim ve çıkarım katmanlarında değil; ağırlıkla kazıma
-ve hesaplayıcı modüllerinde birikmiş biçim/tip borcudur. Bu bölüme "temiz"
-yazmak, `dev.py lint` çalıştıran birinin gördüğüyle çelişir — bu yüzden gerçek
-durum yazılıyor.
+Lint kapısı bu sprintte kapatıldı: 72 ruff bulgusu, 29 biçimlendirilmemiş dosya
+ve 10 mypy hatası giderildi. İki tanesi biçim değil, **davranıştı** —
+aşağıdaki tabloda.
 
 ⚠️ `tests/integration/test_scraper_*` altında **10 test kırık** durumda.
-Bunlar kazıma keşif sayımlarına dayanıyor ve banka sayfaları değiştiğinde
-kırılıyor; sohbet, erişim ve çıkarım katmanlarından bağımsızdır. Gizlenmiyor —
-gerçek durum budur.
+Bu testler **ağa çıkmaz** — `httpx.MockTransport` ve kayıtlı HTML fixture'ları
+kullanırlar (soket kapatılarak doğrulandı), dolayısıyla banka sayfalarının
+değişmesi onları kıramaz. Ölçülen iki gerçek neden:
+
+| neden | örnek |
+|---|---|
+| **Saat bombası fixture** — kayıtlı HTML'deki tarihler geçmişte kaldı | `test_scraper_ziraat`: fixture kampanyası `bitis=2026-08-07`, bugün 2026-08-25 → `bitis_gecmis` ile atlanıyor, test 3 kayıt beklerken 2 buluyor. `bugun` değeri `app/scrapers/base.py:525`'te satır içinde `utc_now()`'dan hesaplanıyor; teste enjekte edilemiyor |
+| **Kazıyıcı davranışı değişti, test beklentisi güncellenmedi** | `test_scraper_kuveyt_turk`: keşif artık `/kampanyalar/kampanya-arsivi` yerine bir sorgu uç noktası (`ck0d84?…&p1=1176`) çağırıyor; test arşiv adresini bekliyor (`assert 8 == 9`) |
+
+⚠️ İkincisini düzeltmek "test mi yanlış, kazıyıcı mı" kararını gerektirir:
+`ck0d84` uç noktası bankanın yeni meşru keşif yolu ise test güncellenir; değilse
+o banka için **kampanya keşfi eksik kalıyor** demektir. Alan bilgisi olmadan
+tahminle düzeltilmedi. Sohbet, erişim ve çıkarım katmanlarından bağımsızdır.
+Gizlenmiyor — gerçek durum budur.
 
 ### Devam eden işler — tamamlanmadan bu bölüme sayı yazılmaz
 

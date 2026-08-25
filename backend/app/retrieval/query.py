@@ -1132,19 +1132,20 @@ def merge_with_previous(plan: QueryPlan, previous: QueryPlan | None) -> QueryPla
     sinyaller = list(plan.signals)
     degisti = False
 
-    if (not bank_codes or takip) and previous.bank_codes and not kapsam_acildi:
-        if not bank_codes:
-            bank_codes = previous.bank_codes
-            degisti = True
-            for kod in bank_codes:
-                sinyaller.append(
-                    QuerySignal(
-                        kind="bank",
-                        value=kod,
-                        label="Banka",
-                        evidence="önceki soru",
-                    )
+    # `takip` burada ETKİSİZ: iç koşul `not bank_codes` doğru olduğunda dış
+    # koşulun ilk terimi zaten doğrudur. Ölü dal kaldırıldı.
+    if not bank_codes and previous.bank_codes and not kapsam_acildi:
+        bank_codes = previous.bank_codes
+        degisti = True
+        for kod in bank_codes:
+            sinyaller.append(
+                QuerySignal(
+                    kind="bank",
+                    value=kod,
+                    label="Banka",
+                    evidence="önceki soru",
                 )
+            )
 
     if (not axis_filters or takip) and previous.axis_filters:
         if not axis_filters:
