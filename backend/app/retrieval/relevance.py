@@ -142,8 +142,64 @@ def is_follow_up_query(raw: str) -> bool:
     return len(belirtecler) <= 3 and bool(belirtecler)
 
 
+# Sorgunun kapsamı kendi başına bankalar arası olduğunu söylüyorsa, önceki
+# turun banka süzgeci DEVRALINMAZ. Ölçüldü: "Albaraka'da yeni müşteri
+# kampanyası var mı" → "tüm bankalarda kaç kampanya var" sorusu Albaraka'ya
+# kilitleniyordu; kullanıcı açıkça tüm bankaları istediği hâlde tek banka
+# yanıtı dönüyordu.
+_KAPSAM_ACICI = (
+    "hangi banka",
+    "hangi bankalar",
+    "hangi bankada",
+    "hangi bankanin",
+    "tum banka",
+    "butun banka",
+    "her banka",
+    "kac banka",
+    "bankalar arasi",
+    "bankalarda",
+    "bankalari karsilastir",
+    "karsilastir",
+)
+
+# Önceki tura AÇIK atıf. Bunlar olmadan bağlam devri tahmine dönüşür.
+_ANAFORA = (
+    "peki",
+    "onun",
+    "bunun",
+    "bundan",
+    "ondan",
+    "onlarin",
+    "sunun",
+    "ayni",
+    "devam",
+    "daha fazla",
+    "detay",
+    "ya o",
+    "ya bu",
+)
+
+
+def opens_scope(raw: str) -> bool:
+    """Sorgu kapsamı kendi başına bankalar arası mı?
+
+    True ise banka süzgeci önceki turdan devralınmaz: kullanıcı karşılaştırma
+    istiyorken tek bankaya kilitlenmek yanlış yanıt üretir.
+    """
+    folded = _fold(raw)
+    return any(k in folded for k in _KAPSAM_ACICI)
+
+
+def is_anaphoric_query(raw: str) -> bool:
+    """Sorgu önceki tura açık atıf yapıyor mu ("peki onun...", "aynısı")?"""
+    folded = _fold(raw)
+    return any(k in folded for k in _ANAFORA)
+
+
 __all__ = [
     "filter_relevant_hits",
+    "is_anaphoric_query",
     "is_follow_up_query",
+    "opens_scope",
     "strip_citation_markers",
 ]
