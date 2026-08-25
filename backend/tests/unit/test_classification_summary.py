@@ -174,10 +174,10 @@ class TestSiniflandirma:
         assert ("audience", "emekliler_ve_yaslilar") in sonuc.rejected_labels
         assert all(k.value != "emekliler_ve_yaslilar" for k in sonuc.added)
 
-    async def test_kanitsiz_herkes_reddedilir(self, db_session: Session, kampanya: Campaign) -> None:
-        saglayici = SabitYanitProvider(
-            {"audience": [{"value": "herkes", "evidence": "kampanya"}]}
-        )
+    async def test_kanitsiz_herkes_reddedilir(
+        self, db_session: Session, kampanya: Campaign
+    ) -> None:
+        saglayici = SabitYanitProvider({"audience": [{"value": "herkes", "evidence": "kampanya"}]})
         sonuc = await complete_classification(
             saglayici, db_session, kampanya, KAYNAK, prompt_version=PROMPT_VERSION
         )

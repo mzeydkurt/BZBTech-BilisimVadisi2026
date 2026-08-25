@@ -292,9 +292,7 @@ def test_pasif_urun_siralamaya_girmez(seeded_session: Session) -> None:
     )
     seeded_session.flush()
 
-    sonuc = rank_products(
-        seeded_session, rate_type="financing_rate", criterion="en_dusuk_kar_payi"
-    )
+    sonuc = rank_products(seeded_session, rate_type="financing_rate", criterion="en_dusuk_kar_payi")
 
     assert [s.bank_code for s in sonuc.ranked] == ["albaraka"]
     assert all(s.product_name != "Pasif" for s in sonuc.ranked + sonuc.without_data)
@@ -331,9 +329,7 @@ def test_meta_alanlar_yanitta_dolu(seeded_session: Session) -> None:
     )
     seeded_session.flush()
 
-    sonuc = rank_products(
-        seeded_session, rate_type="financing_rate", criterion="en_dusuk_kar_payi"
-    )
+    sonuc = rank_products(seeded_session, rate_type="financing_rate", criterion="en_dusuk_kar_payi")
 
     satir = sonuc.ranked[0]
     assert satir.effective_date == date(2026, 8, 1)
@@ -374,9 +370,7 @@ def test_farkli_varyant_uyari_uretir(seeded_session: Session) -> None:
         )
     seeded_session.flush()
 
-    sonuc = rank_products(
-        seeded_session, rate_type="financing_rate", criterion="en_dusuk_kar_payi"
-    )
+    sonuc = rank_products(seeded_session, rate_type="financing_rate", criterion="en_dusuk_kar_payi")
 
     assert sonuc.comparability_warnings
     assert any("varyant" in u.lower() for u in sonuc.comparability_warnings)
