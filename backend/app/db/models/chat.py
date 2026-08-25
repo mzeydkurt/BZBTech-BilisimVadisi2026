@@ -51,6 +51,10 @@ class ChatMessage(Base):
     )
     turn_index: Mapped[int] = mapped_column(Integer, nullable=False)
     role: Mapped[str] = mapped_column(Text, nullable=False)  # user | assistant
+    # Yalnızca assistant satırında dolu: istemci bir takip sorusunu HANGİ cevaba
+    # bağladığını bu kimlikle bildirir. "Son turu devral" varsayımı, kullanıcı
+    # geçmişten eski bir tura döndüğünde yanlış bağlam taşıyordu.
+    completion_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     intent: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_domain: Mapped[str | None] = mapped_column(Text, nullable=True)
