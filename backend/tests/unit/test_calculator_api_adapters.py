@@ -17,8 +17,7 @@ def test_parse_tr_money_and_rate() -> None:
 
 def test_vakif_csrf_from_html() -> None:
     html = (
-        '<form><input name="__RequestVerificationToken" type="hidden" '
-        'value="abcTOKEN123" /></form>'
+        '<form><input name="__RequestVerificationToken" type="hidden" value="abcTOKEN123" /></form>'
     )
     assert _csrf_token(html) == "abcTOKEN123"
 

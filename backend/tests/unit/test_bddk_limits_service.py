@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-import pytest
-
 from app.schemas.simulator import BDDKLimitCheckRequest
 from app.services.bddk_limits_service import (
     check_bddk_limits,

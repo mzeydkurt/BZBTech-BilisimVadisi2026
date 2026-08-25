@@ -198,9 +198,7 @@ class TestHayatFinansSinyalleri:
         assert "restoran_kafe" in _etiket(etiketler, "sector")
 
     def test_fx_yatirim_sektor(self) -> None:
-        etiketler = categorize(
-            title="Avantajlı Hesap Müşterilerine Özel FX Dar Makas Avantajı!"
-        )
+        etiketler = categorize(title="Avantajlı Hesap Müşterilerine Özel FX Dar Makas Avantajı!")
         assert "yatirim_birikim" in _etiket(etiketler, "sector")
         assert "birikim_katilma_hesabi" in _etiket(etiketler, "product_type")
 
@@ -208,9 +206,9 @@ class TestHayatFinansSinyalleri:
         etiketler = categorize(
             title="Bana Bunu Al İş Ortağım ile Troy Mağazalarında Finansman Fırsatı!"
         )
-        assert "alisveris_finansmani" in _etiket(etiketler, "product_type") or "finansman" in _etiket(
+        assert "alisveris_finansmani" in _etiket(
             etiketler, "product_type"
-        )
+        ) or "finansman" in _etiket(etiketler, "product_type")
 
 
 class TestKurumsalKobiSektor:
@@ -266,7 +264,9 @@ class TestKurumsalKobiSektor:
         etiketler = categorize(
             title="Yoyo'da %40 GastroClub İndirim!",
             description="Restoranlarda indirim.",
-            body_text="Trend Bankacılık\nEflatun Bankacılık\nKOBİ\nFinansmanlar\nKobi Nakdi Finansman",
+            body_text=(
+                "Trend Bankacılık\nEflatun Bankacılık\nKOBİ\nFinansmanlar\nKobi Nakdi Finansman"
+            ),
         )
         assert "kobi" not in _etiket(etiketler, "audience")
 
@@ -284,8 +284,7 @@ class TestKurumsalKobiSektor:
         etiketler = categorize(
             title="İhracat Avantajı",
             source_url=(
-                "https://www.kuveytturk.com.tr/kampanyalar/isim-icin/"
-                "kobi-kampanyalari/ihracat"
+                "https://www.kuveytturk.com.tr/kampanyalar/isim-icin/kobi-kampanyalari/ihracat"
             ),
         )
         assert "kobi" in _etiket(etiketler, "audience")
@@ -333,9 +332,7 @@ class TestAltinyildizVeYanlisPozitifler:
 
     def test_altinyildiz_giyim_degil_yatirim(self) -> None:
         """Markadaki 'Altın…' öneki çıplak altın anahtarına yapışmamalı."""
-        etiketler = categorize(
-            title="Altınyıldız Classics'te Vade Farksız 2 Taksit Fırsatı"
-        )
+        etiketler = categorize(title="Altınyıldız Classics'te Vade Farksız 2 Taksit Fırsatı")
         assert "giyim_aksesuar" in _etiket(etiketler, "sector")
         assert "yatirim_birikim" not in _etiket(etiketler, "sector")
 
@@ -389,8 +386,7 @@ class TestAltinyildizVeYanlisPozitifler:
         etiketler = categorize(
             title="Restoran harcamalarında her ay 10.000 TL'ye varan iade!",
             description=(
-                "Özel Bankacılık Hadi birikim segmentine göre restoranlarda "
-                "%22.5'e varan iade."
+                "Özel Bankacılık Hadi birikim segmentine göre restoranlarda %22.5'e varan iade."
             ),
         )
         assert "restoran_kafe" in _etiket(etiketler, "sector")
