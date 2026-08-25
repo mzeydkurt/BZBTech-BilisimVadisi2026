@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.db.models.product import ProductLimit
 from app.schemas.bddk import BankLimitDeviationOut, BddkBandOut, BddkCanonicalLimitsOut
 from app.services.bddk_limits_service import (
     CanonicalLimitsView,
@@ -57,7 +58,7 @@ def all_family_bddk_outs() -> dict[str, BddkCanonicalLimitsOut]:
 
 def bank_limit_deviations_for_product(
     product_type: str | None,
-    limits: list,
+    limits: list[ProductLimit],
 ) -> list[BankLimitDeviationOut]:
     """Banka LTV satırlarını BDDK kanonuyla karşılaştırır."""
     sapmalar: list[BankLimitDeviationOut] = []
@@ -70,7 +71,5 @@ def bank_limit_deviations_for_product(
             term_months_max=getattr(limit, "term_months_max", None),
         )
         if mesaj:
-            sapmalar.append(
-                BankLimitDeviationOut(limit_id=int(limit.id), message=mesaj)
-            )
+            sapmalar.append(BankLimitDeviationOut(limit_id=int(limit.id), message=mesaj))
     return sapmalar

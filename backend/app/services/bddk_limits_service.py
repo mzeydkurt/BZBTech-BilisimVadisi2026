@@ -23,7 +23,10 @@ from app.schemas.simulator import BDDKLimitCheckRequest, BDDKLimitCheckResponse
 _KURUS = Decimal("0.01")
 _YUZDE = Decimal("100")
 _SEED_PATH: Final[Path] = (
-    Path(__file__).resolve().parent.parent.parent / "data" / "seed" / "bddk_finansman_limitleri.json"
+    Path(__file__).resolve().parent.parent.parent
+    / "data"
+    / "seed"
+    / "bddk_finansman_limitleri.json"
 )
 
 # product_type → aile anahtarı (ihtiyac / konut / tasit)
@@ -51,7 +54,8 @@ def load_bddk_canon() -> dict[str, Any]:
     for aile, icerik in veri.get("families", {}).items():
         for tip in icerik.get("product_types", []):
             _PRODUCT_TYPE_TO_FAMILY[str(tip)] = str(aile)
-    return veri
+    kanon: dict[str, Any] = veri
+    return kanon
 
 
 def invalidate_bddk_canon_cache() -> None:
@@ -73,7 +77,8 @@ def get_family(family_key: str) -> dict[str, Any]:
     aileler = load_bddk_canon()["families"]
     if family_key not in aileler:
         raise KeyError(f"Bilinmeyen BDDK ailesi: {family_key}")
-    return aileler[family_key]
+    aile: dict[str, Any] = aileler[family_key]
+    return aile
 
 
 @dataclass(frozen=True)
@@ -309,7 +314,8 @@ def compare_bank_limit_to_canon(
         if abs(financing_ratio_pct - ikinci.max_financing_ratio_pct) <= Decimal("0.5"):
             return (
                 "Bu satır BDDK ikinci-konut tavanına uyuyor "
-                f"(%{ikinci.max_financing_ratio_pct}; ilk-ev tavanı %{ilk.max_financing_ratio_pct})."
+                f"(%{ikinci.max_financing_ratio_pct}; "
+                f"ilk-ev tavanı %{ilk.max_financing_ratio_pct})."
             )
         if financing_ratio_pct > ilk.max_financing_ratio_pct:
             return (
