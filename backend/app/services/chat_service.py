@@ -50,6 +50,7 @@ from app.retrieval.narrate import (
 )
 from app.retrieval.qdrant_store import QdrantStore, QdrantUnavailableError
 from app.retrieval.query import (
+    STOPWORDS,
     AggregateSpec,
     QueryPlan,
     QuerySignal,
@@ -951,10 +952,20 @@ def _product_bm25(
     if not terimler:
         return []
     vuruslar = corpus.product_index.search(terimler, limit=limit * 3)
+    # Sorgunun ANLAMLI simgeleri: tek bir rastlantısal eşleşme alaka kanıtı
+    # değildir. Ölçüldü: "bana bir şiir yaz" sorgusu yalnızca "bana" simgesiyle
+    # 6.98 puan alıp Hayat Finans "Bana Bunu Al" ürününü döndürüyor, sohbet de
+    # ilgisiz bir tanıtım metni üretiyordu. Puan eşiği ayırt etmiyor (çöp 6.98 >
+    # gerçek 7.73); KAPSAMA oranı ayırt ediyor.
+    anlamli = {k for k in terimler if len(k) >= 3 and k not in STOPWORDS and not k.isdigit()}
+    gereken = max(1, (len(anlamli) + 1) // 2) if anlamli else 0
+
     sonuc: list[tuple[int, ProductDoc]] = []
     for sira, vurus in enumerate(vuruslar):
         doc = corpus.product_docs.get(vurus.doc_id)
         if doc is None:
+            continue
+        if gereken and len(anlamli & set(vurus.matched_terms)) < gereken:
             continue
         if plan.bank_codes and doc.bank_code not in plan.bank_codes:
             continue

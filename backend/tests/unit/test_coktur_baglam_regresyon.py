@@ -111,3 +111,37 @@ def test_anafora_dogru(soru: str) -> None:
 
 def test_anafora_yanlis_pozitif_yok() -> None:
     assert not is_anaphoric_query("Kuveyt Türk taşıt finansmanı oranı nedir")
+
+
+# ── Ürün yedeği: rastlantısal tek terim eşleşmesi ─────────────────────────
+
+
+def test_urun_yedegi_tek_rastlantisal_eslesmede_tetiklenmez() -> None:
+    """Ölçüldü: "bana bir şiir yaz" sorgusu YALNIZCA "bana" simgesiyle 6.98
+    puan alıp Hayat Finans "Bana Bunu Al" ürününü döndürüyor, sohbet de
+    ilgisiz bir tanıtım metni üretiyordu.
+
+    Puan eşiği ayırt etmiyor (çöp 6.98 > gerçek 7.73); kapsama oranı ayırt
+    ediyor. Bu test kapının kuralını sabitler: eşleşen anlamlı terimler,
+    sorgunun anlamlı terimlerinin en az yarısını kapsamalı.
+    """
+    from app.retrieval.lexical import tokenize
+    from app.retrieval.query import STOPWORDS
+
+    def kapsar(sorgu: str, eslesen: tuple[str, ...]) -> bool:
+        terimler = tokenize(sorgu)
+        anlamli = {k for k in terimler if len(k) >= 3 and k not in STOPWORDS and not k.isdigit()}
+        gereken = max(1, (len(anlamli) + 1) // 2) if anlamli else 0
+        return not gereken or len(anlamli & set(eslesen)) >= gereken
+
+    # Çöp: uzun sorgu, tek rastlantısal eşleşme.
+    assert not kapsar("bana bir şiir yaz", ("bana",))
+    assert not kapsar("python kodu yaz", ("kodu",))
+    assert not kapsar("kedim hasta ne yapmalıyım", ("ne",))
+
+    # Gerçek: eşleşme sorgunun gövdesini kapsıyor.
+    assert kapsar("taşıt finansmanı oranları", ("tasit", "finansmani", "oranlari"))
+    assert kapsar("Bana Bunu Al nedir", ("al", "bana", "bunu"))
+    assert kapsar("konut finansmanı en uzun vade", ("en", "finansmani", "konut", "uzun"))
+    # Tek simgeli meşru arama (ürün adı) engellenmez.
+    assert kapsar("Togg", ("togg",))
