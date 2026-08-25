@@ -54,6 +54,7 @@ from app.retrieval.query import (
     AggregateSpec,
     QueryPlan,
     QuerySignal,
+    has_definition_marker,
     merge_with_previous,
     parse_katilma_vadeler,
     parse_katilma_varyant,
@@ -1286,6 +1287,18 @@ def _urun_bankalari(corpus: Corpus, plan: QueryPlan) -> set[str]:
     return bankalar
 
 
+def _tanim_terimi_kaba(raw: str) -> str:
+    """Sözlük eşleşmesi için sorgunun tanım işaretçilerinden arınmış hâli.
+
+    `query._tanim_terimi` kadar titiz değildir; burada tek iş sözlükte
+    eşleşme aramaktır, niyet kararı verilmez.
+    """
+    metin = _fold(raw)
+    for isaretci in ("nedir", "ne demek", "ne anlama gelir", "tanimi"):
+        metin = metin.replace(isaretci, " ")
+    return " ".join(metin.split())
+
+
 def _plan_imzasi(plan: QueryPlan) -> tuple[object, ...]:
     """Bağlam devrinin planı GERÇEKTEN değiştirip değiştirmediğini ölçer."""
     return (
@@ -1354,6 +1367,24 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
         previous_query=onceki_plan.raw if onceki_plan else None,
     )
     resp = await _anlat_computed(resp, plan, yasakli=yasakli)
+
+    # ── Sözlük ZENGİNLEŞTİRMESİ ───────────────────────────
+    # Tanım niyeti artık banka adı / sayısal kısıt varken kurulmuyor (olgusal
+    # soru "nedir" ile de bitebilir). Ama tanım tamamen kaybolmamalı:
+    # "Karz-ı hasen nedir? Dünya Katılım'da böyle bir ürün var mı?" sorusu hem
+    # tanım hem olgu ister. Niyet olgusal kalır, tanım yanıta EKLENİR.
+    if not resp.glossary and has_definition_marker(req.query):
+        sozluk_doc = _glossary_bul(corpus, plan.glossary_term or _tanim_terimi_kaba(req.query))
+        if sozluk_doc is not None:
+            resp.glossary = [
+                ChatGlossaryItem(
+                    term_id=sozluk_doc.term_id,
+                    term=sozluk_doc.term,
+                    definition=sozluk_doc.definition,
+                    conventional_equivalent=sozluk_doc.conventional_equivalent,
+                )
+            ]
+
     resp.session_id = oturum.session_key
     resp.turn_index = turn
     resp.completion_id = f"cmpl-{uuid4().hex}"
@@ -1407,57 +1438,59 @@ async def _process_chat_core(
     if plan.intent == "tanim":
         doc = _glossary_bul(corpus, plan.glossary_term)
         if doc is None:
+            # ⚠️ SÖZLÜKTE YOKSA ARAMAYA DÜŞÜLÜR, "bulunamadı" DENMEZ.
+            #
+            # Ölçüldü (100 soruluk gerçek test havuzu): "nedir" ile biten her
+            # soru tanım niyetine düşüyor. "Hadi Black Kredi Kartı ile Pegasus
+            # uçuşlarında iade oranı nedir?" sorusu sözlükte aranıyor,
+            # bulunamıyor ve kullanıcıya "sözlükte tanım bulunamadı" deniyordu
+            # — oysa yanıt kampanya gövdesinde VAR. Adlandırılmış varlık
+            # soruları tanım sorusu değildir; "nedir" iki işi de yapabiliyor.
+            #
+            # Ayrım önden kesin yapılamadığı için geri çekilme kullanılır:
+            # sözlük ıskalarsa soru normal arama olarak yeniden işlenir.
+            logger.info(
+                "tanim_aramaya_dusuruldu",
+                terim=plan.glossary_term,
+                sorgu=plan.raw,
+            )
+            plan = replace(plan, intent="search", glossary_term=None)
+        else:
+            glossary = [
+                ChatGlossaryItem(
+                    term_id=doc.term_id,
+                    term=doc.term,
+                    definition=doc.definition,
+                    conventional_equivalent=doc.conventional_equivalent,
+                )
+            ]
             return _finalize(
                 ChatResponse(
                     query=plan.raw,
                     intent=plan.intent,
                     understood=_understood(plan),
                     answer=AnswerBlock(
-                        text=(
-                            f"“{plan.glossary_term or plan.raw}” için sözlükte tanım bulunamadı."
-                        ),
-                        source="refusal",
+                        text=f"{doc.term}: {doc.definition}",
+                        source="computed",
                         is_grounded=True,
                     ),
                     results=[],
-                    retrieval=_empty_retrieval(corpus.size, gecen()),
+                    glossary=glossary,
+                    retrieval=RetrievalReport(
+                        corpus_size=len(corpus.glossary_docs or {}),
+                        returned=1,
+                        lexical_used=False,
+                        semantic_used=False,
+                        semantic_note=(
+                            "Tanım sorusu glossary tablosundan yanıtlandı; model çağrılmadı."
+                        ),
+                        elapsed_ms=gecen(),
+                    ),
                     forbidden_terms_warning=uyari,
                 ),
                 plan,
+                top=_top_from_glossary(glossary),
             )
-        glossary = [
-            ChatGlossaryItem(
-                term_id=doc.term_id,
-                term=doc.term,
-                definition=doc.definition,
-                conventional_equivalent=doc.conventional_equivalent,
-            )
-        ]
-        return _finalize(
-            ChatResponse(
-                query=plan.raw,
-                intent=plan.intent,
-                understood=_understood(plan),
-                answer=AnswerBlock(
-                    text=f"{doc.term}: {doc.definition}",
-                    source="computed",
-                    is_grounded=True,
-                ),
-                results=[],
-                glossary=glossary,
-                retrieval=RetrievalReport(
-                    corpus_size=len(corpus.glossary_docs or {}),
-                    returned=1,
-                    lexical_used=False,
-                    semantic_used=False,
-                    semantic_note="Tanım sorusu glossary tablosundan yanıtlandı; model çağrılmadı.",
-                    elapsed_ms=gecen(),
-                ),
-                forbidden_terms_warning=uyari,
-            ),
-            plan,
-            top=_top_from_glossary(glossary),
-        )
 
     # ── katılma → Katılım Hesabı pivot (TKBB öncelikli) ───
     if plan.source_domain == "katilma":

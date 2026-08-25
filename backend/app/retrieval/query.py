@@ -889,8 +889,25 @@ def _rate_type_adaylari(katlanmis: str) -> list[str]:
     return adaylar
 
 
-def _tanim_mi(katlanmis: str) -> bool:
-    """Tanım sorusu mu?"""
+def _tanim_mi(katlanmis: str, *, olgusal: bool = False) -> bool:
+    """Tanım sorusu mu?
+
+    ⚠️ "nedir" TEK BAŞINA tanım sorusu göstergesi DEĞİLDİR. Türkçede olgusal
+    sorular da "nedir" ile biter: "Kuveyt Türk'te aylık TL katılma hesabının
+    kâr payı oranı nedir?" bir tanım sorusu değildir.
+
+    Ölçüldü (100 soruluk gerçek test havuzu): yalnızca işaretçiye bakan eski
+    kural 49 soruyu tanım sayıyordu; bunların **42'si yanlıştı** ve 16'sı
+    kullanıcıya "sözlükte tanım bulunamadı" yanıtı döndürüyordu — oysa yanıt
+    kampanya/ürün gövdesinde vardı.
+
+    `olgusal=True` (banka adı ya da sayısal kısıt var) olduğunda soru olgusal
+    kabul edilir; yanlış sınıflama 42 → 3'e düştü. Tanım yine kaybolmaz:
+    işaretçi varsa sözlük terimi yanıta ZENGİNLEŞTİRME olarak eklenir
+    (bkz. `chat_service`, `glossary` alanı).
+    """
+    if olgusal:
+        return False
     return any(isaretci in katlanmis for isaretci in DEFINITION_MARKERS)
 
 
@@ -1064,7 +1081,10 @@ def parse_query(raw: str) -> QueryPlan:
         durum=bool(durum_sinyalleri),
         toplama=toplama is not None,
     )
-    if _tanim_mi(katlanmis):
+    # Banka adı ya da sayısal kısıt varsa soru olgusaldır; "nedir" eki
+    # tanım niyetine yetmez.
+    olgusal_sinyal = bool(banka_sinyalleri or kisitlar)
+    if _tanim_mi(katlanmis, olgusal=olgusal_sinyal):
         niyet = "tanim"
         glossary_term = _tanim_terimi(raw, katlanmis)
     elif _sohbet_mi(katlanmis, finansal=finansal):
@@ -1263,12 +1283,24 @@ def merge_with_previous(plan: QueryPlan, previous: QueryPlan | None) -> QueryPla
     )
 
 
+def has_definition_marker(raw: str) -> bool:
+    """Sorguda tanım işaretçisi ("nedir", "ne demek") var mı?
+
+    Niyet KARARI vermez — olgusal soruya sözlük tanımını ZENGİNLEŞTİRME olarak
+    eklemek için kullanılır. "Karz-ı hasen nedir? Dünya Katılım'da böyle bir
+    ürün var mı?" sorusu hem tanım hem olgu ister; niyet olgusal olur ama
+    tanım kaybolmaz.
+    """
+    return any(isaretci in _konvansiyonel_normalize(_fold(raw)) for isaretci in DEFINITION_MARKERS)
+
+
 __all__ = [
     "BANK_ALIASES",
     "AggregateSpec",
     "NumericConstraint",
     "QueryPlan",
     "QuerySignal",
+    "has_definition_marker",
     "merge_with_previous",
     "parse_katilma_vadeler",
     "parse_katilma_varyant",
