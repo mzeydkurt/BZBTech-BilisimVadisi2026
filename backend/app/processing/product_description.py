@@ -125,9 +125,7 @@ def _satir_atilsin_mi(satir: str) -> bool:
         return True
     if satir.count("|") >= 3 or satir.count("·") >= 4 or satir.count("•") >= 5:
         return True
-    if re.fullmatch(r"(hemen başvur|online başvuru|başvur|hesapla)[.!]*", dusuk):
-        return True
-    return False
+    return bool(re.fullmatch(r"(hemen başvur|online başvuru|başvur|hesapla)[.!]*", dusuk))
 
 
 def _bolum_sonu_mu(satir: str) -> bool:
@@ -147,9 +145,7 @@ def _faq_sorusu_mu(satir: str) -> bool:
         return True
     if dusuk.startswith("sss ") or dusuk == "sss":
         return True
-    if len(satir) < 140 and re.search(r"\bnedir\?\s*$", dusuk):
-        return True
-    return False
+    return bool(len(satir) < 140 and re.search(r"\bnedir\?\s*$", dusuk))
 
 
 def _nav_kirintisi_mi(satir: str) -> bool:
@@ -160,9 +156,7 @@ def _nav_kirintisi_mi(satir: str) -> bool:
     if satir.count("|") >= 2 and len(satir) < 200:
         return True
     # Kaynak metin zaten ortadan kesilmiş (… / ...)
-    if satir.rstrip().endswith("...") or satir.rstrip().endswith("\u2026"):
-        return True
-    return False
+    return bool(satir.rstrip().endswith("...") or satir.rstrip().endswith("…"))
 
 
 def _tanitim_basliyor_mu(satir: str) -> bool:
@@ -180,9 +174,7 @@ def _tanitim_basliyor_mu(satir: str) -> bool:
         return True
     if skor >= 2 and len(satir) >= 80:
         return True
-    if skor >= 1 and len(satir) >= 120:
-        return True
-    return False
+    return bool(skor >= 1 and len(satir) >= 120)
 
 
 def _tanitim_devam_mi(satir: str) -> bool:
@@ -195,9 +187,7 @@ def _tanitim_devam_mi(satir: str) -> bool:
         return False
     if satir.count("|") >= 2:
         return False
-    if re.match(r"^\d+\s*\|", satir):
-        return False
-    return True
+    return not re.match(r"^\d+\s*\|", satir)
 
 
 def _cumle_tam_mi(satir: str) -> bool:

@@ -142,10 +142,8 @@ def _yon_bozuk_mu(text: str, rate_type: str | None) -> bool:
     if yon is False and _YUKSEK_AVANTAJ_RE.search(text):
         # Finansmanda "daha yüksek avantajlı" yanlış.
         return True
-    if yon is True and _DUSUK_AVANTAJ_RE.search(text):
-        # Getiride "daha düşük avantajlı" yanlış.
-        return True
-    return False
+    # Getiride "daha düşük avantajlı" yanlış.
+    return bool(yon is True and _DUSUK_AVANTAJ_RE.search(text))
 
 
 def _sablon_yanit(plan: QueryPlan, hits: tuple[SearchHit, ...]) -> str:
