@@ -67,9 +67,7 @@ def _version_suffix_match(hedef_slug: str, aday_slug: str) -> bool:
         return True
     if re.fullmatch(re.escape(hedef_slug) + r"[-_]\d+", aday_slug):
         return True
-    if re.fullmatch(re.escape(aday_slug) + r"[-_]\d+", hedef_slug):
-        return True
-    return False
+    return bool(re.fullmatch(re.escape(aday_slug) + r"[-_]\d+", hedef_slug))
 
 
 def _resolve_id(session: DbSession, kayit: dict[str, Any]) -> int | None:
@@ -107,9 +105,7 @@ def _resolve_id(session: DbSession, kayit: dict[str, Any]) -> int | None:
             if key.startswith(f"{banka_kodu}:")
             for slug in (key.split(":", 1)[1],)
         ]
-        eslesen = [
-            cid for cid, slug in adaylar if _version_suffix_match(hedef_slug, slug)
-        ]
+        eslesen = [cid for cid, slug in adaylar if _version_suffix_match(hedef_slug, slug)]
         if len(eslesen) == 1:
             return eslesen[0]
         return None
@@ -191,9 +187,7 @@ def read_next(
     """
     # Hem güncel campaign_id hem campaign_key ile bak: silme sonrası
     # campaign_id NULL kalan satırlar "etiketlenmemiş" sanılmasın.
-    id_sorgu = select(GoldAnnotation.campaign_id).where(
-        GoldAnnotation.campaign_id.isnot(None)
-    )
+    id_sorgu = select(GoldAnnotation.campaign_id).where(GoldAnnotation.campaign_id.isnot(None))
     key_sorgu = select(GoldAnnotation.campaign_key)
     if annotator:
         id_sorgu = id_sorgu.where(GoldAnnotation.annotator == annotator)

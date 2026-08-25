@@ -300,9 +300,7 @@ def build_product_card(session: Session, product: Product) -> str:
 
     bddk = get_canonical_limits(product_type=product.product_type)
     if bddk is not None:
-        satirlar.append(
-            f"BDDK yasal tavan ({bddk.family}): {bddk.legal_reference}."
-        )
+        satirlar.append(f"BDDK yasal tavan ({bddk.family}): {bddk.legal_reference}.")
         if bddk.family == "ihtiyac" and bddk.bands:
             ozet = ", ".join(
                 f"{b.label} → {b.max_term_months} ay" for b in bddk.bands if b.max_term_months
