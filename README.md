@@ -557,6 +557,8 @@ projede zaten var ve `LICENSES.md`'ye yeni bir satır girmedi.
 | Sözlük zenginleştirmesi | ✅ olgusal yanıta tanım eklenir, niyet değişmez |
 | Uç değer — "en düşük X oranı hangi bankada" | ✅ ürün oranı tablosundan |
 | Toplama görünümü | ✅ banka bazlı döküm + yokluk kümeleri (arayüz) |
+| Kapsam sorusu — "hangi bankalar var" | ✅ `bank_roster`, evrenden yanıtlanır |
+| Yanıtlanamayan soru | ✅ kanıt kartı gösterilmez |
 
 **Yönetişim — ölçülmüş davranış:**
 
@@ -695,6 +697,33 @@ yazılıyor ve arayüz onu ayrı gösteriyor.
 ⚠️ `%0` iki anlama gelir ve kuralla ayırt edilemez — gerçek bedelsiz kampanya
 (Albaraka Togg: 10-12 ay %0, 36 ay %3,05) ya da kaynakta oranın yayımlanmamış
 olması. Veri **değiştirilmiyor**, belirsizlik söyleniyor.
+
+### Canlı kullanımdan bildirilen üç sorun
+
+Gerçek bir sohbet oturumundan geldi; üçü de aynı sınıftan — **kanıt/kapsam
+uyumsuzluğu**: yanıt metni doğru olduğu hâlde ekranda gösterilen dayanak
+yanlış ya da eksikti.
+
+| soru | önce | sonra |
+|---|---|---|
+| "hangi bankalar var" | **3 banka** — rastgele 3 kampanya kartından okunmuş | **10 banka**, Adil Katılım dahil |
+| "ben kimim" | doğru reddetme, ama kanıt olarak süresi dolmuş bir Hac/Umre kampanyası | reddetme, **kanıt kartı yok** |
+| "en uygun kredi hangisinde konut için" | Enerya İhtiyaç + Araç Finansmanı gösteriliyordu | **4 kanıtın 4'ü `konut_finansmani`** |
+
+**Kapsam sorusunun yanıtı örneklem olamaz.** İlk sorun aynı oturumda daha da
+görünür oluyordu: hemen ardından "başka banka yok mu?" sorulduğunda doğru yanıt
+(10 banka) geliyordu — aynı bilgi bir soruda yanlış, diğerinde doğru.
+`bank_roster` toplaması eklendi; yanıt banka evreninden gelir.
+
+**"Yanıtın dayandığı kanıt" başlığı bir iddiadır.** Yanıt "elimizdeki veriyle
+yanıtlanamıyor" ise hiçbir kayıt onun dayanağı değildir. Tek kapı eklendi;
+erişim şeffaflığı şeridi (kaç karttan kaçı getirildi) **korunur** — gizleme
+değil, yanlış etiketlemenin düzeltilmesi.
+
+**Sektör ekseni ürün süzgecine bağlanmamıştı.** "Konut için" sorgusundan çıkan
+tek süzgeç `sector=konut_gayrimenkul`; ürün süzgeci yalnızca `product_type`a
+bakıyordu. ⚠️ Yalnızca kesin karşılığı olan sektörler eşlenir — "giyim"
+sektörünün finansman ürünü karşılığı yoktur ve uydurulmaz.
 
 ### Sohbet ölçümü (35 soruluk gold set)
 
