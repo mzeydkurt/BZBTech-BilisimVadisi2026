@@ -6,7 +6,7 @@ import json
 import uuid
 from dataclasses import replace
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.base import utc_now
@@ -17,6 +17,7 @@ from app.schemas.chat import (
     ChatSessionCreateResponse,
     ChatSessionDetail,
     ChatSessionMessageOut,
+    ChatSessionSummary,
 )
 
 
@@ -209,3 +210,72 @@ def create_response(oturum: ChatSession) -> ChatSessionCreateResponse:
         title=oturum.title,
         created_at=oturum.created_at.isoformat() if oturum.created_at else None,
     )
+
+
+def list_sessions(
+    session: Session, *, limit: int = 50, include_empty: bool = False
+) -> tuple[list[ChatSessionSummary], int]:
+    """Sohbet geçmişini en son etkinliğe göre listeler.
+
+    ⚠️ BOŞ OTURUMLAR VARSAYILAN OLARAK GİZLENİR. `POST /chat/sessions` her
+    sayfa açılışında bir oturum açıyor; kullanıcı hiç soru sormadan çıkarsa
+    geçmiş, tek satırı bile olmayan kayıtlarla dolar ve gerçek sohbetler
+    aralarında kaybolur. Gizlenen kayıt SİLİNMEZ — `include_empty` ile görünür.
+
+    ⚠️ MESAJ İÇERİĞİ ÇEKİLMEZ, YALNIZCA SAYI VE İLK SORU. Yüzlerce oturumun
+    tüm mesajlarını taşımak yanıtı megabaytlara çıkarır.
+
+    Args:
+        session: Veritabanı oturumu.
+        limit: Döndürülecek en fazla kayıt.
+        include_empty: Hiç mesajı olmayan oturumlar da dönsün.
+
+    Returns:
+        `(satırlar, toplam)` — `toplam`, süzgeçten geçen tüm oturum sayısı.
+    """
+    mesaj_sayisi = (
+        select(
+            ChatMessage.session_id.label("session_id"),
+            func.count(ChatMessage.id).label("adet"),
+            func.min(ChatMessage.turn_index).label("ilk_tur"),
+        )
+        .group_by(ChatMessage.session_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(ChatSession, mesaj_sayisi.c.adet)
+        .outerjoin(mesaj_sayisi, mesaj_sayisi.c.session_id == ChatSession.id)
+        .order_by(ChatSession.last_activity_at.desc())
+    )
+    if not include_empty:
+        stmt = stmt.where(mesaj_sayisi.c.adet.is_not(None))
+
+    satirlar = session.execute(stmt).all()
+    toplam = len(satirlar)
+
+    ozetler: list[ChatSessionSummary] = []
+    for oturum, adet in satirlar[:limit]:
+        ilk_soru = next(
+            (
+                mesaj.content
+                for mesaj in sorted(oturum.messages, key=lambda m: (m.turn_index, m.role))
+                if mesaj.role == "user"
+            ),
+            None,
+        )
+        ozetler.append(
+            ChatSessionSummary(
+                session_key=oturum.session_key,
+                # Başlık yoksa ilk sorudan türetilir; "Adsız oturum" göstermek
+                # kullanıcının hangi sohbet olduğunu anlamasını engeller.
+                title=oturum.title or (ilk_soru[:60] if ilk_soru else None),
+                created_at=oturum.created_at,
+                last_activity_at=oturum.last_activity_at,
+                ended_at=oturum.ended_at,
+                # Bir tur = kullanıcı + asistan; mesaj sayısının yarısı.
+                turn_count=int((adet or 0) // 2) or (1 if adet else 0),
+                first_query=ilk_soru,
+            )
+        )
+    return ozetler, toplam
