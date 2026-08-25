@@ -480,9 +480,7 @@ def categorize(
                     evidence=_kirp(title) or None,
                 )
             )
-        elif _kelime_var(baslik_katlanmis, "taksit") or _kelime_var(
-            baslik_katlanmis, "iade"
-        ):
+        elif _kelime_var(baslik_katlanmis, "taksit") or _kelime_var(baslik_katlanmis, "iade"):
             # Mağaza adı yok ama taksit/iade var → kart (Mastercard taksit, uçak iadesi…)
             etiketler.append(
                 CategoryLabel(
