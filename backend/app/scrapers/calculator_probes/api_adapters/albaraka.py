@@ -107,8 +107,12 @@ def calculate(
 
     vade = term_months
     if vade is None:
-        vade = int(finance_type.get("MaturityDefaultValue") or finance_type.get("MaturityMaxValue") or 36)
-    vade = min(vade, int(finance_type.get("MaturityMaxValue") or vade), bddk_ornek_vade(ipucu, tutar))
+        vade = int(
+            finance_type.get("MaturityDefaultValue") or finance_type.get("MaturityMaxValue") or 36
+        )
+    vade = min(
+        vade, int(finance_type.get("MaturityMaxValue") or vade), bddk_ornek_vade(ipucu, tutar)
+    )
 
     # API'ye gönderilecek FinanceType — iç etiket alanını çıkar
     tip = {k: v for k, v in finance_type.items() if not k.startswith("_")}
@@ -150,7 +154,10 @@ def calculate(
 
         tahsis = None
         for masraf in data.get("AmortizationScheduleExpenses") or []:
-            if isinstance(masraf, dict) and "tahsis" in str(masraf.get("FeeExplanation", "")).lower():
+            if (
+                isinstance(masraf, dict)
+                and "tahsis" in str(masraf.get("FeeExplanation", "")).lower()
+            ):
                 tahsis = parse_tr_money(masraf.get("AmountWithTax"))
                 break
         if tahsis is None:
@@ -168,7 +175,9 @@ def calculate(
             total_payment=parse_tr_money(data.get("TotalAmountTobeRefunded")),
             allocation_fee=tahsis,
             source_url=CALCULATOR_URL,
-            source_endpoint=f"{API_URL}?{urlencode({'FinanceAmount': int(tutar), 'Maturity': vade})}",
+            source_endpoint=(
+                f"{API_URL}?{urlencode({'FinanceAmount': int(tutar), 'Maturity': vade})}"
+            ),
             raw_response=veri if isinstance(veri, dict) else {"raw": veri},
         )
     except Exception as exc:

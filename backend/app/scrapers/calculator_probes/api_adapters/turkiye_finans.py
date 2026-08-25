@@ -23,8 +23,7 @@ from app.scrapers.calculator_probes.common import bddk_ornek_vade, urun_tipi_ipu
 logger = get_logger(__name__)
 
 PAGE_URL = (
-    "https://www.turkiyefinans.com.tr/tr-tr/hesaplama-araclari/"
-    "Sayfalar/finansman-odeme-plani.aspx"
+    "https://www.turkiyefinans.com.tr/tr-tr/hesaplama-araclari/Sayfalar/finansman-odeme-plani.aspx"
 )
 API_URL = (
     "https://www.turkiyefinans.com.tr/_vti_bin/TurkiyeFinansServices/"
