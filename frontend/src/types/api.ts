@@ -689,6 +689,8 @@ export interface BDDKLimitCheckResponse {
 
 export interface ChatRequest {
   query: string;
+  /** `GET /chat/models` anahtarı. ⚠️ Yalnızca bu isteği etkiler; .env yazılmaz. */
+  model_id?: string | null;
   bank_code?: string | null;
   limit?: number;
   /** Sunucu oturum anahtarı (`session_key`); yoksa yeni oturum açılır. */
@@ -857,6 +859,40 @@ export interface ChatTopMatch {
   source_url: string | null;
   reason: string | null;
   detail_path: string | null;
+}
+
+export interface ChatSessionSummary {
+  session_key: string;
+  title: string | null;
+  created_at: string;
+  last_activity_at: string;
+  ended_at: string | null;
+  turn_count: number;
+  first_query: string | null;
+}
+
+export interface ChatSessionList {
+  items: ChatSessionSummary[];
+  total: number;
+}
+
+export interface ChatModelOption {
+  /** `provider:model` biçiminde kararlı anahtar. */
+  id: string;
+  provider: string;
+  model: string;
+  label: string;
+  /** Kapalı ağda çalışır mı? */
+  is_local: boolean;
+  is_active: boolean;
+  /** Sağlık yoklaması geçti mi? Geçmediyse listede DEVRE DIŞI gösterilir. */
+  available: boolean;
+  note: string | null;
+}
+
+export interface ChatModelsResponse {
+  active_id: string;
+  items: ChatModelOption[];
 }
 
 export interface ChatResponse {

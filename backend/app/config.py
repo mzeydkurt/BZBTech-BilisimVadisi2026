@@ -124,6 +124,13 @@ class Settings(BaseSettings):
     # Yeniden sıralama modeli. Boş bırakılırsa erişim RRF sıralamasıyla
     # kalır — yeniden sıralama bir iyileştirmedir, zorunluluk değil.
     evren_rerank_model: str = "rerank"
+    #  SOHBET VE TOPLU ÇIKARIM AYNI ZAMAN AŞIMINI PAYLAŞAMAZ.
+    # `llm_timeout_seconds` (180) gece çalışan toplu çıkarım için doğru: orada
+    # beklemek ücretsizdir. Sohbette ise 180 saniye bekleyen bir arayüz ÖLMÜŞ
+    # görünür. EVREN tüm takımlarca paylaşıldığı için gecikme dalgalanıyor
+    # (ölçüldü: aynı sorgu 4,1 sn · 4,9 sn · 30,5 sn). Sohbet bu süreyi aşınca
+    # şablon yanıta düşer ve kanıtlar yine gösterilir.
+    chat_timeout_seconds: float = 25.0
 
     # ── Qdrant vektör veritabanı ──────────────────────────
     # ⚠️ QDRANT ZORUNLU DEĞİL. Erişilemediğinde arama `embeddings` tablosuna

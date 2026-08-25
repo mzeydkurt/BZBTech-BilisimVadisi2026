@@ -166,6 +166,8 @@ export const api = {
     post<BDDKLimitCheckResponse>("/simulator/bddk-check", body),
 
   chat: (body: ChatRequest) => post<ChatResponse>("/chat", body),
+  chatSessions: () => get<ChatSessionList>("/chat/sessions"),
+  chatModels: () => get<ChatModelsResponse>("/chat/models"),
   createChatSession: () => post<ChatSessionCreateResponse>("/chat/sessions", {}),
   getChatSession: (sessionKey: string) =>
     get<ChatSessionDetail>(`/chat/sessions/${encodeURIComponent(sessionKey)}`),
