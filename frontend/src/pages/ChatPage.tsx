@@ -1,16 +1,20 @@
-import { Copy, RotateCcw } from "lucide-react";
+import { Copy, PanelLeftOpen, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { ChatForm } from "@/components/chat/ChatForm";
 import { ChatMatchCard } from "@/components/chat/ChatResultCard";
 import { ForbiddenTermsAlert } from "@/components/chat/ForbiddenTermsAlert";
 import { EvidenceDisclosure } from "@/components/chat/EvidenceDisclosure";
+import { ModelSelector } from "@/components/chat/ModelSelector";
+import { SessionHistory } from "@/components/chat/SessionHistory";
 import { GroundingNotice } from "@/components/chat/GroundingNotice";
 import { RelaxationHints } from "@/components/chat/RelaxationHints";
 import { RetrievalStrip } from "@/components/chat/RetrievalStrip";
 import { UnderstoodChips } from "@/components/chat/UnderstoodChips";
 import { ErrorState } from "@/components/common/ErrorState";
 import { Button } from "@/components/ui/button";
+import { useQueryClient } from "@tanstack/react-query";
+
 import { useBanks } from "@/hooks/useBanks";
 import {
   readStoredSessionId,
@@ -275,7 +279,12 @@ export function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(!sessionId);
   const [pendingClarification, setPendingClarification] = useState<string | null>(null);
+  // Model secimi ISTEK BASINA gonderilir; sunucu .env yazmaz.
+  // null = sunucunun yapilandirdigi model kullanilir.
+  const [modelId, setModelId] = useState<string | null>(null);
+  const [gecmisAcik, setGecmisAcik] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
   const { data: banks } = useBanks();
   const mutation = useChat();
@@ -350,6 +359,7 @@ export function ChatPage() {
           if (data.clarification_needed && data.clarification_question) {
             setPendingClarification(finalQuery);
           }
+          void queryClient.invalidateQueries({ queryKey: ["chat-sessions"] });
         },
         onError: () => {
           setMessages((prev) => [
@@ -364,6 +374,21 @@ export function ChatPage() {
         },
       },
     );
+  };
+
+  const handleOpenSession = (key: string) => {
+    if (key === sessionId) return;
+    setMessages([]);
+    setPendingClarification(null);
+    setHistoryLoaded(false);
+    persistSession(key);
+  };
+
+  const handleNewSession = () => {
+    persistSession(null);
+    setMessages([]);
+    setPendingClarification(null);
+    setHistoryLoaded(true);
   };
 
   const handleEndSession = () => {
