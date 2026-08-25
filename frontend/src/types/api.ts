@@ -695,6 +695,11 @@ export interface ChatRequest {
   limit?: number;
   /** Sunucu oturum anahtarı (`session_key`); yoksa yeni oturum açılır. */
   session_id?: string | null;
+  /**
+   * Bu sorunun takip ettiği cevabın kimliği. Verilmezse sunucu oturumun SON
+   * turunu kullanır; geçmişten eski bir tura dönüldüğünde bu yanlış olur.
+   */
+  parent_completion_id?: string | null;
 }
 
 export interface ChatSessionCreateResponse {
@@ -707,6 +712,8 @@ export interface ChatSessionMessage {
   turn_index: number;
   role: "user" | "assistant";
   content: string;
+  /** Assistant turlarında dolu; geçmiş yüklenince zincir kopmasın. */
+  completion_id?: string | null;
   /** Assistant turlarında dolu; geçmiş yüklenince kartlar geri gelir. */
   response_json?: ChatResponse | null;
   /** Bazı backend sürümleri `response` adını kullanabilir. */
@@ -916,6 +923,10 @@ export interface ChatResponse {
   /** Sunucu oturum anahtarı — localStorage'da saklanır. */
   session_id?: string | null;
   turn_index?: number | null;
+  /** Bu cevabın kimliği; sıradaki soruda `parent_completion_id` olarak gider. */
+  completion_id?: string | null;
+  /** Bağlamın devralındığı cevabın kimliği; devir olmadıysa null. */
+  parent_completion_id?: string | null;
 }
 
 // ==================== Canlı Çıkarım ====================
