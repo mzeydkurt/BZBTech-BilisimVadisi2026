@@ -118,6 +118,13 @@ class Corpus:
     product_index: Bm25Index | None = None
     rate_docs: dict[int, ProductRateDoc] | None = None
     glossary_docs: dict[int, GlossaryDoc] | None = None
+    # BANKA EVRENİ, gövdedeki bankalarla AYNI DEĞİLDİR. "Hangi bankada X
+    # yok?" ve "kaç banka X veriyor?" soruları yalnızca süzgeçten geçen
+    # kayıtlara bakılarak yanıtlanamaz: kaydı OLMAYAN banka hiç görünmez.
+    # Ölçüldü — `adil_katilim` 0 kampanyayla `by_bank` dökümünde hiç
+    # çıkmıyordu; oysa CLAUDE.md "veri yok bilgisi de başlı başına bir
+    # bulgudur, gizlenmez" diyor.
+    banks: tuple[tuple[str, str], ...] = ()
 
     @property
     def size(self) -> int:
@@ -396,7 +403,12 @@ def build_corpus(session: Session) -> Corpus:
             conventional_equivalent=terim.conventional_equivalent,
         )
 
+    tum_bankalar = tuple(
+        (banka.code, banka.name) for banka in session.scalars(select(Bank).order_by(Bank.name))
+    )
+
     _cache = Corpus(
+        banks=tum_bankalar,
         docs=docs,
         index=Bm25Index(gövde),
         product_docs=product_docs or None,
