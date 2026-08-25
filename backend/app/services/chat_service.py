@@ -605,10 +605,12 @@ def _provider_or_none(*, plan: QueryPlan, model_id: str | None = None) -> LLMPro
         return None
 
     ayarlar = get_settings()
-    secilen = chat_models.resolve_override(model_id)
-    if secilen and secilen != ayarlar.llm_provider.strip().lower():
-        ayarlar = ayarlar.model_copy(update={"llm_provider": secilen})
-        logger.info("istek_basina_saglayici", saglayici=secilen)
+    #  Sağlayıcı VE model birlikte değişir; yalnızca sağlayıcıyı geçirmek
+    # `evren:llm-large` seçimini sessizce `llm-fast`'e düşürüyordu.
+    guncelleme = chat_models.resolve_override(model_id)
+    if guncelleme:
+        ayarlar = ayarlar.model_copy(update=guncelleme)
+        logger.info("istek_basina_model", **guncelleme)
 
     try:
         return get_provider(ayarlar)
