@@ -65,6 +65,7 @@ from app.retrieval.relevance import (
     filter_relevant_hits,
     is_anaphoric_query,
     opens_scope,
+    refers_to_focus_entity,
     strip_citation_markers,
 )
 from app.retrieval.search import (
@@ -491,6 +492,11 @@ def _understood(plan: QueryPlan) -> list[UnderstoodFilter]:
             gosterim = f"{yon} %{deger}" if birim == "%" else f"{yon} {deger}{birim}"
         elif sinyal.kind == "status":
             gosterim = sinyal.label
+        elif sinyal.kind == "campaign":
+            # ⚠️ Çipte veritabanı kimliği GÖSTERİLMEZ. Kullanıcı "Kampanya: 585"
+            # ifadesinden ne süzüldüğünü anlamaz; teknik kimlikler yanıt
+            # metninden de temizleniyor (`strip_citation_markers`).
+            gosterim = "önceki yanıttaki kampanya"
         else:
             gosterim = sinyal.value
         ciplar.append(
@@ -1329,17 +1335,46 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
     # kuruma işaret eder; önceki sorunun süzgecine değil. Ölçüldü: "en uzun
     # vade hangi bankada" → "Vakıf Katılım" cevabından sonra takip sorusu tüm
     # bankalarda arıyor, alakasız yanıt dönüyordu.
-    if not plan.bank_codes and is_anaphoric_query(req.query) and not opens_scope(req.query):
-        odak = chat_sessions.previous_focus(oturum, req.parent_completion_id)
-        if odak:
+    kampanya_atfi = refers_to_focus_entity(req.query)
+    if (kampanya_atfi or is_anaphoric_query(req.query)) and not opens_scope(req.query):
+        odak_banka, odak_kampanya = chat_sessions.previous_focus(oturum, req.parent_completion_id)
+
+        # ── Kampanya odağı ────────────────────────────────
+        # "Bu kampanyanın bitiş tarihi ne zaman?" hiçbir süzgeç sinyali
+        # taşımaz; yanıtı önceki cevabın işaret ettiği TEK kayıttır. Ölçüldü
+        # (100 soruluk havuz, S3.3): bağlam devri olduğu hâlde sonuç boş
+        # dönüyordu, çünkü devir yalnızca bankayı taşıyordu.
+        if kampanya_atfi and odak_kampanya is not None:
+            # ⚠️ Odak kurulduğunda DEVRALINAN eksen/durum süzgeçleri DÜŞER.
+            # Odak tek bir kaydı işaret ediyor; ek süzgeç o kaydı yalnızca
+            # YANLIŞLIKLA eleyebilir. Ölçüldü (havuz S3.3): önceki turdan 5
+            # süzgeç devralınıyor ve sonuç 0'a düşüyordu.
             plan = replace(
                 plan,
-                bank_codes=(odak,),
+                axis_filters={},
+                statuses=(),
+                focus_campaign_id=odak_kampanya,
+                signals=(
+                    *plan.signals,
+                    QuerySignal(
+                        kind="campaign",
+                        value=str(odak_kampanya),
+                        label="Kampanya",
+                        evidence="önceki cevap",
+                    ),
+                ),
+            )
+            devir_kimligi = devir_kimligi or req.parent_completion_id
+
+        if not plan.bank_codes and odak_banka:
+            plan = replace(
+                plan,
+                bank_codes=(odak_banka,),
                 signals=(
                     *plan.signals,
                     QuerySignal(
                         kind="bank",
-                        value=odak,
+                        value=odak_banka,
                         label="Banka",
                         evidence="önceki cevap",
                     ),

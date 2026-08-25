@@ -203,14 +203,26 @@ def previous_focus(
         kid = int(tek["campaign_id"]) if tek.get("campaign_id") is not None else None
         return kod, kid
 
-    # 3) Tüm sonuçlar aynı bankadansa banka bellidir; kampanya DEĞİLDİR.
+    # 3) Birden çok sonuç: kampanya odağı EN ÜST sıralı kayıttır.
+    #
+    # Bu bir seçim. "Belirsizse None" kuralı banka için doğrudur (yanlış
+    # bankaya kilitlenmek tüm yanıtı bozar), ama kullanıcı AÇIKÇA "bu
+    # kampanya" dediğinde None dönmek garanti başarısızlık üretiyordu:
+    # ölçüldü (havuz S3.3) — "Bu kampanyanın bitiş tarihi ne zaman?" sorusuna
+    # "elimizdeki veriyle yanıt verilemiyor" dönüyordu. Yanıt metni en üst
+    # kayıtla başladığı için insan da onu kasteder. Bağ arayüzde çip olarak
+    # GÖRÜNÜR ("önceki yanıttaki kampanya"), kullanıcı yanlışsa düzeltebilir.
+    #
+    # Odak yalnızca AÇIK kampanya atfında uygulanır (bkz. çağıran katman);
+    # banka anaforası bundan etkilenmez.
+    ilk_kampanya = next(
+        (int(r["campaign_id"]) for r in sonuclar if r.get("campaign_id") is not None),
+        None,
+    )
     kodlar = {r.get("bank_code") for r in sonuclar if r.get("bank_code")}
     if len(kodlar) == 1:
-        return str(next(iter(kodlar))), None
-
-    # 4) Birden çok sonuç varsa en üstteki `top_matches` kampanyası odak
-    #    sayılmaz: kullanıcı hangisini kastettiğini söylememiştir.
-    return None, None
+        return str(next(iter(kodlar))), ilk_kampanya
+    return None, ilk_kampanya
 
 
 def record_turn(
