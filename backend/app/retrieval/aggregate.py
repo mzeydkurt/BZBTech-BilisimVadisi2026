@@ -103,7 +103,7 @@ def compute(
         Hesaplanmış yanıt. Değeri olan kayıt yoksa `winner=None` döner ve
         `without_value` kaç kaydın veri taşımadığını bildirir.
     """
-    if spec.kind in {"count", "count_banks", "absence"}:
+    if spec.kind in {"count", "count_banks", "absence", "bank_roster"}:
         dokum: dict[str, int] = {}
         for doc in docs:
             dokum[doc.bank_name] = dokum.get(doc.bank_name, 0) + 1
@@ -171,6 +171,22 @@ def describe(answer: AggregateAnswer) -> str:
     yazdırmak yalnızca yanlış aktarma riski ekler. Model bu katmanda hiç
     çağrılmaz (mimari §5).
     """
+    if answer.kind == "bank_roster":
+        # ⚠️ Yanıt EVRENDEN gelir, erişimden değil. Kapsam sorusunun yanıtı
+        # örneklem olamaz: eski davranış 3 rastgele karttan banka adı okuyup
+        # "bulunan bankalar" diye sunuyordu.
+        liste_evren = sorted({*answer.banks_with, *answer.banks_without})
+        if not liste_evren:
+            return "Kapsanan banka listesi çıkarılamadı."
+        cumle = f"Kapsamda {len(liste_evren)} katılım bankası var: {', '.join(liste_evren)}."
+        if answer.banks_without:
+            # "Veri yok" da bir bulgudur; gizlenmez.
+            cumle += (
+                f" Bunlardan {len(answer.banks_without)} tanesinde hiç kayıt yok: "
+                f"{', '.join(answer.banks_without)}."
+            )
+        return cumle
+
     if answer.kind == "count_banks":
         # ⚠️ Sayı SQL'den gelir. Ölçüldü: bu soru daha önce `search`e düşüyor
         # ve modelin kendi ürettiği "iki banka" yanıtı dönüyordu; gerçek 7'ydi.
