@@ -72,9 +72,7 @@ def test_coklu_vade_aylik_haric_tutulmaz() -> None:
 
 
 def test_merhaba_dogal_coklu_vade_yaniti() -> None:
-    folded = _fold(
-        "Merhaba ben katılma hesabı açacağım sence hangi bankadan açmalıyım"
-    )
+    folded = _fold("Merhaba ben katılma hesabı açacağım sence hangi bankadan açmalıyım")
     a = KatilimHesabiRow(
         bank_code="tom",
         bank_name="T.O.M. Katılım Bankası",

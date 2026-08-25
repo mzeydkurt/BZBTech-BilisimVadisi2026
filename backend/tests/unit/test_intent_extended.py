@@ -31,9 +31,10 @@ class TestTekilSorgu:
         plan = parse_query("Ziraat Katılım'ın konut finansmanı oranı ne?")
         assert plan.intent == "tekil_sorgu"
         assert "ziraat_katilim" in plan.bank_codes
-        assert plan.rate_type in (None, "financing_rate") or "konut_finansmani" in plan.axis_filters.get(
-            "product_type", ()
-        )
+        assert plan.rate_type in (
+            None,
+            "financing_rate",
+        ) or "konut_finansmani" in plan.axis_filters.get("product_type", ())
 
 
 class TestRateType:
@@ -41,7 +42,10 @@ class TestRateType:
         plan = parse_query("Vadeli mevduat getirisi en yüksek hangi bankada?")
         # konvansiyonel map + getiri → participation_yield veya aggregate
         assert plan.intent in {"aggregate", "search", "tekil_sorgu"}
-        assert "participation_yield" in plan.rate_type_candidates or plan.rate_type == "participation_yield"
+        assert (
+            "participation_yield" in plan.rate_type_candidates
+            or plan.rate_type == "participation_yield"
+        )
 
     def test_faiz_sorgusu_reddedilmez(self) -> None:
         plan = parse_query("En düşük faiz oranı hangi kampanyada?")

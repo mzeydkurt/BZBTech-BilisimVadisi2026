@@ -171,9 +171,7 @@ def test_genislet_scroll_link_artirir() -> None:
                 "https://www.example.com/kampanyalar/b",
             ):
                 el = MagicMock()
-                el.get_attribute.side_effect = (
-                    lambda a, h=href: h if a == "href" else None
-                )
+                el.get_attribute.side_effect = lambda a, h=href: h if a == "href" else None
                 els.append(el)
             return els
         return gercek_qsa(sel)
@@ -207,9 +205,7 @@ def test_genislet_limit_doldu() -> None:
             for i in range(sayac["i"] + 1):
                 href = f"https://www.example.com/kampanyalar/k{i}"
                 el = MagicMock()
-                el.get_attribute.side_effect = (
-                    lambda a, h=href: h if a == "href" else None
-                )
+                el.get_attribute.side_effect = lambda a, h=href: h if a == "href" else None
                 els.append(el)
             return els
         el = MagicMock()
@@ -250,9 +246,7 @@ def test_genislet_sayfalama() -> None:
             for i in range(sayac["i"] + 1):
                 href = f"https://www.example.com/kampanyalar/p{i}"
                 el = MagicMock()
-                el.get_attribute.side_effect = (
-                    lambda a, h=href: h if a == "href" else None
-                )
+                el.get_attribute.side_effect = lambda a, h=href: h if a == "href" else None
                 els.append(el)
             return els
         # sayfalama seçici

@@ -7,7 +7,6 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import httpx
-import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
