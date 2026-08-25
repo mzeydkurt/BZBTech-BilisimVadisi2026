@@ -12,13 +12,15 @@ Sohbet promptu: `app/ai/prompts/chat_v1.txt` (3B system_v1'e dokunulmaz).
 
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from app.ai.providers.base import LLMProvider, LLMProviderError
+from app.ai.providers.base import LLMProvider, LLMProviderError, LLMTimeoutError
 from app.ai.validation.terminology import TerminologyWarning, check_terminology
+from app.config import get_settings
 from app.core.rate_direction import avantajli_yon, yon_notu
 from app.logging_config import get_logger
 from app.retrieval.query import QueryPlan
@@ -175,13 +177,35 @@ async def _model_cagir(
     *,
     system: str,
 ) -> tuple[str, str | None, int | None]:
-    """Model çağrısı; (metin, model_name, latency_ms)."""
-    yanit = await provider.generate(
-        istem,
-        system=system,
-        temperature=0.0,
-        max_tokens=MAX_ANSWER_TOKENS,
-    )
+    """Model çağrısı; (metin, model_name, latency_ms).
+
+    ⚠️ SOHBET ZAMAN AŞIMI AYRI. `LLM_TIMEOUT_SECONDS` (180 sn) gece çalışan
+    toplu çıkarım için doğru; sohbette 180 saniye bekleyen bir arayüz ölmüş
+    görünür. `CHAT_TIMEOUT_SECONDS` aşılırsa `LLMTimeoutError` yükselir ve
+    çağıran taraf şablon yanıta düşer — kanıtlar yine gösterilir.
+
+    ⚠️ `generate()` İMZASINA DOKUNULMADI. `base.py` donmuş sözleşme; zaman
+    aşımı burada `asyncio.wait_for` ile sarılıyor.
+
+    Raises:
+        LLMTimeoutError: Sohbet zaman aşımı aşıldı.
+    """
+    sinir = get_settings().chat_timeout_seconds
+    try:
+        yanit = await asyncio.wait_for(
+            provider.generate(
+                istem,
+                system=system,
+                temperature=0.0,
+                max_tokens=MAX_ANSWER_TOKENS,
+            ),
+            timeout=sinir,
+        )
+    except TimeoutError as exc:
+        logger.warning("sohbet_zaman_asimi", sinir_sn=sinir)
+        raise LLMTimeoutError(
+            f"Model sohbet için ayrılan {sinir:.0f} saniyede yanıt vermedi."
+        ) from exc
     return yanit.text.strip(), yanit.model_name, yanit.latency_ms
 
 
