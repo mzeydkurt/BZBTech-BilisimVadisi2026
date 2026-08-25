@@ -39,7 +39,14 @@ logger = get_logger(__name__)
 DISTANCE: Final[str] = "Cosine"
 
 # Tek upsert isteğinde gönderilecek nokta sayısı.
-UPSERT_BATCH: Final[int] = 128
+# 128 ÇOK BÜYÜKTÜ. 2.402 noktalık yüklemede `wait=true` ile birlikte okuma
+# zaman aşımına düştü (ölçüldü: 35 sn sonra hata). Parti küçültüldü ve upsert
+# için arama zaman aşımından AYRI, daha uzun bir süre kullanılıyor: yükleme
+# tek seferlik bir iş, arama ise kullanıcıyı bekletiyor.
+UPSERT_BATCH: Final[int] = 64
+
+# Yükleme zaman aşımı — aramadan ayrı ve daha uzun.
+UPSERT_TIMEOUT_SECONDS: Final[float] = 120.0
 
 # Varlık türü → kararlı sayısal önek. Nokta kimliği bu önekle üretilir;
 # `campaign:5` ile `product:5` aynı noktaya yazmasın.
@@ -135,7 +142,12 @@ class QdrantStore:
         return {"api-key": self._api_key, "Content-Type": "application/json"}
 
     async def _istek(
-        self, method: str, path: str, govde: dict[str, Any] | None = None
+        self,
+        method: str,
+        path: str,
+        govde: dict[str, Any] | None = None,
+        *,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """Qdrant'a istek atar.
 
@@ -144,10 +156,17 @@ class QdrantStore:
         """
         url = f"{self._base_url}{path}"
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout or self._timeout) as client:
                 response = await client.request(method, url, json=govde, headers=self._headers())
         except httpx.HTTPError as exc:
-            raise QdrantUnavailableError(f"Qdrant'a ulaşılamıyor: {exc}") from exc
+            # ⚠️ BOŞ HATA MESAJI TEŞHİS EDİLEMEZ. `httpx.ReadTimeout` gibi bazı
+            # istisnaların `str()` çıktısı BOŞ; "Qdrant'a ulaşılamıyor: "
+            # şeklinde yarım bir mesaj, sorunun zaman aşımı mı ağ mı olduğunu
+            # gizliyordu (ölçüldü: 2.402 noktalık yüklemede).
+            ayrinti = str(exc) or type(exc).__name__
+            raise QdrantUnavailableError(
+                f"Qdrant isteği başarısız ({method} {path}): {ayrinti}"
+            ) from exc
 
         if response.status_code >= httpx.codes.BAD_REQUEST:
             raise QdrantUnavailableError(
@@ -236,7 +255,12 @@ class QdrantStore:
                     for nokta in parca
                 ]
             }
-            await self._istek("PUT", f"/collections/{self._collection}/points?wait=true", govde)
+            await self._istek(
+                "PUT",
+                f"/collections/{self._collection}/points?wait=true",
+                govde,
+                timeout=UPSERT_TIMEOUT_SECONDS,
+            )
             yazilan += len(parca)
             logger.info("qdrant_parti_yazildi", yazilan=yazilan, toplam=len(points))
         self._count += yazilan
