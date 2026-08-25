@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final
+from typing import Any, Final
 
 import structlog
 from sqlalchemy import select
@@ -188,7 +188,7 @@ def upsert_probe_and_rate(
     allocation_fee: Decimal | None = None,
     annual_cost_pct: Decimal | None = None,
     endpoint_url: str | None = None,
-    request_payload: dict | None = None,
+    request_payload: dict[str, Any] | None = None,
     response_raw: str | None = None,
     probe_variant: str | None = None,
 ) -> CalculatorProbe:

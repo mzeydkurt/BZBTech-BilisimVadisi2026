@@ -8,8 +8,9 @@ tarihli satırını göstermeli; arşiv DB'de kalır.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date
-from typing import Protocol, Sequence, TypeVar
+from typing import Protocol, TypeVar
 
 
 class _RateLike(Protocol):
