@@ -112,23 +112,17 @@ JS_LISTING_TARGETS: Final[tuple[JsListingTarget, ...]] = (
     ),
     JsListingTarget(
         bank_code="kuveyt_turk",
-        listing_url=(
-            "https://www.kuveytturk.com.tr/kampanyalar/kendim-icin/seyahat-kampanyalari"
-        ),
+        listing_url=("https://www.kuveytturk.com.tr/kampanyalar/kendim-icin/seyahat-kampanyalari"),
         detail_marker="/kampanyalar/",
     ),
     JsListingTarget(
         bank_code="kuveyt_turk",
-        listing_url=(
-            "https://www.kuveytturk.com.tr/kampanyalar/isletmem-icin/kart-kampanyalari"
-        ),
+        listing_url=("https://www.kuveytturk.com.tr/kampanyalar/isletmem-icin/kart-kampanyalari"),
         detail_marker="/kampanyalar/",
     ),
     JsListingTarget(
         bank_code="kuveyt_turk",
-        listing_url=(
-            "https://www.kuveytturk.com.tr/kampanyalar/isletmem-icin/kobi-kampanyalari"
-        ),
+        listing_url=("https://www.kuveytturk.com.tr/kampanyalar/isletmem-icin/kobi-kampanyalari"),
         detail_marker="/kampanyalar/",
     ),
     JsListingTarget(
@@ -140,9 +134,7 @@ JS_LISTING_TARGETS: Final[tuple[JsListingTarget, ...]] = (
     ),
     JsListingTarget(
         bank_code="kuveyt_turk",
-        listing_url=(
-            "https://www.kuveytturk.com.tr/kampanyalar/isletmem-icin/pos-kampanyalari"
-        ),
+        listing_url=("https://www.kuveytturk.com.tr/kampanyalar/isletmem-icin/pos-kampanyalari"),
         detail_marker="/kampanyalar/",
     ),
     JsListingTarget(
@@ -170,9 +162,7 @@ JS_LISTING_TARGETS: Final[tuple[JsListingTarget, ...]] = (
     ),
     JsListingTarget(
         bank_code="turkiye_finans",
-        listing_url=(
-            "https://www.turkiyefinans.com.tr/tr-tr/kampanyalar/Sayfalar/default.aspx"
-        ),
+        listing_url=("https://www.turkiyefinans.com.tr/tr-tr/kampanyalar/Sayfalar/default.aspx"),
         detail_marker="/kampanyalar/Sayfalar/",
         skip_files=_TF_LISTE_DOSYALARI,
     ),
@@ -472,9 +462,7 @@ def expand_all(*, bank_codes: set[str] | None = None) -> dict[str, list[str]]:
     return sonuc
 
 
-def expand_all_detailed(
-    *, bank_codes: set[str] | None = None
-) -> list[ListingResult]:
+def expand_all_detailed(*, bank_codes: set[str] | None = None) -> list[ListingResult]:
     """Her hedef için ayrı ListingResult listesi (kapsama raporu için)."""
     ciktilar: list[ListingResult] = []
     for target in JS_LISTING_TARGETS:

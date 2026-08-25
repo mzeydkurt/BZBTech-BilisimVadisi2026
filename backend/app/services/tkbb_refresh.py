@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Final
 
@@ -33,7 +33,7 @@ _TKBB_ARSIV: Final[Path] = _BACKEND / "data" / "raw_html" / "tkbb"
 def _dosya_zamani(path: Path) -> datetime | None:
     if not path.is_file():
         return None
-    return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
 
 
 def _son_tkbb_zamani(session: Session) -> datetime | None:
@@ -65,12 +65,12 @@ def tkbb_bayat_mi(session: Session) -> bool:
     son = _son_tkbb_zamani(session)
     if son is None:
         return True
-    return datetime.now(timezone.utc) - son > _BAYATLIK
+    return datetime.now(UTC) - son > _BAYATLIK
 
 
 def _basariyi_kaydet() -> None:
     _DURUM_DOSYASI.parent.mkdir(parents=True, exist_ok=True)
-    _DURUM_DOSYASI.write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
+    _DURUM_DOSYASI.write_text(datetime.now(UTC).isoformat(), encoding="utf-8")
 
 
 def ensure_tkbb_fresh(session: Session, *, timeout_sn: float = 45.0) -> bool:
