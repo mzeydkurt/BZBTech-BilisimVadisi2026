@@ -20,6 +20,23 @@ interface UnderstoodChipsProps {
  * ⚠️ Her çipin ipucunda, sorgunun o süzgeci üreten parçası yazar. Kaynağı
  * gösterilemeyen bir süzgeç, kaynağı gösterilemeyen bir sonuç demektir.
  */
+/**
+ * Süzgecin nereden geldiğini açıklar.
+ *
+ *  Devralınan bağlam sorguda GEÇEN bir ifade değildir. "Sorgudaki 'önceki
+ * cevap' ifadesinden çıkarıldı" demek kullanıcıya yanlış bilgi verir ve
+ * yanlış devralmayı fark etmesini engeller.
+ */
+function kanitAciklamasi(evidence: string): string {
+  if (evidence === "önceki soru") {
+    return "Bu soruda belirtilmedi; önceki sorunuzdan devralındı.";
+  }
+  if (evidence === "önceki cevap") {
+    return "Bu soruda belirtilmedi; önceki yanıtın işaret ettiği kurumdan alındı.";
+  }
+  return `Sorgudaki “${evidence}” ifadesinden çıkarıldı.`;
+}
+
 export function UnderstoodChips({ filters, onRemove }: UnderstoodChipsProps) {
   if (filters.length === 0) {
     return (
@@ -50,9 +67,7 @@ export function UnderstoodChips({ filters, onRemove }: UnderstoodChipsProps) {
           </TooltipTrigger>
           <TooltipContent>
             <div className="max-w-xs space-y-1">
-              <div>
-                Sorgudaki “{filter.evidence}” ifadesinden çıkarıldı.
-              </div>
+              <div>{kanitAciklamasi(filter.evidence)}</div>
               <div className="text-text-500">
                 Kaldırmak için çipteki çarpıya tıklayın; sorgu bu süzgeç olmadan
                 yeniden çalışır.
