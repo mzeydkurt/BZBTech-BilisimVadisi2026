@@ -179,7 +179,7 @@ class AggregateBlock(BaseModel):
     üzerinden mi 608 kayıt üzerinden mi söylendiği bilinmeden değersizdir.
     """
 
-    kind: str = Field(description="extremum | count | count_banks | absence")
+    kind: str = Field(description="extremum | count | count_banks | absence | bank_roster")
     field: str | None = None
     field_label: str | None = None
     value: Decimal | None = None
