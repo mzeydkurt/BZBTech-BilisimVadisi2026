@@ -54,6 +54,11 @@ log = structlog.get_logger(__name__)
 # Yalnızca `product_rates`'e servis edilecek satırın yazılmasını engeller:
 # "oran bilinmiyor", "oran %5000" bilgisinden iyidir.
 
+# Kazıma tarafında `calculator_probes/common.py::oran_gecerli` aylık aralığı
+# %0,05–%15 olarak tanımlıyor; bu tavan onunla aynı büyüklükte, ama ALT sınır
+# buraya taşınmaz: gerçek %0 kâr paylı kampanyalar var (Albaraka Togg, 10-12 ay)
+# ve `oran < 0.05` kuralı onları da düşürürdü.
+#
 # `derive_rate_from_payment_plan` şunu belirtiyor: "Aylık oran hiçbir gerçek
 # üründe %100'ü aşmaz" (ikili arama aralığı buna göre 0-1). Güvenilir altı
 # kaynağın ölçülen tavanı %9.0. %20 bu tavanın iki katından fazla; ayarlanacak

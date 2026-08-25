@@ -12,7 +12,7 @@ from typing import Any
 
 from app.core.normalization.money import parse_decimal_tr
 from app.core.normalization.rate import parse_rate
-from app.scrapers.calculator_probes.common import ProbeReading, oran_gecerli, urun_tipi_ipucu
+from app.scrapers.calculator_probes.common import ProbeReading, urun_tipi_ipucu
 
 
 @dataclass
@@ -67,10 +67,21 @@ def parse_tr_rate(value: Any) -> Decimal | None:
     if value is None:
         return None
     if isinstance(value, (int, float, Decimal)):
-        oran = Decimal(str(value))
-        return oran if oran_gecerli(oran) else oran
+        return Decimal(str(value))
     metin = str(value).strip()
     if not metin or metin.lower() == "null":
         return None
-    oran = parse_rate(metin) or parse_decimal_tr(metin.lstrip("%").strip())
-    return oran
+    # ⚠️ GEÇERLİLİK BURADA DENETLENMEZ. Burada bir `oran_gecerli()` çağrısı
+    # vardı ama `return oran if oran_gecerli(oran) else oran` yazıldığı için
+    # iki dalda da aynı değeri döndürüyordu — koruma tamamen etkisizdi.
+    #
+    # Yerine `else None` yazmak DOĞRU DEĞİL: bu ayrıştırıcı aylık kâr payı
+    # oranı için de (`ProfitRate`), YILLIK maliyet oranı için de
+    # (`annual_cost_pct`, `YearlyCost`) kullanılıyor. `oran_gecerli` aylık
+    # aralığı (%0,05–%15) doğrular; yıllık maliyet meşru olarak %30–80
+    # bandındadır ve None'a düşerdi.
+    #
+    # Geçerlilik, büyüklüğün ne olduğunu BİLEN yerde denetlenir:
+    # `runner.py` ve `api_adapters/runner.py` içindeki
+    # `not oran_gecerli(...) and monthly_installment is None` kapısı.
+    return parse_rate(metin) or parse_decimal_tr(metin.lstrip("%").strip())
