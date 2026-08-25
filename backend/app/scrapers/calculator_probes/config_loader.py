@@ -33,7 +33,8 @@ def _load_raw() -> dict[str, Any]:
     if not CONFIG_PATH.is_file():
         raise FileNotFoundError(f"Hesaplayıcı config yok: {CONFIG_PATH}")
     with CONFIG_PATH.open(encoding="utf-8") as f:
-        return json.load(f)
+        veri: dict[str, Any] = json.load(f)
+    return veri
 
 
 @lru_cache(maxsize=1)
@@ -80,14 +81,14 @@ def probe_targets_from_config(bank_code: str | None = None) -> tuple[ProbeTarget
 
     `strategy=discover` olanlar yalnızca network keşfinde kullanılır.
     """
-    from app.scrapers.calculator_probes.targets import ProbeTarget as PT
+    from app.scrapers.calculator_probes.targets import ProbeTarget
 
-    hedefler: list[PT] = []
+    hedefler: list[ProbeTarget] = []
     for p in pages_for_bank(bank_code):
         if p.strategy == "discover":
             continue
         hedefler.append(
-            PT(
+            ProbeTarget(
                 bank_code=p.bank_code,
                 url=p.url,
                 strategy=p.strategy,

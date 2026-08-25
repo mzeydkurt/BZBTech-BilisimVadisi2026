@@ -15,7 +15,7 @@ import json
 import re
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 from urllib.parse import parse_qs, urlparse
@@ -131,7 +131,7 @@ class DiscoveryReport:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    return datetime.now(UTC).astimezone().isoformat(timespec="seconds")
 
 
 def _safe_json(text: str) -> Any:
@@ -243,7 +243,7 @@ def _parse_post_data(raw: str | None) -> Any:
 
 
 def _form_hints(page: Any) -> dict[str, Any]:
-    return page.evaluate(
+    ipuclari: dict[str, Any] = page.evaluate(
         """() => {
         const pick = (el) => ({
           tag: el.tagName.toLowerCase(),
@@ -269,6 +269,7 @@ def _form_hints(page: Any) -> dict[str, Any]:
         };
       }"""
     )
+    return ipuclari
 
 
 def _try_trigger_calculate(page: Any) -> None:

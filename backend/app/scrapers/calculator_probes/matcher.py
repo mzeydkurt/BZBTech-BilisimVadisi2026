@@ -10,7 +10,6 @@ from app.db.models.bank import Bank
 from app.db.models.product import Product
 from app.scrapers.calculator_probes.common import ProbeReading
 
-
 # Hesaplayıcı etiketi → ürün adında aranacak anahtarlar
 _VARIANT_ANAHTAR: dict[str, tuple[str, ...]] = {
     "sifir km": ("tasit", "arac"),
