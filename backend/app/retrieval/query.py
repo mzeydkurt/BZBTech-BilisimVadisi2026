@@ -1093,9 +1093,36 @@ def merge_with_previous(plan: QueryPlan, previous: QueryPlan | None) -> QueryPla
     if plan.intent in {"sohbet", "tanim", "kapsam_disi"}:
         return plan
 
-    from app.retrieval.relevance import is_follow_up_query
+    from app.retrieval.relevance import (
+        is_anaphoric_query,
+        is_follow_up_query,
+        opens_scope,
+    )
 
     takip = is_follow_up_query(plan.raw)
+    anafora = is_anaphoric_query(plan.raw)
+    kapsam_acildi = opens_scope(plan.raw)
+
+    # Bağlam devri KANITA bağlıdır, süzgecin yokluğuna değil.
+    #
+    # Ölçüldü (5 senaryonun 4'ü yanlıştı): yeni soru kendi konusunu getirdiği
+    # hâlde banka/eksen süzgeci taşınıyordu. "Kuveyt Türk alışveriş puanı" →
+    # "taşıt finansmanında en uzun vade hangi bankada" sorusu Kuveyt Türk'e
+    # kilitleniyor, kullanıcı bankalar arası sorduğu hâlde tek banka yanıtı
+    # dönüyordu. Sessiz hata: yanıt biçimsel olarak geçerli, içerik yanlış.
+    #
+    # Kural: sorgu kendi ekseni/oranı/toplamasıyla ayakta durabiliyorsa ve
+    # önceki tura açık atıf yapmıyorsa, hiçbir şey devralınmaz.
+    kendi_konusu = bool(
+        plan.axis_filters
+        or plan.rate_type
+        or plan.rate_type_candidates
+        or plan.aggregate
+        or plan.glossary_term
+        or plan.numeric
+    )
+    if kendi_konusu and not anafora:
+        return plan
 
     bank_codes = plan.bank_codes
     axis_filters = dict(plan.axis_filters)
@@ -1105,7 +1132,7 @@ def merge_with_previous(plan: QueryPlan, previous: QueryPlan | None) -> QueryPla
     sinyaller = list(plan.signals)
     degisti = False
 
-    if (not bank_codes or takip) and previous.bank_codes:
+    if (not bank_codes or takip) and previous.bank_codes and not kapsam_acildi:
         if not bank_codes:
             bank_codes = previous.bank_codes
             degisti = True
