@@ -1,7 +1,6 @@
 # KATİP — Katılım Bankacılığı Kampanya Analiz Platformu
 
-BZB Tech tarafından geliştirilen KATİP (Katılım Bankacılığı Kampanya Analiz
-Platformu), Türkiye'deki katılım bankalarının kamuya açık kampanya
+Türkiye'deki katılım bankalarının kamuya açık kampanya
 sayfalarından veri toplayan, bu veriyi normalize ederek karşılaştırılabilir
 hâle getiren ve web arayüzü üzerinden sunan analiz platformudur.
 
@@ -248,10 +247,11 @@ devrik paylaşım tablosu, Albaraka'da JS ile yüklenen 9 kampanya)
 
 ---
 
-## SPRINT 3 — devam ediyor
+## SPRINT 3 kapsamı
 
-Yapay zekâ katmanı: yerel model entegrasyonu ve kanıta dayalı doğal dil
-sorgulama.
+Yapay zekâ katmanı: yerel model entegrasyonu, kural tabanlı çıkarım ve kanıta
+dayalı doğal dil sorgulamanın temeli. Sohbet asistanı ve TEKNOFEST çıkarım
+servisi **Sprint 5**'te eklendi.
 
 | Alan | Durum | Sonuç |
 |---|---|---|
@@ -265,22 +265,23 @@ sorgulama.
 | Hibrit erişim (BM25 + gömme + RRF) | ✅ | Sorgu başına **3-5 ms** · FTS5 kullanılmadı |
 | Toplama sorularının SQL yanıtı | ✅ | Üstünlük ve sayma; **model çağrılmaz** |
 | Cevap üretimi ve kanıt guard'ı | ✅ | Doğrulanamayan sayı işaretlenir |
-| Kanıtlı Arama arayüzü | ✅ | İki bölmeli çalışma alanı |
+| Kanıtlı Arama arayüzü | ✅ | İki bölmeli çalışma alanı · Sprint 5'te sohbete dönüştü |
 
 `rule_only` kipinin gold set'e karşı ölçülmüş temel çizgisi:
 **kör alt küme F1 0,785** · mikro F1 0,809 · makro F1 0,773 ·
 halüsinasyon oranı 0,171 · doğru susma oranı 0,913.
 
-### Yerel model — bulut servisi yok
+### Yerel model — kapalı ağ yolu
 
-Şartname dış servise bağımlılığı yasaklıyor; çıkarım ve yanıt üretimi
-tamamen `localhost`ta çalışıyor.
+Sprint 3'te seçilen yerel yığın. **Üretim sağlayıcısı Sprint 5'te EVREN'e
+taşındı**; bu yol kaldırılmadı ve on-prem / kapalı ağ gösteriminin dayanağı
+olarak duruyor. Geçiş tek `.env` satırıdır (`LLM_PROVIDER=local`).
 
 | | |
 |---|---|
 | Çalışma ortamı | Ollama (MIT) |
-| Üretim modeli | `qwen3:8b` — Apache-2.0 |
-| Gömme modeli | `nomic-embed-text` — Apache-2.0 |
+| Yerel üretim modeli | `qwen3:8b` — Apache-2.0 |
+| Yerel gömme modeli | `nomic-embed-text` — Apache-2.0 |
 | Ölçülen hız | 7,5 tok/s (GTX 1650, 4 GB VRAM · %57 CPU offload) |
 
 Model seçimi ölçümle yapıldı: iki Apache-2.0 aday aynı Türkçe kampanya
@@ -409,26 +410,28 @@ sistem çökmez, sıralı kanıtlar gösterilmeye devam eder.
 | `frontend/package.json`'da `typecheck` betiği yoktu | `dev.py lint` onu çağırıyor; **arayüz tip denetimi hiç çalışmıyormuş** | Betik eklendi |
 | `.env`'deki model adı kurulu değildi, gömme modeli bir Hugging Face adıydı | `llm-saglik` False dönüyor, gömme çağrısı 404 verirdi | İkisi de kurulu Ollama modellerine çevrildi |
 
-### Yeni veri bulgusu — `konut_finansmani` etiketi sıfır
+### Veri bulgusu — `konut_finansmani` etiketi sıfır
 
-608 kampanyanın **hiçbiri** `konut_finansmani` etiketi taşımıyor. Şartnamenin
-8 zorunlu ürün türünden tek sıfır olan bu:
+482 kampanyanın **hiçbiri** `konut_finansmani` etiketi taşımıyor. Şartnamenin
+8 zorunlu ürün türünden tek sıfır olan bu (ölçüm: 25 Ağustos 2026):
 
 | Tür | Etiket | | Tür | Etiket |
 |---|---|---|---|---|
-| `kart` | 451 | | `finansman` | 7 |
-| `alisveris_puani` | 86 | | `yatirim_urunu` | 6 |
-| `yeni_musteri` | 45 | | `tasit_finansmani` | 3 |
-| `ihtiyac_finansmani` | 9 | | **`konut_finansmani`** | **0** |
-
-İkinci bulgu: Kuveyt Türk'ün 47 kampanyasının hiçbirinde `market_gida`
-etiketi yok (veri setinde toplam 44 market etiketi var).
+| `kart` | 378 | | `ihtiyac_finansmani` | 9 |
+| `alisveris_puani` | 56 | | `tasit_finansmani` | 6 |
+| `finansman` | 49 | | `yatirim_urunu` | 5 |
+| `yeni_musteri` | 42 | | **`konut_finansmani`** | **0** |
 
 > Bu bir erişim hatası **değil**, sınıflandırma kapsamı boşluğudur. Erişim
 > katmanı doğru davranıyor; eksik olan `taxonomy.py` sözlüğü. Sözlük
-> genişletilip `python dev.py siniflandir` çalıştırıldığında ağa çıkmadan
-> düzelir. Sorgu kümesindeki üç `konut_finansmani` sorusu kümede **kalıyor**:
-> boş-sonuç yolunu doğru sınıyorlar.
+> genişletildikten sonra `python dev.py siniflandir` **ağa çıkmadan**
+> yeniden çalıştırılabilir. Sorgu kümesindeki üç `konut_finansmani` sorusu
+> kümede **kalıyor**: boş-sonuç yolunu doğru sınıyorlar.
+
+İkinci bulgu, sözlük genişletmesiyle **kısmen kapandı**: Kuveyt Türk'ün
+`market_gida` etiketi 0'dan **1**'e çıktı. Veri setindeki toplam `market_gida`
+etiketi 44'ten 22'ye düştü — bu bir gerileme değil, süresi kesin dolmuş
+kampanyaların temizlenmesinin sonucu.
 
 ## SPRINT 5 kapsamı
 
@@ -474,13 +477,6 @@ alan:
 
 `llm-fast` hem **44 kat hızlı** hem daha doğru: `file_fee_try=0` tuzağını iki
 yerel model de kaçırdı.
-
-⚠️ **Sessiz bir hata bulundu.** Sağlayıcı OpenAI uyumlu
-`/v1/chat/completions` ucunu kullanıyordu. Düşünen modellerde bu uç, düşünme
-çıktısını `content` alanına koymuyor: HTTP 200 dönüyor, `content` **boş**
-geliyor ve hiçbir alan çıkarılamıyor — hata mesajı yok, yalnızca F1 sıfıra
-düşüyor. Üretim çağrısı Ollama'nın `/api/chat` ucuna `think: false` ile
-taşındı; boş yanıt artık hata fırlatıyor.
 
 ### RAG — hibrit erişim, kanıtlı yanıt
 
@@ -601,30 +597,19 @@ Devir rehberinin kendi kuralı uygulandı: *"hibrit, `rule_only`'den kötüyse
 LLM katmanı açılmaz."* Yetenek `EvrenProvider.rerank()` olarak duruyor ve
 `EVREN_RERANK_MODEL` ayarı mevcut; erişim yoluna **bağlanmadı**.
 
-### Sahada yakalanan sessiz hatalar
+### Sprint 5'te yakalanan sessiz hatalar
 
-Hepsi hata fırlatmadan yanlış sonuç üretiyordu; her biri için regresyon testi
-var.
+Sprint 3'te bulunanlar yukarıda; aşağıdakiler bu sprintte ortaya çıktı.
+Hepsi hata fırlatmadan yanlış sonuç üretiyordu ve her biri için regresyon
+testi var.
 
 | Bulgu | Etki | Önlem |
 |---|---|---|
-| Gömme etiketi vektörü üreten modelden bağımsızdı | `bge-m3-embed` ile üretilmiş **1.519 vektör** `nomic-embed-text` etiketiyle kaydedildi (1024 boyut; oysa nomic 768 üretir). Airgap'te `LLM_PROVIDER=local` yapıldığı anda sorgu 768, saklanan 1024 olur ve `cosine()` uzunluk uyuşmazlığında 0.0 döndürdüğü için **anlamsal kanal sessizce ölürdü** | Tek doğruluk kaynağı `active_embedding_model()`; boyut uyuşmazlığı artık yanıtta bildiriliyor |
-| Model seçimi yalnızca sağlayıcıyı değiştiriyordu | `evren:llm-large` seçmek modeli `.env`'deki `llm-fast` olarak bırakıyordu — kullanıcı seçim yaptı sanıyor, **hiçbir şey değişmiyordu** | Seçim sağlayıcıyı **ve** model adını birlikte günceller |
-| `term_months_max` işaretçisi `" ay"`, `normalize_text()` baştaki boşluğu siliyor | Kalan `"ay"` **"kâr p-ay-ı"** içine uyuyor; "en düşük kâr payı" sorusu vade üzerinden yanıtlanıp **"en düşük kâr payı 1"** diyordu | İşaretçiler kelime sınırında aranıyor |
-| Taksonomi anahtarı `altın`, `altında` sözcüğüne uyuyor | "%2'nin **altında**" ifadesi sektör süzgeci ekliyor, 7 finansman kampanyasının tamamı eleniyor, **0 sonuç** | Karşılaştırma işaretçileri taksonomi eşleşmesinden önce maskeleniyor — bir simgenin iki rolü olamaz |
-| Sert süzgeç en ilgili 120 adaya uygulanıyordu | Seçici süzgeç havuzu boşaltıyor; "Kuveyt Türk'te market kampanyası" **0 sonuç** dönüyordu | Süzgeç gövdenin tamamına uygulanıyor, sıralama sonra |
-| Arama gövdesi önbelleği hiç geçersizleşmiyordu | `kart-uret` sonrası arama **eski metinlerle** çalışmaya devam ediyordu | Üç sayaçlık parmak izi denetimi |
-| Değerlendirme raporu yanlış gömme modelini beyan ediyordu | `docs/sprint5_evaluation.md` `nomic-embed-text` yazıyordu, oysa vektörler `bge-m3-embed` | Rapor tek kaynaktan okuyor |
-| Qdrant hata mesajı boş geliyordu | `ReadTimeout`'un `str()` çıktısı boş; "Qdrant'a ulaşılamıyor: " şeklinde yarım mesaj, sorunun zaman aşımı mı ağ mı olduğunu gizliyordu | İstisna türü mesaja ekleniyor; yükleme partisi 128→64, ayrı zaman aşımı |
-| `frontend/package.json`'da `typecheck` betiği yoktu | `dev.py lint` onu çağırıyor; **arayüz tip denetimi hiç çalışmıyordu**. Eklendiği anda `xlsx` bağımlılığının kurulu olmadığı ortaya çıktı — uygulama açılmıyordu | Betik eklendi |
-| Göç `0011` kısıt adını sabit yazıyordu | Ad veritabanına göre 3 ya da 5 kat önek taşıyor; **boş veritabanında `migrate` hiç tamamlanmıyordu** | Ad çalışma anında `sqlite_master`'dan okunuyor |
-| `conftest.py`'de ortam bloğu `app.*` içe aktarmalarının altındaydı | `get_settings()` içe aktarma sırasında önbelleğe giriyor; `LLM_PROVIDER=mock` etkisiz kalıyor ve 3 test gerçek modele çıkmaya çalışıyordu | Blok içe aktarmaların üstüne alındı |
-
-### Yeni veri bulgusu — `konut_finansmani` etiketi
-
-`taxonomy.py` sözlüğü genişletildikten sonra bu boşluk kapanma yolunda; ölçüm
-yeniden yapıldığında bu bölüm güncellenecek. Sözlük genişletmesi **ağa
-çıkmadan** yeniden çalıştırılabilir (`python dev.py siniflandir`).
+| Gömme etiketi, vektörü üreten modelden bağımsızdı | `bge-m3-embed` ile üretilmiş **1.519 vektör** `nomic-embed-text` etiketiyle kaydedildi (1024 boyut; oysa nomic 768 üretir). Yazan ve okuyan aynı yanlış etiketi kullandığı için hata görünmüyordu; airgap'te `LLM_PROVIDER=local` yapıldığı anda sorgu 768, saklanan 1024 olur ve `cosine()` uzunluk uyuşmazlığında `0.0` döndürdüğü için **anlamsal kanal sessizce ölürdü** | Tek doğruluk kaynağı `active_embedding_model()`; boyut uyuşmazlığı artık yanıtta bildiriliyor ve loglanıyor |
+| Model seçimi yalnızca sağlayıcıyı değiştiriyordu | `evren:llm-large` seçmek sağlayıcıyı EVREN'de tutuyor ama modeli `.env`'deki `llm-fast` olarak bırakıyordu — kullanıcı seçim yaptığını sanıyor, **hiçbir şey değişmiyordu** ve hata da verilmiyordu | Seçim sağlayıcıyı **ve** model adını birlikte günceller; model listesi servisten canlı keşfedilir |
+| Değerlendirme raporu yanlış gömme modelini beyan ediyordu | `docs/sprint5_evaluation.md` `nomic-embed-text` yazıyordu, oysa vektörler `bge-m3-embed`'den geliyordu — jüriye sunulan bir çıktıda yanlış model adı | Rapor da tek kaynaktan okuyor |
+| Qdrant hata mesajı boş geliyordu | `httpx.ReadTimeout`'un `str()` çıktısı boş; mesaj "Qdrant'a ulaşılamıyor: " diye yarım kalıyor ve sorunun zaman aşımı mı ağ mı olduğunu gizliyordu (2.402 noktalık yüklemede ölçüldü) | İstisna türü mesaja giriyor; yükleme partisi 128→64 ve upsert için aramadan ayrı 120 sn zaman aşımı |
+| WAL etkinken kopyalanan SQLite dosyası bayat görüntü veriyor | Kart sayımı canlı dosyada **482**, kopyada **377** çıktı; "105 kampanya aranamıyor" şeklinde yanlış bir bulgu raporlanmasına yol açtı | Sayım canlı dosyadan `mode=ro` ile yapılıyor |
 
 ### Devam eden işler — tamamlanmadan bu bölüme sayı yazılmaz
 
@@ -685,9 +670,73 @@ durum arayüzde açıkça yazar.
 Kurulu olmayan bir ad yazıldığında `health()` sessizce `False` döner ve
 çıkarım hiç çalışmaz.
 
-> **Hiçbir bulut servisi veya ücretli API kullanılmamaktadır.** Model
+> **Bu kurulumda hiçbir bulut servisi veya ücretli API kullanılmaz.** Model
 > `localhost` üzerinde çalışır; veri kurumdan çıkmaz. Çalışma ortamı Ollama
 > (MIT), kullanılan modellerin ikisi de Apache License 2.0'dır.
+
+### EVREN kurulumu — üretim sağlayıcısı
+
+EVREN, TEKNOFEST 2026 kapsamında Savunma Sanayii Başkanlığı tarafından
+yarışmacı takımlara tahsis edilen çıkarım servisidir. Ücretli değildir,
+kotası yoktur ve **yarışmanın kendi altyapısıdır** — üçüncü taraf ticari bir
+bulut servisi değildir.
+
+`.env` dosyasına (anahtarlar `.gitignore`'dadır, koda gömülmez):
+
+```env
+LLM_PROVIDER=evren
+EVREN_BASE_URL=https://evren-llmapi.ssyz.org.tr/v1
+EVREN_API_KEY=<takım anahtarınız>
+EVREN_MODEL=llm-fast
+EVREN_EMBEDDING_MODEL=bge-m3-embed
+EVREN_RERANK_MODEL=rerank
+
+# Sohbet zaman aşımı toplu çıkarımdan AYRI (aşılırsa şablon yanıta düşer)
+CHAT_TIMEOUT_SECONDS=25
+
+# Qdrant — takıma özel izole örnek
+VECTOR_BACKEND=qdrant
+QDRANT_URL=https://evren-vektor.ssyz.org.tr/<takım>
+QDRANT_API_KEY=<qdrant anahtarınız>
+QDRANT_COLLECTION=katip_kartlari
+```
+
+Doğrulama: `python dev.py llm-saglik`
+
+⚠️ Yerel yola dönmek için **tek satır** yeterlidir: `LLM_PROVIDER=local`.
+Kapalı ağ gösterimi bu yol üzerinden yapılır; başka hiçbir şey değişmez.
+
+### RAG kurulumu — arama gövdesi ve vektörler
+
+Sıra önemlidir; her adım bir öncekine bağlıdır:
+
+```bash
+python dev.py cikarim        # kampanya metninden alan çıkarımı (ağa çıkmaz)
+python dev.py siniflandir    # 4 eksende taksonomi etiketi (ağa çıkmaz)
+python dev.py kart-uret      # yapısal alanlardan aranabilir kart (ağa çıkmaz)
+python dev.py gomme-uret     # kart -> vektör  (EVREN ya da Ollama'ya gider)
+python dev.py qdrant-yukle   # vektör -> Qdrant (gömme ÜRETMEZ, yalnızca aktarır)
+```
+
+| Komut | Ağa çıkar | Ne yapar |
+|---|---|---|
+| `gomme-uret` | **evet** | `entity_cards` → `embeddings`. Kart özeti değişmemişse atlar. |
+| `qdrant-yukle` | **evet** | `embeddings` → Qdrant. Kararlı nokta kimliği kullanır, **çoğaltmaz**. |
+| `sohbet-degerlendir` | duruma göre | 35 soruluk sohbet gold set ölçümü → `docs/sprint5_evaluation.md` |
+| `llm-saglik` | **evet** | Etkin sağlayıcıya ulaşılıyor mu, model yüklü mü |
+
+⚠️ **`gomme-uret` ile `qdrant-yukle` ayrı komutlardır.** Yükleme sırasında
+vektör yeniden üretilmez; aynı vektörü ikinci kez servise sormak ortak
+kullanılan EVREN'i boşuna meşgul etmek olurdu.
+
+⚠️ **Yerel `embeddings` tablosu Qdrant'a yüklendikten sonra SİLİNMEZ.**
+Qdrant erişilemediğinde arama ona düşer ve durum yanıtta bildirilir; kapalı ağ
+gösterimi bu yüzden Qdrant olmadan da çalışır.
+
+⚠️ **Gömme modeli değişirse vektörlerin tamamı yenilenmelidir.** `bge-m3-embed`
+1024, `nomic-embed-text` 768 boyut üretir; boyut uyuşmazlığında kosinüs
+benzerliği sessizce `0.0` döner. Sistem bu durumu yakalayıp yanıtta bildirir,
+ama düzeltme `gomme-uret` + `qdrant-yukle --yeniden-kur` ile yapılır.
 
 ### Adım adım çalıştırma
 
@@ -790,7 +839,6 @@ hangi ifadenin o kategoriyi doğurduğu insan yargısıdır.
 > `oto-kanit` ile işaretlenir ve `gold-durum` bunları insan seçimlerinden
 > ayrı sayar. Tek bir "kanıtlı etiket" sayısı verilseydi rapor, sahip
 > olmadığımız bir titizliği iddia ederdi.
-
 
 
 ### Boru hattı — günlük kullanımda tek komut
