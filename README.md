@@ -551,6 +551,10 @@ projede zaten var ve `LICENSES.md`'ye yeni bir satır girmedi.
 | Süzgeç şeffaflığı | ✅ "Anladığım" çipleri, kaldırılabilir |
 | Erişim şeffaflığı | ✅ kaç karttan kaçı, hangi kanal, ne elendi, kaç ms |
 | Boş sonuçta gevşetme önerisi | ✅ hangi süzgeç kaldırılsa kaç sonuç |
+| Kampanya odağı — "bu kampanyanın…" | ✅ önceki yanıttaki tek kayda bağlanır |
+| Banka kümesi soruları — "hangi bankada X yok" | ✅ `absence` toplaması |
+| Banka sayımı — "kaç banka X veriyor" | ✅ `count_banks`, sayı SQL'den |
+| Sözlük zenginleştirmesi | ✅ olgusal yanıta tanım eklenir, niyet değişmez |
 
 **Yönetişim — ölçülmüş davranış:**
 
@@ -591,6 +595,69 @@ arayüz ölmüş görünür. EVREN tüm takımlarca paylaşıldığı için geci
 dalgalanıyor — ölçüldü: aynı sorgu **4,1 sn · 4,9 sn · 30,5 sn**.
 `CHAT_TIMEOUT_SECONDS=25` aşılınca şablon yanıta düşülür ve **kanıtlar yine
 gösterilir**.
+
+### Gerçek soru havuzu ölçümü (100 soru · 42 oturum)
+
+Ekipten gelen `docs/Katilim_Bankaciligi_Test_Sorulari.xlsx` havuzu, güncel
+veritabanına göre hazırlanmış **100 soru / 42 oturum** içerir. `Oturum No` ve
+`Sıra No` kolonlarıyla **çok turlu**: 58 soru bir takip sorusudur. 92 soru
+müşteri, 8 soru banka çalışanı rolünde.
+
+Havuz `session_id` + `parent_completion_id` zinciriyle sırasıyla çalıştırıldı
+ve geliştirmeler bu ölçümün üzerine yapıldı.
+
+**Bulgu 1 — "nedir" tanım sorusu sanılıyordu.** `intent=tanim` **49/100**
+çıktı; havuzda gerçekten terim sorusu olan kategori ise ~8. Türkçede olgusal
+sorular da "nedir" ile biter:
+
+> *"Kuveyt Türk'te aylık vadeli TL katılma hesabının kâr payı oranı nedir?"*
+
+Bunların 16'sı kullanıcıya *"sözlükte tanım bulunamadı"* döndürüyordu — oysa
+yanıt kampanya/ürün gövdesinde vardı. Aday kural 100 soruda ölçüldü:
+
+| | doğru tanım | **yanlış tanım** | kaçırılan |
+|---|---|---|---|
+| eski kural (yalnızca işaretçi) | 7 | **42** | 2 |
+| yeni kural (banka adı / sayı varsa tanım değil) | 5 | **3** | 4 |
+
+⚠️ Kalan 3'ün 2'si aslında gerçek tanım sorusu (kategori etiketi eksikti).
+4 "kaçırılan"ın 3'ü de doğru davranıştır: *"konut kredisinin faiz oranı
+nedir"* olgusal bir sorudur, terim uyarısıyla yanıtlanır.
+
+Tanım yine kaybolmaz: sözlük ıskası **aramaya düşer** ("bulunamadı" denmez) ve
+olgusal yanıta tanım **zenginleştirme** olarak eklenir.
+
+**Bulgu 2 — banka kümesi soruları yanıtlanamıyordu.**
+
+| soru | eski davranış | gerçek |
+|---|---|---|
+| kaç banka taşıt finansmanı veriyor | toplama kurulmuyor, **model sayıyı kendi üretti**: *"iki banka"* | **7** |
+| hangi bankada taşıt kampanyası **yok** | olumsuzlama yok sayılıp taşıt **oranları** listelendi | — |
+| `by_bank` dökümü | sıfır kampanyalı banka görünmüyordu | `adil_katilim = 0` |
+
+İlki *"model sayı üretmez"* güvencesinin doğrudan ihlaliydi. Üçü de aynı
+eksikten doğuyordu: toplama **banka evrenini** görmüyordu; kaydı olmayan banka
+`docs` içinde hiç bulunmadığı için yokluk sorusu yapısal olarak
+yanıtlanamazdı. `Corpus.banks` eklendi, `count_banks` / `absence` toplamaları
+ve `banks_with` / `banks_without` alanları geldi.
+
+⚠️ Alan ayrımı korunur: "kaç banka taşıt finansmanı **veriyor**" ürünü sorar
+(7), "hangi bankada taşıt **kampanyası** yok" kampanyayı sorar (3). Aynı sayıyı
+iki soruya da vermek, birinde yanlış yanıt demektir.
+
+**Bulgu 3 — "Bu kampanyanın bitiş tarihi ne zaman?"** 58 takip sorusunun
+yalnızca 4'ünde bağlam devri oluyordu. Oturum S3 · 3. turda devir
+gerçekleşiyor, çip görünüyor, ama sonuç **0** dönüyordu. Üç ayrı neden:
+
+1. Odak yalnızca **bankayı** taşıyordu, kampanyayı değil.
+2. Devralınan 5 eksen süzgeci odak kaydı eliyordu.
+3. Sert süzgeç kapısı yetmiyordu — **erişim ondan önce çalışıyor** ve sorguda
+   içerik terimi olmadığı için BM25 o kaydı hiç getirmiyordu.
+
+Odak varken erişim **tamamen atlanır**, kayıt doğrudan okunur. Birden çok sonuç
+varsa odak en üst sıralı kayıttır: "belirsizse bağlamama" kuralı burada
+**garanti başarısızlık** üretiyordu. Bağ çip olarak görünür ("önceki yanıttaki
+kampanya"), kullanıcı yanlışsa düzeltebilir.
 
 ### Sohbet ölçümü (35 soruluk gold set)
 
