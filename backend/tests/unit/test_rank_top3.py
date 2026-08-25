@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.retrieval.rank import RankCandidate, TOP_N, score_candidates
+from app.retrieval.rank import TOP_N, RankCandidate, score_candidates
 
 
 def test_top3_sirasi() -> None:
