@@ -179,7 +179,7 @@ class AggregateBlock(BaseModel):
     üzerinden mi 608 kayıt üzerinden mi söylendiği bilinmeden değersizdir.
     """
 
-    kind: str = Field(description="extremum | count")
+    kind: str = Field(description="extremum | count | count_banks | absence")
     field: str | None = None
     field_label: str | None = None
     value: Decimal | None = None
@@ -190,6 +190,19 @@ class AggregateBlock(BaseModel):
     total: int = 0
     tie_count: int = 0
     by_bank: dict[str, int] | None = None
+    # ── Banka kümesi toplamaları (eklemeli) ───────────────
+    # Yokluk sorusunun yanıtı VAR olanların listesi değildir; iki küme
+    # ayrı taşınır ki arayüz "yok" ile "var"ı karıştırmasın.
+    banks_with: list[str] = Field(
+        default_factory=list, description="Kriteri karşılayan banka adları"
+    )
+    banks_without: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Kriteri karşılayan KAYDI OLMAYAN banka adları. Boş liste 'hepsinde var' "
+            "demektir; alan yokluğu değil."
+        ),
+    )
 
 
 class ChatProductItem(BaseModel):
