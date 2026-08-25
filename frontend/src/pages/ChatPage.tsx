@@ -82,6 +82,22 @@ function messagesFromSession(msgs: ChatSessionMessage[]): Message[] {
   }));
 }
 
+/**
+ * Yuklenen gecmisin son assistant turundaki `completion_id`.
+ *
+ * Gecmis yuklendikten sonra sorulan soru bu tura baglanir; aksi halde sunucu
+ * "son tur"u varsayar ve kullanici baska bir oturumdan devam ederken baglam
+ * kopar.
+ */
+function zincirUcunuBul(msgs: ChatSessionMessage[]): string | null {
+  const sirali = [...msgs].sort((a, b) => a.turn_index - b.turn_index);
+  for (let i = sirali.length - 1; i >= 0; i -= 1) {
+    const m = sirali[i];
+    if (m?.role === "assistant" && m.completion_id) return m.completion_id;
+  }
+  return null;
+}
+
 function TopMatchCards({ data }: { data: ChatResponse }) {
   const matches = (data.top_matches ?? []).slice(0, 3);
   if (matches.length > 0) {
@@ -283,6 +299,10 @@ export function ChatPage() {
   // null = sunucunun yapilandirdigi model kullanilir.
   const [modelId, setModelId] = useState<string | null>(null);
   const [gecmisAcik, setGecmisAcik] = useState(true);
+  // Sohbet zincirinin ucu: sunucu baglami HANGI cevaptan devralacagini bilsin.
+  // Bos birakilirsa sunucu "son tur"u varsayar; gecmisten eski bir tura
+  // donuldugunde bu yanlis bagalam tasir.
+  const [zincirUcu, setZincirUcu] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -301,8 +321,11 @@ export function ChatPage() {
         writeStoredSessionId(null);
         setSessionId(null);
         setMessages([]);
+        setZincirUcu(null);
       } else {
-        setMessages(messagesFromSession(sessionQuery.data.messages ?? []));
+        const gecmis = sessionQuery.data.messages ?? [];
+        setMessages(messagesFromSession(gecmis));
+        setZincirUcu(zincirUcunuBul(gecmis));
       }
       setHistoryLoaded(true);
     } else if (sessionQuery.isError) {
@@ -348,10 +371,13 @@ export function ChatPage() {
         query: finalQuery,
         bank_code: bankCode ?? null,
         session_id: sessionId,
+        model_id: modelId,
+        parent_completion_id: zincirUcu,
       },
       {
         onSuccess: (data) => {
           if (data.session_id) persistSession(data.session_id);
+          if (data.completion_id) setZincirUcu(data.completion_id);
           setMessages((prev) => [
             ...prev,
             { role: "assistant", text: data.answer.text, response: data },
@@ -380,6 +406,7 @@ export function ChatPage() {
     if (key === sessionId) return;
     setMessages([]);
     setPendingClarification(null);
+    setZincirUcu(null);
     setHistoryLoaded(false);
     persistSession(key);
   };
@@ -388,6 +415,7 @@ export function ChatPage() {
     persistSession(null);
     setMessages([]);
     setPendingClarification(null);
+    setZincirUcu(null);
     setHistoryLoaded(true);
   };
 
@@ -397,6 +425,7 @@ export function ChatPage() {
       persistSession(null);
       setMessages([]);
       setPendingClarification(null);
+      setZincirUcu(null);
     };
     if (!key) {
       clearLocal();
