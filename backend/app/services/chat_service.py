@@ -1227,6 +1227,7 @@ async def _aggregate_response(
     # bankasında?" sorusu — rekabet analizinin en klasik sorusu — "uygun teklif
     # bulunmamaktadır" yanıtı dönüyordu; oran verisi `product_rates`'te.
     oran_urunleri: list[ChatProductItem] = []
+    sifir_notu: str | None = None
     if spec.kind == "extremum" and plan.source_domain in {"finansman", "katilma"}:
         kazanan_oran, berabere_oran, oransiz = _oran_ucdegeri(corpus, plan, spec)
         if kazanan_oran is not None:
@@ -1251,10 +1252,15 @@ async def _aggregate_response(
                 # "En düşük oran %0" cümlesini açıklamasız bırakmak, veri
                 # boşluğunu en iyi teklif gibi göstermek olur. Veriye
                 # dokunulmuyor (provenance korunur), ama belirsizlik SÖYLENİR.
-                metin += (
-                    " ⚠️ %0 değeri iki anlama gelebilir: bedelsiz (vade farksız) "
-                    "bir kampanya ya da kaynakta oranın yayımlanmamış olması. "
-                    "Kaydın kaynağına bakılması gerekir."
+                #
+                # ⚠️ UYARI METNE EKLENMEZ, YAPISAL ALANA YAZILIR. Ölçüldü:
+                # `metin`e eklenen uyarı anlatıcı katmanında (`_anlat_computed`)
+                # yeniden yazılırken DÜŞÜYORDU. Güvenlik bildirimi modelin
+                # üslup kararına bırakılamaz.
+                sifir_notu = (
+                    "%0 değeri iki anlama gelebilir: bedelsiz (vade farksız) bir "
+                    "kampanya ya da kaynakta oranın yayımlanmamış olması. Kaydın "
+                    "kaynağına bakılması gerekir."
                 )
 
     etiket = birim = None
@@ -1316,6 +1322,7 @@ async def _aggregate_response(
             banks_without=list(hesap.banks_without),
         ),
         products=oran_urunleri,
+        direction_note=sifir_notu,
         results=kanitlar,
         retrieval=RetrievalReport(
             corpus_size=corpus.size,
