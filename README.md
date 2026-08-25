@@ -542,6 +542,7 @@ projede zaten var ve `LICENSES.md`'ye yeni bir satır girmedi.
 | Yetenek | Durum |
 |---|---|
 | Çok turlu sohbet + oturum kalıcılığı | ✅ `chat_sessions` / `chat_messages` |
+| Tur zinciri — bağlam hangi cevaptan devralınıyor | ✅ `completion_id` / `parent_completion_id` |
 | Sohbet geçmişi listesi ve erişimi | ✅ `GET /chat/sessions` |
 | Model seçimi (istek başına) | ✅ `GET /chat/models` — canlı keşif |
 | Hazır örnek sorular | ✅ gerçek veriden seçilmiş |
@@ -634,6 +635,91 @@ testi var.
 | Değerlendirme raporu yanlış gömme modelini beyan ediyordu | `docs/sprint5_evaluation.md` `nomic-embed-text` yazıyordu, oysa vektörler `bge-m3-embed`'den geliyordu — jüriye sunulan bir çıktıda yanlış model adı | Rapor da tek kaynaktan okuyor |
 | Qdrant hata mesajı boş geliyordu | `httpx.ReadTimeout`'un `str()` çıktısı boş; mesaj "Qdrant'a ulaşılamıyor: " diye yarım kalıyor ve sorunun zaman aşımı mı ağ mı olduğunu gizliyordu (2.402 noktalık yüklemede ölçüldü) | İstisna türü mesaja giriyor; yükleme partisi 128→64 ve upsert için aramadan ayrı 120 sn zaman aşımı |
 | WAL etkinken kopyalanan SQLite dosyası bayat görüntü veriyor | Kart sayımı canlı dosyada **482**, kopyada **377** çıktı; "105 kampanya aranamıyor" şeklinde yanlış bir bulgu raporlanmasına yol açtı | Sayım canlı dosyadan `mode=ro` ile yapılıyor |
+| Bağlam devri süzgecin **yokluğuna** bağlıydı, kanıta değil | Yeni soru kendi konusunu getirdiği hâlde önceki turun banka/eksen süzgeci taşınıyordu. Ölçüldü, 5 senaryonun **4'ü yanlış**: "Kuveyt Türk alışveriş puanı" → "taşıt finansmanında en uzun vade **hangi bankada**" sorusu Kuveyt Türk'e kilitleniyor; "Albaraka yeni müşteri" → "**tüm bankalarda** kaç kampanya var" sorusu Albaraka'ya kilitleniyordu. Kullanıcı bankalar arası sordu, tek banka yanıtı aldı | Devir artık kanıta bağlı: sorgu kendi ekseni/oranı/toplamasıyla ayakta durabiliyorsa ve önceki tura açık atıf yapmıyorsa **hiçbir şey** devralınmaz. `opens_scope()` — "hangi banka", "tüm bankalar", "bankalar arası" — banka devrini her koşulda veto eder |
+| "Onun" önceki **soruya** bağlanıyordu, önceki **cevaba** değil | "en uzun vade hangi bankada" → *"Vakıf Katılım"* cevabından sonra "peki onun koşulları neler" sorusu tüm bankalarda arıyor, `%0.0000` içeren alakasız yanıt dönüyordu. Anafora, önceki cevabın adını verdiği kuruma işaret eder | `previous_focus()` toplama kazananını (`winner_campaign_id`), tek sonucu veya sonuçların ortak bankasını okur. **Belirsizse `None`** — yanlış kuruma bağlamak hiç bağlamamaktan kötüdür. Çipte `evidence="önceki cevap"` görünür |
+| Bağlam "son turdan" devralınıyordu | Kullanıcı sohbet geçmişinden eski bir tura dönüp soru sorduğunda yanlış bağlam taşınıyordu | Göç `0015` ile `completion_id`; istemci takip sorusunu hangi cevaba bağladığını bildirir. ⚠️ Tanınmayan kimlik **sessizce son tura düşmez**, devir hiç yapılmaz |
+| `model_id` arayüzden **hiç gönderilmiyordu** | Model seçici ekranda duruyor, durumu tutuluyor, ama istek gövdesine konmuyordu. Sunucu tarafı doğruydu — seçim tamamen **ölü bir kontroldü** ve hata da vermiyordu | `ChatPage` istek gövdesine `model_id` ve `parent_completion_id` ekliyor; oturum sınırlarında zincir sıfırlanıyor |
+| Ürün yedeği rastlantısal **tek terim** eşleşmesinde tetikleniyordu | "bana bir şiir yaz" sorgusu `returned=0` olduğu hâlde 8 ürün döndürüp Hayat Finans tanıtım metni üretiyordu: `bana` simgesi **"Bana Bunu Al"** ürünüyle eşleşiyor. Puan eşiği ayırt etmiyor — çöp 6.98 > gerçek 7.73 | **Kapsama** kapısı: eşleşen anlamlı terimler, sorgunun anlamlı terimlerinin en az yarısını kapsamalı. Tek simgeli meşru arama (`Togg`) engellenmez. `bana` STOPWORDS'e **eklenmedi** — gerçek bir ürün adı |
+| Çip ipucu devralınan bağlamı "sorguda geçen ifade" gibi gösteriyordu | *"Sorgudaki 'önceki cevap' ifadesinden çıkarıldı"* yazıyordu; devralınan süzgeç sorguda geçen bir ifade değil. Kullanıcı yanlış devralmayı fark edemez | İpucu kaynağa göre ayrışıyor: "Bu soruda belirtilmedi; önceki yanıtın işaret ettiği kurumdan alındı" |
+
+### Hesaplayıcı oran verisi — kök neden ve karantina
+
+Sohbet yanıtlarında `%5000` ve `%64,49 kâr payı` gibi değerler görüldü.
+Bu, projenin temel güvencesini tersine çeviriyordu: **model sayı üretmez,
+sayılar veritabanından gelir** — bozuk veri, yetkili görünen yanlış yanıt olur.
+
+Kaynak bazında ölçüm, tek bir kaynağın ayrıştığını gösterdi:
+
+| kaynak | n | ortalama | max |
+|---|---|---|---|
+| `html_table` | 291 | %3,97 | %6,1 |
+| `calculator_api` | 28 | %3,90 | %5,7 |
+| `seed_manual` | 22 | %3,77 | %4,79 |
+| `payment_plan_derived` | 18 | %3,73 | %4,17 |
+| **`calculator_playwright`** | **78** | **%136,03** | **%5000** |
+
+**Kök neden 1 — bayat okuma.** Bakılacak sayı `toplam ÷ taksit`: ödeme planının
+*ima ettiği* vade. Bu, sorulan vadeyle örtüşmüyordu:
+
+| banka | probe vadesi | taksit | toplam | ima edilen | yazılan oran |
+|---|---|---|---|---|---|
+| albaraka | 36 | 10.283,74 | 236.526,84 | **23** | %64,49 |
+| albaraka | 48 | 10.283,74 | 236.526,84 | **23** | %64,49 |
+| dunya_katilim | 12 | 21.816,71 | 261.800,49 | 12 ✓ | %3,39 |
+| dunya_katilim | 24 | 21.816,71 | 261.800,49 | **12** | %3,39 |
+
+Aynı taksit/toplam değeri farklı vadelerde tekrar ediyor: Playwright yeni
+tutar/vade gönderdikten sonra sayfa güncellenmeden okuyor, **önceki probe'un
+sonucunu** alıyor.
+
+⚠️ Makul **görünen** oranlar da yanlış. Dünya Katılım'ın `%3,39` değeri 12
+aylık sonuçtan geliyor ama 24 ve 36 ayın oranı olarak yazılmış. Sayısal olarak
+makul olması onu doğru yapmıyor; eşik tabanlı bir kontrol bunları asla
+yakalamazdı.
+
+**Kök neden 2 — yıllık maliyet oranı aylık alana yazılıyor.**
+`derive_rate_from_payment_plan` docstring'i bunu açıkça yasaklıyor: *"Albaraka
+sayfasında %82,39 yazıyor; o değer … bileşik yıllık maliyettir … ikisi farklı
+büyüklüklerdir ve birbirinin yerine yazılmaz."* Veritabanında tam o değer
+vardı: **%82,44**.
+
+**İki kapı** (`probe_orani_guvenilir_mi`):
+
+- **G1 — bayat okuma:** planın ima ettiği vade ≠ probe vadesi → yazılmaz.
+- **G2 — aylık oran değil:** `%20` üstü → yazılmaz. Tavan keyfi değil: aynı
+  docstring *"aylık oran hiçbir gerçek üründe %100'ü aşmaz"* diyor ve güvenilir
+  altı kaynağın ölçülen tavanı `%9,0`.
+
+Ham `calculator_probes` satırı **silinmez** — kanıt olarak kalır
+(`is_binding=False`). Kapı yalnızca servis edilen `product_rates` satırını
+engeller. *"Oran bilinmiyor"*, *"oran %5000"* bilgisinden iyidir.
+
+**Karantina uygulandı** (`scripts/karantina_probe_oranlari.py`, varsayılan kip
+rapordur):
+
+| | önce | sonra |
+|---|---|---|
+| `calculator_playwright` satır | 78 | 66 |
+| ortalama | **%136,03** | **%3,44** |
+| max | **%5000** | **%4,99** |
+
+Kaynak artık diğer altısıyla aynı hizada; hiçbir `financing_rate` `%20`'yi
+aşmıyor. Kapı hassas, kör değil: **94 meşru satır korundu, 12'si reddedildi**
+(9 bayat okuma, 3 imkânsız değer). Kalan `%20` üstü tek grup
+`participation_yield` (79 satır, max %42,79) — **onlar yıllık katılma hesabı
+getirileri ve doğru**; kapı finansman oranına özgüdür.
+
+**Karantina veri boşluğu yaratmadı**, doğru kaynağın geçmesini sağladı:
+
+| soru | önce | sonra |
+|---|---|---|
+| Vakıf Katılım konut finansmanı oranı | %5000 | **%3,4700** |
+| Türkiye Finans konut finansmanı koşulları | %5000 | **%4,05** |
+
+⚠️ Kapı **semptomu** durduruyor, yarış koşulunu değil. Kalıcı çözüm
+`app/scrapers/calculator_probes/` içinde: Playwright tutar/vade gönderdikten
+sonra sonucun **değişmesini** beklemeli. O bekleme eklenmeden yeniden kazıma,
+bu 12 satırı geri getirmez.
 
 ### Sprint 5'te eklenen API uçları
 
@@ -646,6 +732,12 @@ testi var.
 | `DELETE /api/v1/chat/sessions/{key}` | Oturumu sonlandırır |
 | `GET /api/v1/chat/models` | Seçilebilir modeller · canlı keşif · sağlık durumu |
 
+`POST /api/v1/chat` isteğinde `model_id` (istek başına model) ve
+`parent_completion_id` (takip sorusunun bağlandığı cevap) alanları
+opsiyoneldir; yanıt `completion_id` ve — devir gerçekten olduysa —
+`parent_completion_id` döndürür. ⚠️ Devir olmadığı hâlde bunu bildirmek
+arayüzde "önceki sorudan devralındı" göstermek olur ve yanlış bilgidir.
+
 ⚠️ **Boş sonuç HTTP 200 döndürür.** 4xx döndürmek arayüzde `ErrorState`
 tetikler ve "veri yok" ile "istek başarısız" karışır. Kanıt bulunamadığında
 `results` boş, `relaxation_hints` dolu döner.
@@ -656,14 +748,22 @@ Tam sözleşme: <http://localhost:8000/docs>
 
 | Kapı | Durum |
 |---|---|
-| `pytest` | **1.712 test geçiyor** |
-| `ruff check` + `ruff format` | temiz |
-| `mypy` | temiz (140 dosya) |
-| `tsc -b --noEmit` | temiz |
-| Üretim derlemesi | ✅ 2.582 modül · 359 kB gzip |
+| `pytest` | **1.757 geçiyor** · 10 kırık · 1 atlanan |
+| `pytest` (integration hariç) | **1.562 geçiyor**, kırık yok |
+| `ruff check` (`app` + `tests`) | ⚠️ **72 bulgu** |
+| `ruff format --check` | ⚠️ **29 dosya biçimlendirilmemiş** |
+| `mypy app` | ⚠️ **10 hata / 9 dosya** (177 dosya tarandı) |
+| `tsc -b --noEmit` | ✅ temiz |
+| Üretim derlemesi | ✅ başarılı |
 
 Tek komut: `python dev.py lint` (ruff · format · mypy · tsc) ve
 `python dev.py test`.
+
+⚠️ **`python dev.py lint` şu an geçmiyor.** Yukarıdaki sayılar ölçüldü, tahmin
+değil. Bulgular sohbet, erişim ve çıkarım katmanlarında değil; ağırlıkla kazıma
+ve hesaplayıcı modüllerinde birikmiş biçim/tip borcudur. Bu bölüme "temiz"
+yazmak, `dev.py lint` çalıştıran birinin gördüğüyle çelişir — bu yüzden gerçek
+durum yazılıyor.
 
 ⚠️ `tests/integration/test_scraper_*` altında **10 test kırık** durumda.
 Bunlar kazıma keşif sayımlarına dayanıyor ve banka sayfaları değiştiğinde
