@@ -8,13 +8,14 @@ okuduğu DB ile scrape hedefi kesin aynıdır ve logda ürün/oran özeti görü
 
 from __future__ import annotations
 
+import itertools
 import os
 import subprocess
 import sys
 import threading
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Literal
 
@@ -70,7 +71,7 @@ _active_id: str | None = None
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _subprocess_env() -> dict[str, str]:
@@ -85,9 +86,7 @@ def _subprocess_env() -> dict[str, str]:
     return env
 
 
-def build_command_steps(
-    kind: AdminJobKind, bank_code: str | None
-) -> list[list[str]]:
+def build_command_steps(kind: AdminJobKind, bank_code: str | None) -> list[list[str]]:
     """Whitelist adım listesi. Bilinmeyen kind / eksik banka → ValueError."""
     py = sys.executable
     if kind in _BANKA_ZORUNLU and not bank_code:
@@ -155,12 +154,14 @@ def start_job(kind: AdminJobKind, bank_code: str | None = None) -> AdminJob:
             kind=kind,
             bank_code=bank_code,
             status="queued",
-            command=adimlar[0] if len(adimlar) == 1 else ["pipeline", *sum(adimlar, [])],
+            command=adimlar[0]
+            if len(adimlar) == 1
+            else ["pipeline", *itertools.chain.from_iterable(adimlar)],
             created_at=_now_iso(),
         )
         # Daha okunur command özeti.
         if len(adimlar) > 1:
-            job.command = ["+"] + [f"adim{i+1}:{' '.join(a[2:])}" for i, a in enumerate(adimlar)]
+            job.command = ["+"] + [f"adim{i + 1}:{' '.join(a[2:])}" for i, a in enumerate(adimlar)]
         _jobs[job.id] = job
         _active_id = job.id
 

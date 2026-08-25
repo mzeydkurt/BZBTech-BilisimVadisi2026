@@ -912,13 +912,16 @@ def _rate_docs_filtrele(corpus: Corpus, plan: QueryPlan) -> list[ProductRateDoc]
             continue
         if plan.rate_type and doc.rate_type != plan.rate_type:
             continue
-        if urun_tipleri and doc.product_type not in urun_tipleri:
-            # Taksonomi slug ↔ ürün tipi eşleşmesi gevşek: konut_finansmani ⊂ finansman.
-            if not any(
+        # Taksonomi slug ↔ ürün tipi eşleşmesi gevşek: konut_finansmani ⊂ finansman.
+        if (
+            urun_tipleri
+            and doc.product_type not in urun_tipleri
+            and not any(
                 tip in (doc.product_type or "") or (doc.product_type or "") in tip
                 for tip in urun_tipleri
-            ):
-                continue
+            )
+        ):
+            continue
         sonuc.append(doc)
     return sonuc
 
@@ -970,9 +973,12 @@ def _product_bm25(
         if plan.bank_codes and doc.bank_code not in plan.bank_codes:
             continue
         urun_tipleri = set(plan.axis_filters.get("product_type", ()))
-        if urun_tipleri and doc.product_type:
-            if not any(tip in doc.product_type or doc.product_type in tip for tip in urun_tipleri):
-                continue
+        if (
+            urun_tipleri
+            and doc.product_type
+            and not any(tip in doc.product_type or doc.product_type in tip for tip in urun_tipleri)
+        ):
+            continue
         # Katılma alanı: birikim / katılma ürünleri.
         if plan.source_domain == "katilma":
             tip = (doc.product_type or "").lower()
