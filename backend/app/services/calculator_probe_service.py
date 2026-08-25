@@ -19,8 +19,8 @@ from app.db.base import utc_now
 from app.db.models.calculator import CalculatorInventory, CalculatorProbe
 from app.db.models.product import Product, ProductRate
 from app.processing.limits import derive_rate_from_payment_plan
-from app.scrapers.products import band_key
 from app.scrapers.models import RawProductRate
+from app.scrapers.products import band_key
 from app.services.bddk_limits_service import family_for_product_type, max_term_for_ihtiyac_amount
 
 log = structlog.get_logger(__name__)
@@ -218,9 +218,7 @@ def upsert_probe_and_rate(
     mevcut.profit_rate_pct = oran
     mevcut.monthly_installment = monthly_installment
     mevcut.total_repayment = total_repayment
-    mevcut.total_profit_share = (
-        (total_repayment - amount) if total_repayment is not None else None
-    )
+    mevcut.total_profit_share = (total_repayment - amount) if total_repayment is not None else None
     mevcut.allocation_fee = allocation_fee
     mevcut.annual_cost_pct = annual_cost_pct
     mevcut.endpoint_url = endpoint_url
@@ -251,9 +249,7 @@ def upsert_probe_and_rate(
         )
 
     if oran is not None and guvenilir:
-        rate_source = (
-            "calculator_api" if method == "api" else "calculator_playwright"
-        )
+        rate_source = "calculator_api" if method == "api" else "calculator_playwright"
         raw = RawProductRate(
             rate_source=rate_source,
             rate_type="financing_rate",
