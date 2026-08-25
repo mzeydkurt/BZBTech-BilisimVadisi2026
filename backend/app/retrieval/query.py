@@ -129,6 +129,26 @@ ABSENCE_MARKERS: Final[tuple[str, ...]] = (
     "hic yok",
 )
 
+# "Hangi bankalar var?" — LİSTE sorusu. Ölçüldü: bu soru serbest metin
+# aramasına düşüyor, rastgele 3 kampanya kartı dönüyor ve model o kartlardaki
+# banka adlarını "bulunan bankalar" diye sunuyordu: "Dünya Katılım, T.O.M.
+# Katılım Bankası ve Albaraka Türk bulunmaktadır." Gerçek sayı 10.
+#
+# Yanıt erişimden DEĞİL banka evreninden gelir; kapsam sorusunun yanıtı
+# örneklem olamaz.
+BANK_ROSTER_MARKERS: Final[tuple[str, ...]] = (
+    "hangi bankalar var",
+    "hangi bankalar",
+    "hangi katilim bankalari",
+    "bankalari listele",
+    "banka listesi",
+    "bankalar neler",
+    "hangi bankalara bakiyorsun",
+    "kapsamdaki bankalar",
+    "hangi bankalari biliyorsun",
+    "tum bankalar neler",
+)
+
 COMPARE_MARKERS: Final[tuple[str, ...]] = ("karsilastir", "kiyasla", "hangisi daha", " ile ")
 
 # ── Tanım niyeti ──────────────────────────────────────────
@@ -824,16 +844,27 @@ def _toplama(katlanmis: str) -> AggregateSpec | None:
     # ⚠️ SIRA ÖNEMLİ. "Kaç banka" ifadesi "kac" içerdiği için `count`
     # işaretçilerinden ÖNCE denenir; yoksa banka sayımı kampanya sayımına
     # dönüşür ve 7 yerine 482 yanıtı verilir.
-    if any(_kelime_var(katlanmis, m) for m in BANK_COUNT_MARKERS):
-        return AggregateSpec(kind="count_banks")
+    # ⚠️ SIRA: en BELİRLEYİCİ soru önce. Bir testin yakaladığı hatam: liste
+    # sorusu başa alınınca "hangi bankalarDA katılma hesabı YOK" da liste
+    # sorusuna dönüşüyordu — çünkü "hangi bankalar" eki tutuyor. Yokluk
+    # sorusu daha belirleyicidir (olumsuzlama + banka bağlamı ister), o yüzden
+    # önce denenir.
+    olumsuz = any(_kelime_var(katlanmis, m) for m in ABSENCE_MARKERS)
+    banka_baglami = any(_kelime_var(katlanmis, k) for k in ("banka", "kurum"))
 
     # Yokluk sorusu: "hangi bankada ... yok". Banka bağlamı ŞARTTIR — "tahsis
     # ücreti olmayan ürünler" bir yokluk sorusu DEĞİL, süzgeçli aramadır.
     # Bağlam koşulu olmasa her olumsuzlama banka yokluk sorusuna dönüşürdü.
-    if any(_kelime_var(katlanmis, m) for m in ABSENCE_MARKERS) and any(
-        _kelime_var(katlanmis, k) for k in ("banka", "kurum")
-    ):
+    if olumsuz and banka_baglami:
         return AggregateSpec(kind="absence")
+
+    if any(_kelime_var(katlanmis, m) for m in BANK_COUNT_MARKERS):
+        return AggregateSpec(kind="count_banks")
+
+    # Liste sorusu: kapsamı sorar, içerik süzgeci taşımaz. Olumsuzlama varsa
+    # yukarıdaki yokluk dalı çalışmış olur.
+    if any(_kelime_var(katlanmis, m) for m in BANK_ROSTER_MARKERS):
+        return AggregateSpec(kind="bank_roster")
 
     for isaretci in COUNT_MARKERS:
         if isaretci in katlanmis:
