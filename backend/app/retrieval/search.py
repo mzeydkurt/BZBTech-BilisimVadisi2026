@@ -144,6 +144,13 @@ def _suzgecten_gecir(
     kalan: list[CampaignDoc] = []
 
     for doc in docs:
+        # ⚠️ ODAK KAMPANYA en sert kapıdır ve diğer süzgeçlerden ÖNCE gelir.
+        # "Bu kampanyanın bitiş tarihi ne zaman?" sorusunun yanıtı tek bir
+        # kayıttır; başka kayıt döndürmek yanlış kampanyanın tarihini vermek
+        # olur. Odak yoksa (None) kapı hiç çalışmaz.
+        if plan.focus_campaign_id is not None and doc.campaign_id != plan.focus_campaign_id:
+            elenen["odak"] = elenen.get("odak", 0) + 1
+            continue
         if plan.bank_codes and doc.bank_code not in plan.bank_codes:
             elenen["banka"] = elenen.get("banka", 0) + 1
             continue

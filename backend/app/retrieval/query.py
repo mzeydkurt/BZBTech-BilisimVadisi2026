@@ -425,6 +425,12 @@ class QueryPlan:
     rate_type_candidates: tuple[str, ...] = ()
     # Tanım niyetinde aranan terim (ham).
     glossary_term: str | None = None
+    # ── Çok turlu odak ────────────────────────────────────
+    # Önceki CEVABIN işaret ettiği tek kampanya. "Bu kampanyanın bitiş tarihi
+    # ne zaman?" sorusu hiçbir süzgeç sinyali taşımaz; ölçüldü (100 soruluk
+    # gerçek havuz, S3.3) — bağlam devri OLDUĞU hâlde sonuç boş dönüyordu,
+    # çünkü devir yalnızca BANKAYI taşıyordu, kampanyayı değil.
+    focus_campaign_id: int | None = None
     # Katibim: birincil kaynak alanı.
     source_domain: str = "kampanya"
 
