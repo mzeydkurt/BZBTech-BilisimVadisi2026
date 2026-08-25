@@ -4,7 +4,7 @@ import { useState } from "react";
 import { StatusBadge } from "@/components/campaigns/StatusBadge";
 import { formatNumber, parseDecimal } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { CampaignStatus, ChatResultItem } from "@/types/api";
+import type { CampaignStatus, ChatProductItem, ChatResultItem } from "@/types/api";
 
 /** `compute_status()`'ın döndürdüğü dört değer. */
 const STATUSES = ["active", "upcoming", "expired", "unknown"] as const;
@@ -40,10 +40,25 @@ function metricText(value: string, unit: string): string {
  * ⚠️ VARSAYILAN KAPALI. Sohbet akışında her turda beş kart açık durursa
  * konuşma okunamaz hâle gelir; kapalı ama TEK TIKLA erişilebilir.
  */
-export function EvidenceDisclosure({ results }: { results: ChatResultItem[] }) {
+export function EvidenceDisclosure({
+  results,
+  products = [],
+}: {
+  results: ChatResultItem[];
+  /**
+   * Ürün/oran kanıtı.
+   *
+   * ⚠️ ZORUNLU. Yanıt ürün kartlarına dayandığında `results` BOŞ kalıyor
+   * ("Bitcoin alsam mı?" sorusunda ölçüldü: `results=0`, `products=3`).
+   * Yalnızca `results` çizilirse o yanıtın dayandığı metin arayüzde hiç
+   * görünmez ve kaynağı gösterilemeyen bir iddia kalır.
+   */
+  products?: ChatProductItem[];
+}) {
   const [acik, setAcik] = useState(false);
+  const toplam = results.length + products.length;
 
-  if (results.length === 0) {
+  if (toplam === 0) {
     return null;
   }
 
@@ -59,7 +74,7 @@ export function EvidenceDisclosure({ results }: { results: ChatResultItem[] }) {
           className={cn("h-3.5 w-3.5 transition-transform", acik && "rotate-90")}
           aria-hidden="true"
         />
-        Yanıtın dayandığı kanıt ({results.length} kayıt)
+        Yanıtın dayandığı kanıt ({toplam} kayıt)
       </button>
 
       {acik && (
@@ -109,6 +124,40 @@ export function EvidenceDisclosure({ results }: { results: ChatResultItem[] }) {
                 {sonuc.matched_terms.length > 0 &&
                   ` · eşleşen terimler: ${sonuc.matched_terms.slice(0, 6).join(", ")}`}
               </p>
+            </li>
+          ))}
+
+          {products.map((urun) => (
+            <li key={`urun-${urun.product_id}-${urun.rate_id ?? 0}`} className="px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-text-500">{urun.bank_name}</span>
+                <span className="rounded border border-border bg-neutral-50 px-1.5 py-0.5 text-[11px] text-text-700">
+                  ürün
+                </span>
+                {urun.source_url && (
+                  <a
+                    href={urun.source_url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-900"
+                  >
+                    Bankanın sayfası
+                    <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                  </a>
+                )}
+              </div>
+
+              <p className="mt-0.5 text-sm font-medium text-text-900">{urun.product_name}</p>
+
+              <p className="mt-1.5 whitespace-pre-wrap border-l-2 border-border pl-2.5 text-xs leading-relaxed text-text-700">
+                {urun.card_text}
+              </p>
+
+              {urun.profit_rate_pct !== null && (
+                <p className="mt-1.5 text-xs tabular-nums text-text-900">
+                  Kâr payı oranı: {metricText(urun.profit_rate_pct, "%")}
+                </p>
+              )}
             </li>
           ))}
         </ul>

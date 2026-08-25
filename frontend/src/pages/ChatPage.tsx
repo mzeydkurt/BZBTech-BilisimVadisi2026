@@ -246,7 +246,7 @@ function AssistantBubble({
         bağlantı gösteriyor; yanıtın hangi cümleye dayandığı bankanın sayfasına
         gidilmeden görülemiyordu.
       */}
-      <EvidenceDisclosure results={data.results} />
+      <EvidenceDisclosure results={data.results} products={data.products} />
 
       {data.results.length === 0 && data.relaxation_hints.length > 0 && (
         <RelaxationHints
@@ -410,13 +410,45 @@ export function ChatPage() {
   const bos = messages.length === 0 && !mutation.isPending && historyLoaded;
 
   return (
-    <div className="flex h-[calc(100vh-2rem)] flex-col">
-      <div className="shrink-0 border-b border-border pb-3">
-        <h1 className="text-xl font-semibold text-text-900">Katibim AI Asistan</h1>
-        <p className="mt-1 text-sm text-text-500">
-          Kampanya, finansman ve katılma hesabı sorularınızı doğal dille sorun.
-        </p>
-      </div>
+    <div className="flex h-[calc(100vh-2rem)] overflow-hidden rounded-lg border border-border bg-surface">
+      {/*
+        Sohbet geçmişi VERİTABANINDA tutulur (`chat_sessions` / `chat_messages`);
+        localStorage yalnızca "hangi oturum açıktı" bilgisini taşır. Bu yüzden
+        tarayıcı temizlenince ya da başka makineden girilince geçmiş kaybolmaz.
+      */}
+      {gecmisAcik && (
+        <SessionHistory
+          activeKey={sessionId}
+          onOpen={handleOpenSession}
+          onNew={handleNewSession}
+          onClose={() => setGecmisAcik(false)}
+        />
+      )}
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+          <div className="flex items-center gap-2">
+            {!gecmisAcik && (
+              <button
+                type="button"
+                onClick={() => setGecmisAcik(true)}
+                aria-label="Sohbet geçmişini aç"
+                className="rounded border border-border p-1.5 text-text-500 transition-colors hover:border-brand-500 hover:text-text-900"
+              >
+                <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+            <div>
+              <h1 className="text-base font-semibold text-text-900">Katibim</h1>
+              <p className="text-xs text-text-500">
+                Kampanya, finansman ve katılma hesabı sorularınızı doğal dille sorun.
+              </p>
+            </div>
+          </div>
+
+          {/* Model seçimi istek başınadır; sunucu yapılandırması değişmez. */}
+          <ModelSelector value={modelId} onChange={setModelId} />
+        </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto py-4">
         {!historyLoaded && (
@@ -518,6 +550,7 @@ export function ChatPage() {
             {endSession.isPending ? "Sonlandırılıyor…" : "Sohbeti sonlandır"}
           </Button>
         )}
+        </div>
       </div>
     </div>
   );
