@@ -12,9 +12,11 @@ modele hiç sorulmaz.
 from __future__ import annotations
 
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import replace
 from decimal import Decimal
+from typing import Final
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -84,6 +86,7 @@ from app.schemas.chat import (
 )
 from app.schemas.compare import CRITERIA
 from app.schemas.katilim_hesabi import KatilimHesabiRow
+from app.services import chat_model_service as chat_models
 from app.services import chat_session_service as chat_sessions
 from app.services.comparison_service import RankingError, rank_products
 from app.services.katilim_hesabi_service import build_katilim_hesabi
@@ -586,11 +589,29 @@ def _sorgu_uyarisi(query: str, forbidden: dict[str, str | None]) -> str | None:
     )
 
 
-def _provider_or_none(*, plan: QueryPlan) -> LLMProvider | None:
+def _provider_or_none(*, plan: QueryPlan, model_id: str | None = None) -> LLMProvider | None:
+    """Yanıt üretimi için sağlayıcı döndürür.
+
+    ⚠️ MODEL SEÇİMİ İSTEK BAŞINADIR. Arayüzden gelen seçim `.env` dosyasına
+    YAZILMAZ; bir kullanıcının tercihi tüm kurumun yapılandırmasını
+    değiştirmemeli. Tanınmayan seçim sessizce yok sayılır ve
+    `answer.model_name` hangi modelin gerçekten kullanıldığını bildirir.
+
+    ⚠️ BU NİYETLERDE MODEL HİÇ İSTENMEZ: `aggregate` (SQL ile hesaplanır),
+    `tanim` (sözlükten okunur), `kapsam_disi` ve `sohbet` (şablon). Modele
+    sormak yalnızca yanlış aktarma riski ekler.
+    """
     if plan.intent in {"aggregate", "tanim", "kapsam_disi", "sohbet"}:
         return None
+
+    ayarlar = get_settings()
+    secilen = chat_models.resolve_override(model_id)
+    if secilen and secilen != ayarlar.llm_provider.strip().lower():
+        ayarlar = ayarlar.model_copy(update={"llm_provider": secilen})
+        logger.info("istek_basina_saglayici", saglayici=secilen)
+
     try:
-        return get_provider(get_settings())
+        return get_provider(ayarlar)
     except ValueError as exc:
         logger.warning("saglayici_kurulamadi", hata=str(exc))
         return None
@@ -810,15 +831,48 @@ async def _qdrant_ara(
     return vuruslar, "qdrant", None
 
 
+# Sorgu vektörü önbelleği — (model, katlanmış sorgu) → vektör.
+# ⚠️ NEDEN VAR: sorgu vektörü, sohbet gecikmesinin en büyük tek kalemi
+# (EVREN'e ayrı bir ağ turu; ölçüldü ~1-2 sn). Aynı soru tekrar sorulduğunda
+# ya da kullanıcı bir süzgeç çipini kaldırıp sorguyu yeniden çalıştırdığında
+# aynı vektör yeniden istenmemeli. EVREN duyurusu da aynı bağlam üzerinden
+# tekrarlı isteğin hem bizim hem sistemin performansını artırdığını söylüyor.
+#
+# ⚠️ SÜREÇ İÇİ VE SINIRLI. Kalıcı bir tablo değil: gömme modeli değişince
+# anahtar da değişir, süreç yeniden başlayınca önbellek boşalır. Sınır,
+# uzun oturumlarda belleğin sessizce büyümesini engeller.
+_SORGU_VEKTOR_ONBELLEGI: OrderedDict[tuple[str, str], list[float]] = OrderedDict()
+SORGU_VEKTOR_ONBELLEK_SINIRI: Final[int] = 256
+
+
+def sorgu_vektor_onbellegini_bosalt() -> None:
+    """Önbelleği düşürür (testler ve model değişikliği için)."""
+    _SORGU_VEKTOR_ONBELLEGI.clear()
+
+
 async def _query_vector(provider: LLMProvider | None, plan: QueryPlan) -> list[float] | None:
     if provider is None:
         return None
+
+    anahtar = (active_embedding_model(get_settings()), _fold(plan.raw))
+    onbellekten = _SORGU_VEKTOR_ONBELLEGI.get(anahtar)
+    if onbellekten is not None:
+        _SORGU_VEKTOR_ONBELLEGI.move_to_end(anahtar)
+        return onbellekten
+
     try:
         vektorler = await provider.embed([plan.raw])
     except (LLMProviderError, NotImplementedError, ValueError) as exc:
         logger.info("sorgu_vektoru_uretilemedi", hata=str(exc), tip=type(exc).__name__)
         return None
-    return vektorler[0] if vektorler else None
+
+    vektor = vektorler[0] if vektorler else None
+    if vektor:
+        _SORGU_VEKTOR_ONBELLEGI[anahtar] = vektor
+        _SORGU_VEKTOR_ONBELLEGI.move_to_end(anahtar)
+        while len(_SORGU_VEKTOR_ONBELLEGI) > SORGU_VEKTOR_ONBELLEK_SINIRI:
+            _SORGU_VEKTOR_ONBELLEGI.popitem(last=False)
+    return vektor
 
 
 def _fold(text: str) -> str:
@@ -1590,7 +1644,7 @@ async def _process_chat_core(
         # Boşsa sessizce kampanya RAG'a düş (uydurma yok).
 
     # ── search / kampanya compare — hibrit RAG ────────────
-    saglayici = _provider_or_none(plan=plan)
+    saglayici = _provider_or_none(plan=plan, model_id=req.model_id)
     depo = _embedding_store(session)
     ayarlar = get_settings()
     # ⚠️ Sorgu vektörü Qdrant için de gerekli; yerel depo boş olsa bile
