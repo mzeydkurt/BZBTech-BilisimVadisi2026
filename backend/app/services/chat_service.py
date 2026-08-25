@@ -12,6 +12,7 @@ modele hiç sorulmaz.
 from __future__ import annotations
 
 import time
+from uuid import uuid4
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import replace
@@ -1200,15 +1201,31 @@ async def _aggregate_response(
     )
 
 
+def _plan_imzasi(plan: QueryPlan) -> tuple[object, ...]:
+    """Bağlam devrinin planı GERÇEKTEN değiştirip değiştirmediğini ölçer."""
+    return (
+        plan.bank_codes,
+        tuple(sorted((k, v) for k, v in plan.axis_filters.items())),
+        plan.rate_type,
+        plan.rate_type_candidates,
+        plan.free_terms,
+    )
+
+
 async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse:
     """Doğal dil sorusunu uçtan uca işler (oturum + çok tur + anlatıcı)."""
     baslangic = time.perf_counter()
     oturum = chat_sessions.resolve_or_create(session, req.session_id, title_hint=req.query)
     turn = chat_sessions.next_turn_index(oturum)
-    onceki_plan = chat_sessions.previous_plan(oturum)
+    onceki_plan, devir_kimligi = chat_sessions.previous_plan(oturum, req.parent_completion_id)
 
     plan = parse_query(req.query)
+    onceki_imza = _plan_imzasi(plan)
     plan = merge_with_previous(plan, onceki_plan)
+    # Devir gerçekten olmadıysa kimliği yanıtta bildirmeyiz: arayüzde "önceki
+    # sorudan devralındı" göstermek, devralınmamışken yanlış bilgi olur.
+    if _plan_imzasi(plan) == onceki_imza:
+        devir_kimligi = None
 
     if req.bank_code:
         plan = replace(plan, bank_codes=(req.bank_code,))
@@ -1232,6 +1249,8 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
     resp = await _anlat_computed(resp, plan, yasakli=yasakli)
     resp.session_id = oturum.session_key
     resp.turn_index = turn
+    resp.completion_id = f"cmpl-{uuid4().hex}"
+    resp.parent_completion_id = devir_kimligi
     chat_sessions.record_turn(
         session,
         oturum,
@@ -1239,6 +1258,7 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
         user_text=req.query,
         plan=plan,
         response=resp,
+        completion_id=resp.completion_id,
     )
     session.commit()
     return resp
