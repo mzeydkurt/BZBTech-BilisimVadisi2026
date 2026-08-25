@@ -433,6 +433,30 @@ sistem çökmez, sıralı kanıtlar gösterilmeye devam eder.
 etiketi 44'ten 22'ye düştü — bu bir gerileme değil, süresi kesin dolmuş
 kampanyaların temizlenmesinin sonucu.
 
+## SPRINT 4 kapsamı
+
+Sprint 4, biriken kampanya / ürün / oran verisini **rekabet istihbaratı
+arayüzüne** dönüştürür. Amaç: banka analistinin 10 katılım bankasını tek
+ekranda izlemesi, filtrelemesi, karşılaştırması ve simüle etmesi.
+
+Yapılanlar: genel bakış dashboard'u, kampanya kataloğu ve detay (kanıt
+çekmecesi), finansman/ürün listesi ve detay, karşılaştırma, finansman–getiri
+simülatörü, katılma hesabı görünümü, CSV/Excel dışa aktarma ve kurumsal
+AppShell iskeleti. Eksik veri `null` olarak gösterilir; sıfırla karıştırılmaz.
+
+| Alan | Durum | Sonuç |
+|---|---|---|
+| Genel bakış (dashboard) | ✅ | KPI kartları · banka kapsama · sektör / durum / taksonomi grafikleri |
+| Kampanya kataloğu | ✅ | Chip filtre · sayfalama · durum rozetleri (`unknown` ≠ `expired`) |
+| Kampanya detayı + kanıt çekmecesi | ✅ | Çıkarım alanı · `evidence_text` · güven · kaynak URL |
+| Finansman / ürün listesi | ✅ | Oranı olan / yalnızca limit / veri yok grupları ayrı |
+| Ürün detayı | ✅ | Oran tablosu · limit · BDDK sapması · masraf alanları |
+| Karşılaştırma motoru arayüzü | ✅ | Kampanya ve ürün sıralama · kriter · banka seçimi |
+| Finansman / getiri simülatörü | ✅ | Tutar–vade senaryosu · ödeme planı satırları |
+| Katılma hesabı görünümü | ✅ | TKBB / katılma getirisi odaklı tablo |
+| Dışa aktarma | ✅ | Karşılaştırma ve simülasyon için CSV / Excel |
+| Kurumsal UI iskeleti | ✅ | AppShell · sidebar · StatCard · Empty / Error / Loading |
+
 ## SPRINT 5 kapsamı
 
 Sohbet asistanı, hibrit RAG ve TEKNOFEST çıkarım servisi entegrasyonu.
