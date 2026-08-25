@@ -147,7 +147,7 @@ def previous_plan(
 def previous_focus(
     oturum: ChatSession,
     parent_completion_id: str | None = None,
-) -> str | None:
+) -> tuple[str | None, int | None]:
     """Önceki cevabın İŞARET ETTİĞİ bankayı döndürür (varsa).
 
     "Peki onun koşulları neler?" sorusundaki "onun", önceki SORUNUN süzgecine
@@ -156,8 +156,16 @@ def previous_focus(
     alındıktan sonra takip sorusu tüm bankalarda arıyor, alakasız yanıt
     dönüyordu.
 
-    Yalnızca TEK bir kurum açıkça öne çıktığında döner; belirsizse None
-    (yanlış kuruma bağlamak, hiç bağlamamaktan kötüdür).
+    Ayrıca önceki cevabın işaret ettiği TEK kampanyanın kimliğini döndürür.
+    Ölçüldü (100 soruluk gerçek havuz, S3.3): "Bu kampanyanın bitiş tarihi ne
+    zaman?" sorusunda bağlam devri OLUYOR ama sonuç boş dönüyordu — devir
+    yalnızca bankayı taşıyordu, kampanyayı değil. "Bu kampanya" ifadesinin
+    yanıtı tek bir kayıttır.
+
+    Returns:
+        (banka_kodu, kampanya_id). Yalnızca TEK bir kurum/kampanya açıkça öne
+        çıktığında dolu döner; belirsizse None (yanlış kayda bağlamak, hiç
+        bağlamamaktan kötüdür).
     """
     hedef: ChatMessage | None = None
     if parent_completion_id:
@@ -171,12 +179,12 @@ def previous_focus(
                 hedef = msg
                 break
     if hedef is None or not hedef.response_json:
-        return None
+        return None, None
 
     try:
         govde = json.loads(hedef.response_json)
     except json.JSONDecodeError:
-        return None
+        return None, None
 
     sonuclar = govde.get("results") or []
     toplama = govde.get("aggregate") or {}
@@ -186,18 +194,23 @@ def previous_focus(
     if kazanan is not None:
         for r in sonuclar:
             if r.get("campaign_id") == kazanan and r.get("bank_code"):
-                return str(r["bank_code"])
+                return str(r["bank_code"]), int(kazanan)
 
-    # 2) Tek sonuç varsa o.
-    if len(sonuclar) == 1 and sonuclar[0].get("bank_code"):
-        return str(sonuclar[0]["bank_code"])
+    # 2) Tek sonuç varsa o — kampanya odağı da buradan gelir.
+    if len(sonuclar) == 1:
+        tek = sonuclar[0]
+        kod = str(tek["bank_code"]) if tek.get("bank_code") else None
+        kid = int(tek["campaign_id"]) if tek.get("campaign_id") is not None else None
+        return kod, kid
 
-    # 3) Tüm sonuçlar aynı bankadansa o.
+    # 3) Tüm sonuçlar aynı bankadansa banka bellidir; kampanya DEĞİLDİR.
     kodlar = {r.get("bank_code") for r in sonuclar if r.get("bank_code")}
     if len(kodlar) == 1:
-        return str(next(iter(kodlar)))
+        return str(next(iter(kodlar))), None
 
-    return None
+    # 4) Birden çok sonuç varsa en üstteki `top_matches` kampanyası odak
+    #    sayılmaz: kullanıcı hangisini kastettiğini söylememiştir.
+    return None, None
 
 
 def record_turn(

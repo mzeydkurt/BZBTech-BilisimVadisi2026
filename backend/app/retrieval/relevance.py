@@ -196,10 +196,35 @@ def is_anaphoric_query(raw: str) -> bool:
     return any(k in folded for k in _ANAFORA)
 
 
+# "Bu kampanya", "bu kampanyanın", "söz konusu kampanya" — önceki cevabın
+# işaret ettiği TEK kayda atıf. Banka anaforasından ayrıdır: "peki onun
+# koşulları" bankaya da kampanyaya da bakabilir, ama "bu kampanyanın bitiş
+# tarihi" yalnızca o kampanyanın kaydından yanıtlanabilir.
+_KAMPANYA_ANAFORA = (
+    "bu kampanya",
+    "bu kampanyanin",
+    "bu kampanyada",
+    "soz konusu kampanya",
+    "ayni kampanya",
+    "bahsettigin kampanya",
+    "yukaridaki kampanya",
+    "o kampanya",
+    "bu urun",
+    "bu urunun",
+)
+
+
+def refers_to_focus_entity(raw: str) -> bool:
+    """Sorgu önceki cevabın TEK kaydına mı atıf yapıyor?"""
+    folded = _fold(raw)
+    return any(k in folded for k in _KAMPANYA_ANAFORA)
+
+
 __all__ = [
     "filter_relevant_hits",
     "is_anaphoric_query",
     "is_follow_up_query",
     "opens_scope",
+    "refers_to_focus_entity",
     "strip_citation_markers",
 ]
