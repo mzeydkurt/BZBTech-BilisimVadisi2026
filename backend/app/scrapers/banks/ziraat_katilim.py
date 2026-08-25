@@ -26,6 +26,7 @@ yeniden dener. Kalıcı sayılırsa banka tamamen boş döner.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Final
@@ -36,8 +37,8 @@ from bs4 import BeautifulSoup, Tag
 from app.core.normalization.date_tr import parse_date_tr
 from app.core.normalization.text import collapse_whitespace, normalize_text
 from app.logging_config import get_logger
-from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.processing.categorizer import infer_segment
+from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.scrapers.base import BaseScraper
 from app.scrapers.models import DiscoveredUrl, RawCampaign, RawProduct, RawProductRate
 from app.scrapers.products import product_external_key
@@ -506,7 +507,7 @@ def _vade_araligi(masraf_adi: str) -> tuple[int, int] | None:
 def _panel_masraf_haritasi(
     satirlar: list[Tag],
     *,
-    satir_testi,
+    satir_testi: Callable[[str], bool],
 ) -> dict[tuple[int, int] | None, Decimal]:
     """Paneldeki tahsis / YMO satırlarını vade aralığına göre indeksler."""
     harita: dict[tuple[int, int] | None, Decimal] = {}

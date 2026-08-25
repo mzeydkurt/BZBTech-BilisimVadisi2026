@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 from decimal import Decimal
-from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -27,8 +26,7 @@ logger = get_logger(__name__)
 
 LANG_ID = "bf2689d9-071e-4a20-9450-b1dbdd39778f"
 CALCULATOR_URL = (
-    "https://www.vakifkatilim.com.tr/tr/yardimci-sayfalar/"
-    "hesaplama-araclari/finansman-hesaplama"
+    "https://www.vakifkatilim.com.tr/tr/yardimci-sayfalar/hesaplama-araclari/finansman-hesaplama"
 )
 API_PATH = "https://www.vakifkatilim.com.tr/plugins/InstallmentPayBack"
 

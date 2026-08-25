@@ -40,8 +40,8 @@ from bs4 import BeautifulSoup
 
 from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
-from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.processing.categorizer import infer_segment
+from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.scrapers.base import BaseScraper
 from app.scrapers.models import DiscoveredUrl, RawCampaign
 from app.scrapers.sitemap import extract_urls
@@ -64,9 +64,7 @@ SEGMENTS: Final[dict[str, str]] = {
 
 # Liste sayfaları: (yol parçası, arşiv mi).
 # ⚠️ `gecmis-kampanyalar` bilerek YOK — süresi dolmuş kampanyalar yeniden çekilmesin.
-LISTING_PAGES: Final[tuple[tuple[str, bool], ...]] = (
-    ("mevcut-kampanyalar", False),
-)
+LISTING_PAGES: Final[tuple[tuple[str, bool], ...]] = (("mevcut-kampanyalar", False),)
 
 # Detay adreslerini ayırt eden yol parçası.
 DETAIL_MARKER: Final[str] = "/kampanyalar/detay/"
@@ -327,10 +325,13 @@ class VakifKatilimScraper(BaseScraper):
         if not hint.segment_hint and self.segment_from_url(url) is None:
             if cikarim is not None:
                 segment = cikarim.value
-        elif cikarim is not None and cikarim.value in ("kurumsal", "ticari", "kobi", "tarim"):
-            # Listing bireysel dedi ama metin kurumsal/ticari diyorsa metni tercih et.
-            if segment == "bireysel":
-                segment = cikarim.value
+        # Listing bireysel dedi ama metin kurumsal/ticari diyorsa metni tercih et.
+        elif (
+            cikarim is not None
+            and cikarim.value in ("kurumsal", "ticari", "kobi", "tarim")
+            and segment == "bireysel"
+        ):
+            segment = cikarim.value
 
         return RawCampaign(
             external_slug=slug_from_url_path(url),
