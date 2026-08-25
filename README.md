@@ -99,6 +99,12 @@ motoru, yerel LLM ile çalıştırma.
 | `entity_cards` | 1.253 | Varlık kartları |
 | `gold_annotations` | 2.360 | Elle etiketlenmiş cevap anahtarı |
 
+> **Bu tablo Sprint 2'nin kapanış anını gösterir, güncel veritabanını değil.**
+> Sonraki sprintlerde süresi kesin dolmuş kampanyalar temizlendi ve ürün/oran
+> verisi genişledi. Güncel sayılar: **482 kampanya · 285 ürün · 1.396 oran ·
+> 2.441 varlık kartı · 2.402 gömme**. Tarihsel sayı silinmiyor — hangi
+> sprintte neyin üretildiği izlenebilir kalıyor.
+
 Banka bazında kampanya:
 
 | Banka | Kampanya | | Banka | Kampanya |
@@ -424,15 +430,210 @@ etiketi yok (veri setinde toplam 44 market etiketi var).
 > düzelir. Sorgu kümesindeki üç `konut_finansmani` sorusu kümede **kalıyor**:
 > boş-sonuç yolunu doğru sınıyorlar.
 
+## SPRINT 5 kapsamı
+
+Sohbet asistanı, hibrit RAG ve TEKNOFEST çıkarım servisi entegrasyonu.
+
+| Alan | Durum | Sonuç |
+|---|---|---|
+| EVREN çıkarım servisi | ✅ | `llm-fast` · 1,6 sn · yerel yol korundu |
+| Gömme ve vektör deposu | ✅ | `bge-m3-embed` 1024 boyut · Qdrant **2.402 nokta** |
+| Hibrit erişim (BM25 + anlamsal + RRF) | ✅ | Sert süzgeç kapısı Python tarafında |
+| Toplama sorularının SQL yanıtı | ✅ | Model çağrılmaz |
+| Çok turlu sohbet + oturum kalıcılığı | ✅ | `chat_sessions` / `chat_messages` |
+| Sohbet geçmişi listesi ve erişimi | ✅ | `GET /chat/sessions` |
+| Model seçimi (istek başına, canlı keşif) | ✅ | `GET /chat/models` |
+| Kapsam dışı soru reddi | ✅ | Ölçülmüş 8 vaka |
+| Kanıt ve erişim şeffaflığı | ✅ | Kanıt metni · süzgeç çipleri · erişim şeridi |
+| Yeniden sıralama | ⛔ | Ölçüldü, **isabeti düşürdü**, açılmadı |
+
+---
+
+### EVREN — TEKNOFEST çıkarım servisi
+
+TEKNOFEST 2026 kapsamında T.C. Cumhurbaşkanlığı Savunma Sanayii Başkanlığı
+tarafından yarışmacı takımlara tahsis edilen **EVREN** servisi (8 × NVIDIA
+H200 · vLLM · BF16 · kuantizasyon yok) üretim sağlayıcısı olarak bağlandı.
+
+> **Bu ücretli bir bulut servisi değildir.** Şartnamenin madde 8 (ücretli
+> hizmet) ve 5.9 (dış bağımlılık) kısıtları, üçüncü taraf ticari servisleri
+> hedefliyor; EVREN yarışmanın kendi altyapısıdır, kotasız ve ücretsizdir.
+
+**Yerel yol kaldırılmadı.** `LLM_PROVIDER=evren` ↔ `local` geçişi tek `.env`
+satırıdır; on-prem / kapalı ağ gösterimi Ollama üzerinden yapılmaya devam
+eder. Kodda hiçbir yer EVREN'e mahkûm değildir.
+
+Model seçimi ölçümle yapıldı — aynı Türkçe konut finansmanı metni, aynı beş
+alan:
+
+| Model | Süre | Doğru alan | Not |
+|---|---|---|---|
+| **`llm-fast` (EVREN)** | **1,6 sn** | **5/5** | tarihi ISO'ya normalize etti (`2026-12-31`) |
+| `llm-large` (EVREN) | 4,7 sn | 5/5 | tarihi ham bıraktı, kanıt alıntıları zayıf |
+| `qwen3:8b` (yerel) | 70,0 sn | 4/5 | "masraf **alınmaz**" ifadesini `50.000` yazdı |
+
+`llm-fast` hem **44 kat hızlı** hem daha doğru: `file_fee_try=0` tuzağını iki
+yerel model de kaçırdı.
+
+⚠️ **Sessiz bir hata bulundu.** Sağlayıcı OpenAI uyumlu
+`/v1/chat/completions` ucunu kullanıyordu. Düşünen modellerde bu uç, düşünme
+çıktısını `content` alanına koymuyor: HTTP 200 dönüyor, `content` **boş**
+geliyor ve hiçbir alan çıkarılamıyor — hata mesajı yok, yalnızca F1 sıfıra
+düşüyor. Üretim çağrısı Ollama'nın `/api/chat` ucuna `think: false` ile
+taşındı; boş yanıt artık hata fırlatıyor.
+
+### RAG — hibrit erişim, kanıtlı yanıt
+
+| Katman | Yöntem | Model kullanır mı? |
+|---|---|---|
+| Sorgu anlama | Taksonomi sözlüğü + sayı/karşılaştırma kalıpları | Hayır (son çare) |
+| Sözcüksel erişim | BM25, saf Python | Hayır |
+| Anlamsal erişim | `bge-m3-embed` (1024 boyut) + Qdrant | Yalnızca sorgu vektörü |
+| Birleştirme | Reciprocal Rank Fusion | Hayır |
+| Sert süzgeç | Banka · durum · 4 eksen · sayısal eşik | Hayır |
+| Toplama (en düşük / kaç tane) | SQL | **Hayır** |
+| Cevap cümlesi | Yerel/EVREN modeli | Evet |
+| Denetim | Sayı doğrulama · terim guard'ı · yön denetimi | Hayır |
+
+**Kullanıcıya gösterilen her rakam `campaign_metrics` satırından gelir.**
+Model yalnızca yönlendirme yapar ve cümle kurar.
+
+| Gövde | Sayı |
+|---|---|
+| `entity_cards` | **2.441** (kampanya 482 · oran 1.635 · ürün 285 · terim 29 · banka 10) |
+| `embeddings` | **2.402** · `bge-m3-embed` · 1024 boyut |
+| Qdrant noktası | **2.402** · Cosine · durum `green` |
+
+⚠️ 39 kart bilinçli olarak gömülmedi: `bank` (10) üstveri kartıdır,
+`glossary` (29) terime göre birebir aranıyor — anlamsal aramaya girmiyor.
+
+**Qdrant birincil, yerel `embeddings` tablosu yedek.** Qdrant erişilemediğinde
+arama yerel tabloya düşer ve **nedenini yanıtta yazar**; kapalı ağ gösterimi
+bu yüzden Qdrant olmadan da çalışır. Süzgeçleme Qdrant'a devredilmedi:
+"değeri yok" ile "eşiği geçmedi" ayrımını yapan tek uygulama Python
+tarafındadır ve aynı mantığı iki yerde tutmak ikisinin sessizce ıraksaması
+demektir.
+
+`qdrant-client` bağımlılığı **eklenmedi** — REST arayüzü yeterli, `httpx`
+projede zaten var ve `LICENSES.md`'ye yeni bir satır girmedi.
+
+### Sohbet — Katibim
+
+| Yetenek | Durum |
+|---|---|
+| Çok turlu sohbet + oturum kalıcılığı | ✅ `chat_sessions` / `chat_messages` |
+| Sohbet geçmişi listesi ve erişimi | ✅ `GET /chat/sessions` |
+| Model seçimi (istek başına) | ✅ `GET /chat/models` — canlı keşif |
+| Hazır örnek sorular | ✅ gerçek veriden seçilmiş |
+| Kapsam dışı soru reddi | ✅ `kapsam_disi` niyeti |
+| Kanıt gösterimi | ✅ katlanabilir kanıt metni (kampanya + ürün) |
+| Süzgeç şeffaflığı | ✅ "Anladığım" çipleri, kaldırılabilir |
+| Erişim şeffaflığı | ✅ kaç karttan kaçı, hangi kanal, ne elendi, kaç ms |
+| Boş sonuçta gevşetme önerisi | ✅ hangi süzgeç kaldırılsa kaç sonuç |
+
+**Yönetişim — ölçülmüş davranış:**
+
+| Soru | Niyet | Yanıt |
+|---|---|---|
+| "Yarın hava nasıl olacak?" | `kapsam_disi` | reddetme |
+| "Bana bir yemek tarifi ver" | `kapsam_disi` | reddetme |
+| "Galatasaray maç sonucu ne?" | `kapsam_disi` | reddetme |
+| "Bitcoin alsam mı?" | `kapsam_disi` | reddetme |
+| "Merhaba" / "Sen kimsin?" | `sohbet` | şablon tanıtım |
+| "asdkjhaskjdh" | `search` | **uydurmuyor** — "veriyle yanıt verilemiyor" |
+| "Bana 10 milyon TL kredi ver" | `search` | reddediyor |
+| "Hangi bankaya para yatırırsam en çok kazanırım, kesin söyle" | `search` | **yatırım tavsiyesi vermiyor** |
+
+⚠️ Kripto ve borsa soruları kapsam dışına alındı: bir finansal kurum aracının
+yatırım tavsiyesi vermesi hem kapsam hem uyum sorunudur. **`döviz` bilinçli
+olarak eklenmedi** — `yatirim_birikim` sektörünün gerçek anahtar kelimesi ve
+meşru kampanya sorgularında geçiyor.
+
+**Model seçimi** `GET /chat/models` ile canlı keşfedilir (EVREN `/v1/models`,
+Ollama `/api/tags`); elle yazılmış bir liste servis değiştiğinde sessizce
+yalan söyler.
+
+- Seçim **istek başınadır**, `.env` yazılmaz — bir kullanıcının tercihi tüm
+  kurumun yapılandırmasını değiştirmemeli.
+- Gömme ve yeniden sıralama modelleri listeye **girmez**: sohbet yanıtı
+  üretemezler.
+- Yerel modeller **lisans havuzuna göre süzülür**. Ollama'da kurulu olsa bile
+  Llama türevi ya da "Research License" taşıyan model seçenek olarak
+  sunulmaz; beyaz liste kullanılır, siyah liste değil.
+- Erişilemeyen sağlayıcı listeden **gizlenmez**, devre dışı gösterilir —
+  gizlemek "böyle bir seçenek yok" izlenimi verir ve kapalı ağ yeteneğini
+  görünmez kılar.
+
+**Sohbet zaman aşımı toplu çıkarımdan ayrıldı.** `LLM_TIMEOUT_SECONDS=180`
+gece çalışan toplu çıkarım için doğru; sohbette 180 saniye bekleyen bir
+arayüz ölmüş görünür. EVREN tüm takımlarca paylaşıldığı için gecikme
+dalgalanıyor — ölçüldü: aynı sorgu **4,1 sn · 4,9 sn · 30,5 sn**.
+`CHAT_TIMEOUT_SECONDS=25` aşılınca şablon yanıta düşülür ve **kanıtlar yine
+gösterilir**.
+
+### Sohbet ölçümü (35 soruluk gold set)
+
+| Metrik | Değer |
+|---|---|
+| Doğru niyet oranı | **0,971** |
+| Halüsinasyon oranı | **0,000** |
+| Doğru susma oranı (5 vaka) | **1,000** |
+| Netleştirme isabeti (1 vaka) | **1,000** |
+| Ortalama gecikme | 1.746 ms |
+
+Ayrıntı: [`docs/sprint5_evaluation.md`](docs/sprint5_evaluation.md)
+
+### Yeniden sıralama ölçüldü — AÇILMADI
+
+EVREN `rerank` modeli çalışıyor ama bu veri setinde **isabeti düşürüyor**:
+
+| | İlk sonuç isabeti |
+|---|---|
+| RRF (mevcut) | **4/8** |
+| `rerank` | **3/8** |
+
+İlk sonucu 8 vakanın 6'sında değiştirdi: 1 iyileştirme, **2 bariz bozma**
+("Evlenecek çiftlere" ve "Emeklilere" sorularının doğru sonuçları kayboldu).
+Kısa metinlerde belirgin biçimde yanılıyor — "market hediye çekli kampanya"
+sorgusunda *"Akaryakıt indirimi"* **0,999** ile birinci çıktı.
+
+Devir rehberinin kendi kuralı uygulandı: *"hibrit, `rule_only`'den kötüyse
+LLM katmanı açılmaz."* Yetenek `EvrenProvider.rerank()` olarak duruyor ve
+`EVREN_RERANK_MODEL` ayarı mevcut; erişim yoluna **bağlanmadı**.
+
+### Sahada yakalanan sessiz hatalar
+
+Hepsi hata fırlatmadan yanlış sonuç üretiyordu; her biri için regresyon testi
+var.
+
+| Bulgu | Etki | Önlem |
+|---|---|---|
+| Gömme etiketi vektörü üreten modelden bağımsızdı | `bge-m3-embed` ile üretilmiş **1.519 vektör** `nomic-embed-text` etiketiyle kaydedildi (1024 boyut; oysa nomic 768 üretir). Airgap'te `LLM_PROVIDER=local` yapıldığı anda sorgu 768, saklanan 1024 olur ve `cosine()` uzunluk uyuşmazlığında 0.0 döndürdüğü için **anlamsal kanal sessizce ölürdü** | Tek doğruluk kaynağı `active_embedding_model()`; boyut uyuşmazlığı artık yanıtta bildiriliyor |
+| Model seçimi yalnızca sağlayıcıyı değiştiriyordu | `evren:llm-large` seçmek modeli `.env`'deki `llm-fast` olarak bırakıyordu — kullanıcı seçim yaptı sanıyor, **hiçbir şey değişmiyordu** | Seçim sağlayıcıyı **ve** model adını birlikte günceller |
+| `term_months_max` işaretçisi `" ay"`, `normalize_text()` baştaki boşluğu siliyor | Kalan `"ay"` **"kâr p-ay-ı"** içine uyuyor; "en düşük kâr payı" sorusu vade üzerinden yanıtlanıp **"en düşük kâr payı 1"** diyordu | İşaretçiler kelime sınırında aranıyor |
+| Taksonomi anahtarı `altın`, `altında` sözcüğüne uyuyor | "%2'nin **altında**" ifadesi sektör süzgeci ekliyor, 7 finansman kampanyasının tamamı eleniyor, **0 sonuç** | Karşılaştırma işaretçileri taksonomi eşleşmesinden önce maskeleniyor — bir simgenin iki rolü olamaz |
+| Sert süzgeç en ilgili 120 adaya uygulanıyordu | Seçici süzgeç havuzu boşaltıyor; "Kuveyt Türk'te market kampanyası" **0 sonuç** dönüyordu | Süzgeç gövdenin tamamına uygulanıyor, sıralama sonra |
+| Arama gövdesi önbelleği hiç geçersizleşmiyordu | `kart-uret` sonrası arama **eski metinlerle** çalışmaya devam ediyordu | Üç sayaçlık parmak izi denetimi |
+| Değerlendirme raporu yanlış gömme modelini beyan ediyordu | `docs/sprint5_evaluation.md` `nomic-embed-text` yazıyordu, oysa vektörler `bge-m3-embed` | Rapor tek kaynaktan okuyor |
+| Qdrant hata mesajı boş geliyordu | `ReadTimeout`'un `str()` çıktısı boş; "Qdrant'a ulaşılamıyor: " şeklinde yarım mesaj, sorunun zaman aşımı mı ağ mı olduğunu gizliyordu | İstisna türü mesaja ekleniyor; yükleme partisi 128→64, ayrı zaman aşımı |
+| `frontend/package.json`'da `typecheck` betiği yoktu | `dev.py lint` onu çağırıyor; **arayüz tip denetimi hiç çalışmıyordu**. Eklendiği anda `xlsx` bağımlılığının kurulu olmadığı ortaya çıktı — uygulama açılmıyordu | Betik eklendi |
+| Göç `0011` kısıt adını sabit yazıyordu | Ad veritabanına göre 3 ya da 5 kat önek taşıyor; **boş veritabanında `migrate` hiç tamamlanmıyordu** | Ad çalışma anında `sqlite_master`'dan okunuyor |
+| `conftest.py`'de ortam bloğu `app.*` içe aktarmalarının altındaydı | `get_settings()` içe aktarma sırasında önbelleğe giriyor; `LLM_PROVIDER=mock` etkisiz kalıyor ve 3 test gerçek modele çıkmaya çalışıyordu | Blok içe aktarmaların üstüne alındı |
+
+### Yeni veri bulgusu — `konut_finansmani` etiketi
+
+`taxonomy.py` sözlüğü genişletildikten sonra bu boşluk kapanma yolunda; ölçüm
+yeniden yapıldığında bu bölüm güncellenecek. Sözlük genişletmesi **ağa
+çıkmadan** yeniden çalıştırılabilir (`python dev.py siniflandir`).
+
 ### Devam eden işler — tamamlanmadan bu bölüme sayı yazılmaz
 
 | Alan | Durum | Not |
 |---|---|---|
-| Gömme vektörlerinin üretilmesi | ⏳ | `embeddings` tablosu boş; **anlamsal kanal henüz kapalı**, arama sözcüksel kanalla çalışıyor ve bu durum arayüzde bildiriliyor |
-| Prompt ince ayarı ve tam çıkarım çalıştırması | ⏳ | 608 kampanya · bu donanımda ~6-8 saat |
+| Prompt ince ayarı ve tam çıkarım çalıştırması | ⏳ | 482 kampanya · EVREN ile ~20 dk |
 | `llm_only` / `hybrid` ablasyon ölçümü | ⏳ | Tam çalıştırmadan sonra |
-| Sorgu kümesinde erişim isabeti (recall@k) | ⏳ | |
-| Kapalı ağ (airgap) doğrulaması ve videosu | ⏳ | |
+| Sorgu kümesinde erişim isabeti (recall@k) | ⏳ | Etiketli sıralama kümesi gerekiyor |
+| Kapalı ağ (airgap) doğrulaması | ⏳ | Ayrı video **bilinçli feragat** — kanıt sunum + doküman + grep |
 
 ---
 
