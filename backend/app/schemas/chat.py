@@ -288,7 +288,10 @@ class ChatResponse(BaseModel):
     turn_index: int | None = Field(default=None, description="Bu turdaki sıra numarası (0 tabanlı)")
     completion_id: str | None = Field(
         default=None,
-        description="Bu cevabın benzersiz kimliği. Takip sorusunda `parent_completion_id` olarak gönderilir.",
+        description=(
+            "Bu cevabın benzersiz kimliği. Takip sorusunda "
+            "`parent_completion_id` olarak gönderilir."
+        ),
     )
     parent_completion_id: str | None = Field(
         default=None,

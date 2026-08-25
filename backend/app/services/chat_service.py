@@ -12,12 +12,12 @@ modele hiç sorulmaz.
 from __future__ import annotations
 
 import time
-from uuid import uuid4
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import replace
 from decimal import Decimal
 from typing import Final
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -52,13 +52,19 @@ from app.retrieval.qdrant_store import QdrantStore, QdrantUnavailableError
 from app.retrieval.query import (
     AggregateSpec,
     QueryPlan,
+    QuerySignal,
     merge_with_previous,
     parse_katilma_vadeler,
     parse_katilma_varyant,
     parse_query,
 )
 from app.retrieval.rank import RankCandidate, score_candidates
-from app.retrieval.relevance import filter_relevant_hits, strip_citation_markers
+from app.retrieval.relevance import (
+    filter_relevant_hits,
+    is_anaphoric_query,
+    opens_scope,
+    strip_citation_markers,
+)
 from app.retrieval.search import (
     CHANNEL_CANDIDATES,
     SearchHit,
@@ -1226,6 +1232,28 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
     # sorudan devralındı" göstermek, devralınmamışken yanlış bilgi olur.
     if _plan_imzasi(plan) == onceki_imza:
         devir_kimligi = None
+
+    # "Peki ONUN koşulları neler?" — anafora, önceki CEVABIN adını verdiği
+    # kuruma işaret eder; önceki sorunun süzgecine değil. Ölçüldü: "en uzun
+    # vade hangi bankada" → "Vakıf Katılım" cevabından sonra takip sorusu tüm
+    # bankalarda arıyor, alakasız yanıt dönüyordu.
+    if not plan.bank_codes and is_anaphoric_query(req.query) and not opens_scope(req.query):
+        odak = chat_sessions.previous_focus(oturum, req.parent_completion_id)
+        if odak:
+            plan = replace(
+                plan,
+                bank_codes=(odak,),
+                signals=(
+                    *plan.signals,
+                    QuerySignal(
+                        kind="bank",
+                        value=odak,
+                        label="Banka",
+                        evidence="önceki cevap",
+                    ),
+                ),
+            )
+            devir_kimligi = devir_kimligi or req.parent_completion_id
 
     if req.bank_code:
         plan = replace(plan, bank_codes=(req.bank_code,))
