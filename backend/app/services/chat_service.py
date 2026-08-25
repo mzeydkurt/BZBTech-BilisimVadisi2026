@@ -70,6 +70,7 @@ from app.retrieval.relevance import (
 )
 from app.retrieval.search import (
     CHANNEL_CANDIDATES,
+    FilterReport,
     SearchHit,
     SearchResult,
     filter_all,
@@ -937,6 +938,37 @@ def _rate_docs_filtrele(corpus: Corpus, plan: QueryPlan) -> list[ProductRateDoc]
     return sonuc
 
 
+def _oran_ucdegeri(
+    corpus: Corpus, plan: QueryPlan, spec: AggregateSpec
+) -> tuple[ProductRateDoc | None, list[ProductRateDoc], int]:
+    """Ürün oranları üzerinde uç değer arar (kampanya metrikleri değil).
+
+    ⚠️ `aggregate.compute` yalnızca KAMPANYA metriklerine bakar. Ölçüldü
+    (100 soruluk gerçek havuz): "En düşük konut finansmanı kâr payı oranı hangi
+    katılım bankasında?" — rekabet analizinin en klasik sorusu — "uygun teklif
+    bulunmamaktadır" yanıtı dönüyordu. Oran verisi `product_rates` tablosunda,
+    kampanya metriklerinde değil.
+
+    Returns:
+        (kazanan, berabere_kalanlar, degeri_olmayan_sayisi).
+    """
+    adaylar = [d for d in _rate_docs_filtrele(corpus, plan) if d.profit_rate_pct is not None]
+    degersiz = len(_rate_docs_filtrele(corpus, plan)) - len(adaylar)
+    if not adaylar:
+        return None, [], degersiz
+
+    ters = spec.direction == "max"
+    sirali = sorted(
+        adaylar,
+        key=lambda d: (d.profit_rate_pct, -d.rate_id),
+        reverse=ters,
+    )
+    kazanan = sirali[0]
+    # ⚠️ BERABERLİK GİZLENMEZ (aggregate.compute ile aynı kural).
+    berabere = [d for d in sirali[1:] if d.profit_rate_pct == kazanan.profit_rate_pct]
+    return kazanan, berabere, degersiz
+
+
 def _product_item(doc: ProductRateDoc) -> ChatProductItem:
     return ChatProductItem(
         product_id=doc.product_id,
@@ -1189,6 +1221,29 @@ async def _aggregate_response(
         hesap = aggregate.compute(docs, spec, tum_bankalar=evren)
     metin = aggregate.describe(hesap)
 
+    # ── Uç değer: ürün oranı alanında oran tablosundan hesaplanır ─────────
+    # ⚠️ `aggregate.compute` yalnızca KAMPANYA metriklerine bakar. Ölçüldü
+    # (gerçek havuz): "En düşük konut finansmanı kâr payı oranı hangi katılım
+    # bankasında?" sorusu — rekabet analizinin en klasik sorusu — "uygun teklif
+    # bulunmamaktadır" yanıtı dönüyordu; oran verisi `product_rates`'te.
+    oran_urunleri: list[ChatProductItem] = []
+    if spec.kind == "extremum" and plan.source_domain in {"finansman", "katilma"}:
+        kazanan_oran, berabere_oran, oransiz = _oran_ucdegeri(corpus, plan, spec)
+        if kazanan_oran is not None:
+            oran_urunleri = [_product_item(d) for d in [kazanan_oran, *berabere_oran][: req.limit]]
+            yon = "en yüksek" if spec.direction == "max" else "en düşük"
+            metin = (
+                f"{yon.capitalize()} {kazanan_oran.rate_type.replace('_', ' ')} "
+                f"%{kazanan_oran.profit_rate_pct} ile {kazanan_oran.bank_name} "
+                f"({kazanan_oran.product_name})."
+            )
+            if berabere_oran:
+                metin += f" Aynı oranı sunan {len(berabere_oran)} kayıt daha var."
+            if oransiz:
+                # ⚠️ KAPSAM YAZILIR: kaç kayıtta oran yok bilinmeden uç değer
+                # yanıltıcıdır (aggregate.describe ile aynı kural).
+                metin += f" {oransiz} kayıtta oran bilgisi yok."
+
     etiket = birim = None
     if hesap.field:
         etiket, birim = aggregate.FIELD_LABELS.get(hesap.field, (hesap.field, ""))
@@ -1247,6 +1302,7 @@ async def _aggregate_response(
             banks_with=list(hesap.banks_with),
             banks_without=list(hesap.banks_without),
         ),
+        products=oran_urunleri,
         results=kanitlar,
         retrieval=RetrievalReport(
             corpus_size=corpus.size,
@@ -1842,37 +1898,70 @@ async def _process_chat_core(
 
     # ── search / kampanya compare — hibrit RAG ────────────
     saglayici = _provider_or_none(plan=plan, model_id=req.model_id)
-    depo = _embedding_store(session)
-    ayarlar = get_settings()
-    # ⚠️ Sorgu vektörü Qdrant için de gerekli; yerel depo boş olsa bile
-    # üretilmeli. Eski koşul (`if not depo.is_empty`) Qdrant kullanılırken
-    # vektörü hiç üretmiyordu ve anlamsal kanal sessizce kapanıyordu.
-    qdrant_secili = ayarlar.vector_backend.strip().lower() == "qdrant"
-    vektor = await _query_vector(saglayici, plan) if (qdrant_secili or not depo.is_empty) else None
-    uzak_vuruslar, uzak_kaynak, uzak_not = await _qdrant_ara(vektor)
+    # ── ODAK KAMPANYA: erişim ATLANIR ─────────────────────
+    # ⚠️ Sert süzgeç kapısı burada YETMEZ, çünkü erişim ondan ÖNCE çalışır.
+    # "Bu kampanyanın bitiş tarihi ne zaman?" sorgusunda içerik terimi yoktur;
+    # BM25 o kaydı hiç getirmez, dolayısıyla süzgeç kapısı da onu kurtaramaz.
+    # Ölçüldü (havuz S3.3): odak kurulmuş, çip görünüyor, sonuç yine 0.
+    # Odak tek bir kaydı işaret ettiği için doğru davranış aramak değil,
+    # DOĞRUDAN OKUMAKTIR. Anlatım ve tüm denetimler normal akışta çalışır.
+    odak_doc = (
+        corpus.docs.get(plan.focus_campaign_id) if plan.focus_campaign_id is not None else None
+    )
+    if odak_doc is not None:
+        sonuc = SearchResult(
+            hits=(
+                SearchHit(
+                    doc=odak_doc,
+                    score=1.0,
+                    lexical_rank=None,
+                    semantic_rank=None,
+                    matched_terms=(),
+                ),
+            ),
+            filters=FilterReport(),
+            lexical_used=False,
+            semantic_used=False,
+            corpus_size=corpus.size,
+            semantic_note=(
+                "Soru önceki yanıttaki kampanyaya atıf yaptığı için arama "
+                "yapılmadı; kayıt doğrudan okundu."
+            ),
+        )
+    else:
+        depo = _embedding_store(session)
+        ayarlar = get_settings()
+        # ⚠️ Sorgu vektörü Qdrant için de gerekli; yerel depo boş olsa bile
+        # üretilmeli. Eski koşul (`if not depo.is_empty`) Qdrant kullanılırken
+        # vektörü hiç üretmiyordu ve anlamsal kanal sessizce kapanıyordu.
+        qdrant_secili = ayarlar.vector_backend.strip().lower() == "qdrant"
+        vektor = (
+            await _query_vector(saglayici, plan) if (qdrant_secili or not depo.is_empty) else None
+        )
+        uzak_vuruslar, uzak_kaynak, uzak_not = await _qdrant_ara(vektor)
 
-    # Geniş havuzdan çek, sonra alaka süzgeciyle kırp (dolgu kampanya yok).
-    ham = search(
-        plan,
-        corpus,
-        query_vector=vektor,
-        store=depo,
-        semantic_hits=uzak_vuruslar,
-        semantic_source=uzak_kaynak,
-        limit=max(req.limit, 12),
-    )
-    if uzak_not:
-        ham = replace(ham, semantic_note=uzak_not)
-    alakali = filter_relevant_hits(ham.hits, plan, max_n=min(req.limit, 3))
-    sonuc = SearchResult(
-        hits=alakali,
-        filters=ham.filters,
-        lexical_used=ham.lexical_used,
-        semantic_used=ham.semantic_used,
-        corpus_size=ham.corpus_size,
-        semantic_note=ham.semantic_note,
-        relaxation_hints=ham.relaxation_hints if not alakali else (),
-    )
+        # Geniş havuzdan çek, sonra alaka süzgeciyle kırp (dolgu kampanya yok).
+        ham = search(
+            plan,
+            corpus,
+            query_vector=vektor,
+            store=depo,
+            semantic_hits=uzak_vuruslar,
+            semantic_source=uzak_kaynak,
+            limit=max(req.limit, 12),
+        )
+        if uzak_not:
+            ham = replace(ham, semantic_note=uzak_not)
+        alakali = filter_relevant_hits(ham.hits, plan, max_n=min(req.limit, 3))
+        sonuc = SearchResult(
+            hits=alakali,
+            filters=ham.filters,
+            lexical_used=ham.lexical_used,
+            semantic_used=ham.semantic_used,
+            corpus_size=ham.corpus_size,
+            semantic_note=ham.semantic_note,
+            relaxation_hints=ham.relaxation_hints if not alakali else (),
+        )
     results = _results(sonuc, plan)
     top = _top_from_campaigns(sonuc.hits, plan.source_domain)
     hints = [
