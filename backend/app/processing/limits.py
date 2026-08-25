@@ -356,6 +356,8 @@ def extract_limits_from_text(text: str | None) -> ProductLimits:
     ltv = parse_ltv(text)
 
     # Liste varsa o öncelikli; yoksa "120 aya kadar" gibi aralık.
+    term_min: int | None
+    term_max: int | None
     if vadeler:
         term_min = min(vadeler)
         term_max = max(vadeler)

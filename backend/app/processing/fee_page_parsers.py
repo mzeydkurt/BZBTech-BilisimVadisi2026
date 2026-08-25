@@ -80,7 +80,9 @@ def parse_albaraka_ucret_page(html: str, url: str) -> list[RawProduct]:
 
     for satir in soup.find_all("tr"):
         hucreler = [
-            collapse_whitespace(td.get_text()) for td in satir.find_all("td") if collapse_whitespace(td.get_text())
+            collapse_whitespace(td.get_text())
+            for td in satir.find_all("td")
+            if collapse_whitespace(td.get_text())
         ]
         if not hucreler:
             continue
@@ -112,7 +114,9 @@ def parse_albaraka_ucret_page(html: str, url: str) -> list[RawProduct]:
                 ad=f"{baslik} — Tahsis Ücreti",
                 product_type=ipucu,
                 allocation_fee_pct=oran,
-                evidence=f"{baslik} Tahsis Ücreti %{oran}. Kaynak: Albaraka ürün ve hizmet ücretleri.",
+                evidence=(
+                    f"{baslik} Tahsis Ücreti %{oran}. Kaynak: Albaraka ürün ve hizmet ücretleri."
+                ),
                 slug_parca=f"tahsis-{slugify(baslik)}",
             )
         )
@@ -162,7 +166,10 @@ def parse_hayat_ucret_page(html: str, url: str) -> list[RawProduct]:
                 ad="Finansman Tahsis Ücreti",
                 product_type="ihtiyac_finansmani",
                 allocation_fee_pct=oran,
-                evidence=f"Finansman Tahsis Ücreti %{oran}. Kaynak: Hayat Finans ürün ve hizmet ücretleri.",
+                evidence=(
+                    f"Finansman Tahsis Ücreti %{oran}. "
+                    "Kaynak: Hayat Finans ürün ve hizmet ücretleri."
+                ),
                 slug_parca="finansman-tahsis",
             )
         )
@@ -196,7 +203,10 @@ def parse_turkiye_finans_ucret_page(html: str, url: str) -> list[RawProduct]:
                     ad=f"{baglam} — Tahsis Ücreti",
                     product_type=ipucu,
                     allocation_fee_pct=oran,
-                    evidence=f"{baglam}: Tahsis Ücreti %{oran}. {hucreler[2] if len(hucreler) > 2 else ''}".strip(),
+                    evidence=(
+                        f"{baglam}: Tahsis Ücreti %{oran}. "
+                        f"{hucreler[2] if len(hucreler) > 2 else ''}"
+                    ).strip(),
                     slug_parca=f"tahsis-{slugify(baglam)}",
                 )
             )
