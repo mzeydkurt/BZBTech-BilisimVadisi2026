@@ -53,8 +53,13 @@ class AggregateAnswer:
     with_value: int = 0
     without_value: int = 0
     total: int = 0
-    # Sayma sorusunda banka bazında döküm.
+    # Sayma sorusunda banka bazında döküm. ⚠️ SIFIR sayılı bankalar da
+    # bulunur (bkz. `compute`, `tum_bankalar`): "veri yok" bilgisi de bir
+    # bulgudur ve gizlenmez.
     by_bank: dict[str, int] | None = None
+    # Yokluk / banka sayımı sorularında kümeler (banka ADLARI, sıralı).
+    banks_with: tuple[str, ...] = ()
+    banks_without: tuple[str, ...] = ()
     # Berabere kalan kampanyalar (aynı değeri taşıyanlar), kazanan hariç.
     ties: tuple[CampaignDoc, ...] = ()
 
@@ -77,25 +82,49 @@ def _bicimle(value: Decimal, birim: str) -> str:
     return f"{birim}{metin}" if birim == "%" else f"{metin}{birim}"
 
 
-def compute(docs: list[CampaignDoc], spec: AggregateSpec) -> AggregateAnswer:
+def compute(
+    docs: list[CampaignDoc],
+    spec: AggregateSpec,
+    *,
+    tum_bankalar: tuple[str, ...] = (),
+) -> AggregateAnswer:
     """Toplama sorusunu süzgeçten geçmiş TÜM kayıtlar üzerinde hesaplar.
 
     Args:
         docs: Sert süzgeci geçen kampanyaların tamamı (örneklem DEĞİL).
         spec: `parse_query()` içinden gelen hesap tarifi.
+        tum_bankalar: Banka EVRENİ (adlar). Yokluk ve banka sayımı sorularında
+            zorunludur: kaydı olmayan banka `docs` içinde hiç görünmez, bu
+            yüzden yalnızca `docs`a bakan bir hesap "hangi bankada X yok?"
+            sorusunu YANITLAYAMAZ. Boş geçilirse yokluk kümesi boş döner ve
+            bu durum çağıran katmanda görünür kalır.
 
     Returns:
         Hesaplanmış yanıt. Değeri olan kayıt yoksa `winner=None` döner ve
         `without_value` kaç kaydın veri taşımadığını bildirir.
     """
-    if spec.kind == "count":
+    if spec.kind in {"count", "count_banks", "absence"}:
         dokum: dict[str, int] = {}
         for doc in docs:
             dokum[doc.bank_name] = dokum.get(doc.bank_name, 0) + 1
+
+        # ⚠️ Sıfır sayılı bankalar dökümde KALIR. Ölçüldü: `adil_katilim`
+        # 0 kampanyayla dökümde hiç görünmüyordu; CLAUDE.md "veri yok bilgisi
+        # de başlı başına bir bulgudur, gizlenmez" diyor.
+        for ad in tum_bankalar:
+            dokum.setdefault(ad, 0)
+
+        olan = tuple(sorted(ad for ad, n in dokum.items() if n > 0))
+        olmayan = tuple(sorted(ad for ad in tum_bankalar if dokum.get(ad, 0) == 0))
+
         return AggregateAnswer(
-            kind="count",
+            kind=spec.kind,
             total=len(docs),
+            with_value=len(olan),
+            without_value=len(olmayan),
             by_bank=dict(sorted(dokum.items(), key=lambda ikili: (-ikili[1], ikili[0]))),
+            banks_with=olan,
+            banks_without=olmayan,
         )
 
     alan = spec.field
@@ -142,13 +171,50 @@ def describe(answer: AggregateAnswer) -> str:
     yazdırmak yalnızca yanlış aktarma riski ekler. Model bu katmanda hiç
     çağrılmaz (mimari §5).
     """
+    if answer.kind == "count_banks":
+        # ⚠️ Sayı SQL'den gelir. Ölçüldü: bu soru daha önce `search`e düşüyor
+        # ve modelin kendi ürettiği "iki banka" yanıtı dönüyordu; gerçek 7'ydi.
+        if not answer.banks_with:
+            return "Bu kriterleri karşılayan banka bulunmuyor."
+        adet = len(answer.banks_with)
+        liste = ", ".join(answer.banks_with)
+        cumle = f"Bu kriterleri {adet} banka karşılıyor: {liste}."
+        if answer.banks_without:
+            cumle += (
+                f" Karşılamayan {len(answer.banks_without)} banka: "
+                f"{', '.join(answer.banks_without)}."
+            )
+        return cumle
+
+    if answer.kind == "absence":
+        # ⚠️ Yokluk sorusunun yanıtı, VAR olanların listesi DEĞİLDİR.
+        # Ölçüldü: "hangi bankada taşıt finansmanı kampanyası yok" sorusuna
+        # taşıt finansmanı oranları listeleniyordu — tam ters yanıt.
+        if not answer.banks_without:
+            evren = len(answer.banks_with)
+            return (
+                f"Bu kriterleri karşılamayan banka yok — kapsanan {evren} bankanın "
+                "tamamında en az bir kayıt var."
+            )
+        liste = ", ".join(answer.banks_without)
+        return (
+            f"Bu kriterleri karşılayan kaydı OLMAYAN {len(answer.banks_without)} banka: "
+            f"{liste}. Kaydı olan {len(answer.banks_with)} banka: "
+            f"{', '.join(answer.banks_with)}."
+        )
+
     if answer.kind == "count":
         if answer.total == 0:
             return "Bu kriterlere uyan kampanya bulunmuyor."
         dokum = answer.by_bank or {}
         ilk_uc = ", ".join(f"{banka} ({adet})" for banka, adet in list(dokum.items())[:3])
         kuyruk = f" ve {len(dokum) - 3} banka daha" if len(dokum) > 3 else ""
-        return f"Bu kriterlere uyan {answer.total} kampanya var: {ilk_uc}{kuyruk}."
+        cumle = f"Bu kriterlere uyan {answer.total} kampanya var: {ilk_uc}{kuyruk}."
+        # ⚠️ SIFIR görünür kalır: "veri yok" da bir bulgudur.
+        sifirlar = [banka for banka, adet in dokum.items() if adet == 0]
+        if sifirlar:
+            cumle += f" Hiç kaydı olmayan: {', '.join(sorted(sifirlar))}."
+        return cumle
 
     if answer.winner is None or answer.field is None or answer.value is None:
         # ⚠️ "Veri yok" ile "sonuç yok" ayrı: kayıt VAR ama o alan çıkarılamamış.
