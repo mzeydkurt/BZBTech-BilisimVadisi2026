@@ -13,6 +13,7 @@ yuvarlaması API sınırını geçmez.
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -38,6 +39,14 @@ class ChatRequest(BaseModel):
     session_id: str | None = Field(
         default=None,
         description="Sohbet oturum anahtarı (UUID). Yoksa yeni oturum açılır.",
+    )
+    model_id: str | None = Field(
+        default=None,
+        description=(
+            "`GET /chat/models` listesinden `provider:model` anahtarı. "
+            "⚠️ Seçim YALNIZCA bu isteği etkiler; `.env` yazılmaz. Tanınmayan "
+            "değer sessizce yok sayılır ve yapılandırılmış sağlayıcı kullanılır."
+        ),
     )
 
 
@@ -301,3 +310,53 @@ class ChatSessionDetail(BaseModel):
     created_at: str | None = None
     last_activity_at: str | None = None
     messages: list[ChatSessionMessageOut] = Field(default_factory=list)
+
+
+class ChatSessionSummary(BaseModel):
+    """Sohbet geçmişi listesindeki tek satır.
+
+    ⚠️ MESAJ İÇERİĞİ TAŞIMAZ. Liste yüzlerce oturum döndürebilir; her birinin
+    tüm mesajlarını taşımak yanıtı megabaytlara çıkarır. Tıklanan oturum
+    `GET /chat/sessions/{key}` ile ayrıca çekilir.
+    """
+
+    session_key: str
+    title: str | None = Field(default=None, description="İlk kullanıcı sorusundan türetilen başlık")
+    created_at: datetime
+    last_activity_at: datetime
+    ended_at: datetime | None = None
+    turn_count: int = Field(default=0, description="Kullanıcı–asistan turu sayısı")
+    first_query: str | None = Field(
+        default=None, description="Oturumun ilk kullanıcı sorusu (önizleme)"
+    )
+
+
+class ChatSessionList(BaseModel):
+    """Sohbet geçmişi listesi."""
+
+    items: list[ChatSessionSummary] = Field(default_factory=list)
+    total: int = 0
+
+
+class ChatModelOption(BaseModel):
+    """Sohbette seçilebilecek bir model."""
+
+    id: str = Field(description="`provider:model` biçiminde kararlı anahtar")
+    provider: str = Field(description="evren | local | mock")
+    model: str
+    label: str
+    is_local: bool = Field(description="Kapalı ağda çalışır mı?")
+    is_active: bool = Field(description="Şu an yapılandırılmış olan bu mu?")
+    available: bool = Field(description="Sağlık yoklaması geçti mi?")
+    note: str | None = None
+
+
+class ChatModelsResponse(BaseModel):
+    """Seçilebilir modeller ve etkin olan.
+
+    ⚠️ `available=false` OLAN MODEL LİSTEDEN GİZLENMEZ. Kullanıcı neden
+    seçemediğini görmeli; gizlemek "böyle bir seçenek yok" izlenimi verir.
+    """
+
+    active_id: str
+    items: list[ChatModelOption] = Field(default_factory=list)
