@@ -821,7 +821,16 @@ export interface AggregateBlock {
   without_value: number;
   total: number;
   tie_count: number;
+  /** ⚠️ Sıfır sayılı bankalar da bulunur: "veri yok" da bir bulgudur. */
   by_bank: Record<string, number> | null;
+  /** `count_banks` / `absence`: kriteri karşılayan banka adları. */
+  banks_with?: string[];
+  /**
+   * Kriteri karşılayan KAYDI OLMAYAN banka adları.
+   * ⚠️ Boş dizi "hepsinde var" demektir, "alan yok" demez — yokluk sorusunun
+   * yanıtı `banks_with` DEĞİLDİR, bu alandır.
+   */
+  banks_without?: string[];
 }
 
 export interface ChatProductItem {

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChatForm } from "@/components/chat/ChatForm";
 import { ChatMatchCard } from "@/components/chat/ChatResultCard";
 import { ForbiddenTermsAlert } from "@/components/chat/ForbiddenTermsAlert";
+import { AggregatePanel } from "@/components/chat/AggregatePanel";
 import { EvidenceDisclosure } from "@/components/chat/EvidenceDisclosure";
 import { ModelSelector } from "@/components/chat/ModelSelector";
 import { SessionHistory } from "@/components/chat/SessionHistory";
@@ -262,6 +263,8 @@ function AssistantBubble({
         bağlantı gösteriyor; yanıtın hangi cümleye dayandığı bankanın sayfasına
         gidilmeden görülemiyordu.
       */}
+      <AggregatePanel data={data.aggregate} />
+
       <EvidenceDisclosure results={data.results} products={data.products} />
 
       {data.results.length === 0 && data.relaxation_hints.length > 0 && (

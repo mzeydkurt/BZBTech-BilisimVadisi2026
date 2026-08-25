@@ -1243,6 +1243,19 @@ async def _aggregate_response(
                 # ⚠️ KAPSAM YAZILIR: kaç kayıtta oran yok bilinmeden uç değer
                 # yanıltıcıdır (aggregate.describe ile aynı kural).
                 metin += f" {oransiz} kayıtta oran bilgisi yok."
+            if kazanan_oran.profit_rate_pct == 0:
+                # ⚠️ %0 İKİ ANLAMA GELİR ve kuralla ayırt edilemez:
+                #   • gerçek bedelsiz kampanya (ölçüldü: Albaraka Togg,
+                #     10-12 ay %0, 36 ay %3,05 — kısa vade bedelsiz)
+                #   • kazıma boşluğu (Dünya Katılım Araç, 1,2M₺'de %0)
+                # "En düşük oran %0" cümlesini açıklamasız bırakmak, veri
+                # boşluğunu en iyi teklif gibi göstermek olur. Veriye
+                # dokunulmuyor (provenance korunur), ama belirsizlik SÖYLENİR.
+                metin += (
+                    " ⚠️ %0 değeri iki anlama gelebilir: bedelsiz (vade farksız) "
+                    "bir kampanya ya da kaynakta oranın yayımlanmamış olması. "
+                    "Kaydın kaynağına bakılması gerekir."
+                )
 
     etiket = birim = None
     if hesap.field:
