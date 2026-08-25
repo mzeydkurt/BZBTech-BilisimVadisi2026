@@ -555,6 +555,8 @@ projede zaten var ve `LICENSES.md`'ye yeni bir satır girmedi.
 | Banka kümesi soruları — "hangi bankada X yok" | ✅ `absence` toplaması |
 | Banka sayımı — "kaç banka X veriyor" | ✅ `count_banks`, sayı SQL'den |
 | Sözlük zenginleştirmesi | ✅ olgusal yanıta tanım eklenir, niyet değişmez |
+| Uç değer — "en düşük X oranı hangi bankada" | ✅ ürün oranı tablosundan |
+| Toplama görünümü | ✅ banka bazlı döküm + yokluk kümeleri (arayüz) |
 
 **Yönetişim — ölçülmüş davranış:**
 
@@ -658,6 +660,41 @@ Odak varken erişim **tamamen atlanır**, kayıt doğrudan okunur. Birden çok s
 varsa odak en üst sıralı kayıttır: "belirsizse bağlamama" kuralı burada
 **garanti başarısızlık** üretiyordu. Bağ çip olarak görünür ("önceki yanıttaki
 kampanya"), kullanıcı yanlışsa düzeltebilir.
+
+**Sonuç — havuz öncesi/sonrası (100 soru, aynı zincirle):**
+
+| ölçüt | önce | sonra |
+|---|---|---|
+| `intent=tanim` (havuzda ~8 gerçek) | 49 | **7** |
+| *"sözlükte tanım bulunamadı"* yanıtı | 16 | **0** |
+| kanıt taşımayan yanıt | 22 | **5** |
+
+⚠️ Kalan 5'in 3'ü **doğru davranıştır**: iki kapsam dışı reddi ve bir sohbet
+tanıtımı. Dördüncüsü *"Adil Katılım'da aktif kampanya var mı?"* — yanıt
+belirsiz kalıyor, oysa doğru yanıt "0 kampanya" bulgusunu **söylemektir**;
+açık iş olarak duruyor.
+
+⚠️ Havuz `count_banks` / `absence` toplamalarını **hiç tetiklemiyor** — "kaç
+banka" ya da "hangi bankada … yok" ifadesi içeren soru yok. O yetenekler birim
+testleri ve canlı sorgularla doğrulandı, bu havuzla değil.
+
+**Bulgu 4 — uç değer soruları ürün oranlarını görmüyordu.**
+*"En düşük konut finansmanı kâr payı oranı hangi katılım bankasında?"* —
+rekabet analizinin en klasik sorusu — *"uygun teklif bulunmamaktadır"* yanıtı
+dönüyordu. `aggregate.compute` yalnızca **kampanya** metriklerine bakıyor; oran
+verisi `product_rates` tablosunda. `count_banks` / `absence` için çözülen alan
+ayrımı `extremum`'a uygulanmamıştı. Beraberlik ve kapsam ("kaç kayıtta oran
+yok") aynı kuralla bildirilir.
+
+**Bulgu 5 — anlatıcı güvenlik bildirimini düşürüyordu.** Uç değer `%0` çıktığında
+eklenen belirsizlik uyarısı, anlatıcı katmanı (`_anlat_computed`) metni yeniden
+yazarken **kayboluyordu**. Güvenlik bildirimi modelin üslup kararına
+bırakılamaz: uyarı artık yanıt metnine değil `direction_note` yapısal alanına
+yazılıyor ve arayüz onu ayrı gösteriyor.
+
+⚠️ `%0` iki anlama gelir ve kuralla ayırt edilemez — gerçek bedelsiz kampanya
+(Albaraka Togg: 10-12 ay %0, 36 ay %3,05) ya da kaynakta oranın yayımlanmamış
+olması. Veri **değiştirilmiyor**, belirsizlik söyleniyor.
 
 ### Sohbet ölçümü (35 soruluk gold set)
 
