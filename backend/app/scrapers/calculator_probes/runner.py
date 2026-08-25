@@ -3,21 +3,20 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
-from app.db.models import Bank, CalculatorInventory, Product
+from app.db.models import Bank, CalculatorInventory
 from app.db.session import SessionLocal
 from app.logging_config import get_logger
 from app.scrapers.browser import browser_page, is_playwright_available, playwright_kurulum_mesaji
 from app.scrapers.calculator_probes.common import ProbeReading, oran_gecerli
 from app.scrapers.calculator_probes.matcher import urun_bul
 from app.scrapers.calculator_probes.strategies import probe_target
-from app.scrapers.calculator_probes.targets import PROBE_TARGETS, ProbeTarget
+from app.scrapers.calculator_probes.targets import PROBE_TARGETS
 from app.services.calculator_probe_service import upsert_probe_and_rate
 
 logger = get_logger(__name__)
@@ -128,7 +127,10 @@ def run_probe_targets(
                     continue
                 tum_okumalar.extend(okumalar)
                 for okuma in okumalar:
-                    if not _oran_gecerli(okuma.profit_rate_pct) and okuma.monthly_installment is None:
+                    if (
+                        not _oran_gecerli(okuma.profit_rate_pct)
+                        and okuma.monthly_installment is None
+                    ):
                         logger.info(
                             "probe_bos",
                             variant=okuma.variant_label,

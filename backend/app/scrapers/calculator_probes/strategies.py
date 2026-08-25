@@ -167,9 +167,7 @@ def probe_vakif_loan_type(page: Any, hedef: ProbeTarget) -> list[ProbeReading]:
     page.wait_for_timeout(2500)
     cerez_kapat(page)
     tip_sel = page.locator("#financing-type-select")
-    opts = tip_sel.evaluate(
-        "el => [...el.options].map(o=>({v:o.value,t:o.textContent.trim()}))"
-    )
+    opts = tip_sel.evaluate("el => [...el.options].map(o=>({v:o.value,t:o.textContent.trim()}))")
     sonuclar: list[ProbeReading] = []
     for opt in opts:
         etiket = opt["t"]
@@ -178,7 +176,9 @@ def probe_vakif_loan_type(page: Any, hedef: ProbeTarget) -> list[ProbeReading]:
         vade_sel = page.locator("#number-of-installments-select")
         term = 36
         try:
-            vals = vade_sel.evaluate("el => [...el.options].map(o=>parseInt(o.value)).filter(n=>n>0)")
+            vals = vade_sel.evaluate(
+                "el => [...el.options].map(o=>parseInt(o.value)).filter(n=>n>0)"
+            )
             if vals:
                 term = max(vals)
                 vade_sel.select_option(value=str(term))
@@ -454,7 +454,8 @@ def probe_dunya_embedded(page: Any, hedef: ProbeTarget) -> list[ProbeReading]:
             }
             const amountNum = Number(values.defaultAmount) || 0;
             const installment = values.maxInstallment || values.defaultInstallment || 12;
-            const productName = ($('#loanSelect option[value=\"' + productCode + '\"]').text() || '').trim();
+            const productName =
+                ($('#loanSelect option[value=\"' + productCode + '\"]').text() || '').trim();
             const category = values.category || '';
             const amountStr = Math.round(amountNum).toLocaleString('tr-TR');
             let rateBody = null;
@@ -489,6 +490,10 @@ def probe_dunya_embedded(page: Any, hedef: ProbeTarget) -> list[ProbeReading]:
             continue
         amount_raw = api.get("amount")
         try:
+            # ⚠️ `amount_raw` None olabilir; `float(None)` TypeError verir ve
+            # `except Exception` onu yutup sessizce 200.000'e düşerdi.
+            if amount_raw is None:
+                raise ValueError("amount yok")
             amount = Decimal(str(int(float(amount_raw))))
         except Exception:
             amount = Decimal("200000")
