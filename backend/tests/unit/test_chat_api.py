@@ -233,9 +233,11 @@ class TestBosSonucHataDegildir:
         assert veri["answer"]["source"] in {"computed", "model"}
         assert veri["answer"]["source"] != "refusal" or "kayıt" in veri["answer"]["text"].lower()
         # Anlatıcı reddederse bile şablon computed kalır; RAG refusal değil.
-        assert "yanıt verilemiyor" in veri["answer"]["text"].lower() or "kayıt" in veri[
-            "answer"
-        ]["text"].lower() or "süzgeç" in veri["answer"]["text"].lower()
+        assert (
+            "yanıt verilemiyor" in veri["answer"]["text"].lower()
+            or "kayıt" in veri["answer"]["text"].lower()
+            or "süzgeç" in veri["answer"]["text"].lower()
+        )
 
 
 class TestToplama:
@@ -346,9 +348,7 @@ class TestSprint5Eklemeleri:
         assert "direction_note" in veri
 
     def test_tanim_niyeti(self, api_client: httpx.Client, dolu_oturum: Session) -> None:
-        veri = api_client.post(
-            "/api/v1/chat", json={"query": "Kâr payı oranı ne demek?"}
-        ).json()
+        veri = api_client.post("/api/v1/chat", json={"query": "Kâr payı oranı ne demek?"}).json()
         assert veri["intent"] == "tanim"
         assert veri["answer"]["source"] == "computed"
         assert veri["glossary"]
@@ -387,9 +387,7 @@ class TestKatibimEklemeleri:
         assert veri["source_domain"] == "tanim"
         assert veri["intent"] == "tanim"
 
-    def test_katilma_source_domain(
-        self, api_client: httpx.Client, dolu_oturum: Session
-    ) -> None:
+    def test_katilma_source_domain(self, api_client: httpx.Client, dolu_oturum: Session) -> None:
         veri = api_client.post(
             "/api/v1/chat",
             json={
@@ -405,5 +403,10 @@ class TestKatibimEklemeleri:
         # Ham paylaşım satırı dökümü değil: cevap Katılım Hesabı yoluna işaret eder.
         assert "katılımcı payı %40" not in veri["answer"]["text"].lower()
         note = veri["retrieval"].get("semantic_note") or ""
-        assert "katilim_hesabi" in note or "build_katilim" in note or "Katılma" in note or "pivot" in note.lower() or "katilma" in note.lower()
-
+        assert (
+            "katilim_hesabi" in note
+            or "build_katilim" in note
+            or "Katılma" in note
+            or "pivot" in note.lower()
+            or "katilma" in note.lower()
+        )

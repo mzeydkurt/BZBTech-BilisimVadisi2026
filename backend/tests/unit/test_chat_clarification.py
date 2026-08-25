@@ -12,13 +12,9 @@ def setup_function() -> None:
     invalidate_corpus()
 
 
-def test_clarification_alanlari_var(
-    api_client: httpx.Client, seeded_session: Session
-) -> None:
+def test_clarification_alanlari_var(api_client: httpx.Client, seeded_session: Session) -> None:
     """Mevcut istemciler kırılmaz: alanlar her zaman yanıtta."""
-    veri = api_client.post(
-        "/api/v1/chat", json={"query": "Kuveyt Türk market kampanyası"}
-    ).json()
+    veri = api_client.post("/api/v1/chat", json={"query": "Kuveyt Türk market kampanyası"}).json()
     assert "clarification_needed" in veri
     assert veri["clarification_needed"] is False
     assert veri.get("clarification_question") is None

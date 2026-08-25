@@ -65,9 +65,7 @@ def _kampanya(
         )
     )
     if profit_rate:
-        session.add(
-            CampaignMetric(campaign_id=campaign_id, profit_rate_pct=Decimal(profit_rate))
-        )
+        session.add(CampaignMetric(campaign_id=campaign_id, profit_rate_pct=Decimal(profit_rate)))
     session.commit()
 
 
@@ -81,9 +79,7 @@ class TestHonestSilence:
         assert veri["results"] == []
         assert "model çağrılmadı" in (veri["retrieval"].get("semantic_note") or "").lower()
 
-    def test_bitcoin_bulunamadi(
-        self, api_client: httpx.Client, seeded_session: Session
-    ) -> None:
+    def test_bitcoin_bulunamadi(self, api_client: httpx.Client, seeded_session: Session) -> None:
         _kampanya(
             seeded_session,
             bank_code="kuveyt_turk",
@@ -91,9 +87,7 @@ class TestHonestSilence:
             title="Market Kampanyası",
             card_text="Market alışverişinde hediye.",
         )
-        veri = api_client.post(
-            "/api/v1/chat", json={"query": "Bitcoin kampanyası var mı?"}
-        ).json()
+        veri = api_client.post("/api/v1/chat", json={"query": "Bitcoin kampanyası var mı?"}).json()
         assert veri["intent"] == "search"
         assert veri["answer"]["unverified_numbers"] == []
         if not veri["results"]:
@@ -110,9 +104,7 @@ class TestHonestSilence:
     ) -> None:
         veri = api_client.post(
             "/api/v1/chat",
-            json={
-                "query": "Kuveyt Türk mü daha avantajlı, Albaraka mı? oran karşılaştırması"
-            },
+            json={"query": "Kuveyt Türk mü daha avantajlı, Albaraka mı? oran karşılaştırması"},
         ).json()
         if veri.get("clarification_needed"):
             assert veri["clarification_question"]
@@ -122,12 +114,8 @@ class TestHonestSilence:
             assert veri["intent"] in {"compare", "search", "tekil_sorgu"}
             assert veri["answer"]["unverified_numbers"] == []
 
-    def test_tanim_computed(
-        self, api_client: httpx.Client, seeded_session: Session
-    ) -> None:
-        veri = api_client.post(
-            "/api/v1/chat", json={"query": "Kâr payı oranı ne demek?"}
-        ).json()
+    def test_tanim_computed(self, api_client: httpx.Client, seeded_session: Session) -> None:
+        veri = api_client.post("/api/v1/chat", json={"query": "Kâr payı oranı ne demek?"}).json()
         assert veri["intent"] == "tanim"
         assert veri["answer"]["source"] == "computed"
         assert veri["glossary"]
@@ -173,9 +161,7 @@ class TestHonestSilence:
         )
         plan = QueryPlan(raw="market kampanyası oranı ne?", intent="search")
         provider = MockProvider(mode="halluc")
-        cevap = await generate_answer(
-            plan, hits, provider=provider, forbidden_terms={}
-        )
+        cevap = await generate_answer(plan, hits, provider=provider, forbidden_terms={})
         assert FABRICATED_EVIDENCE
         if cevap.source == "model":
             assert cevap.unverified_numbers
