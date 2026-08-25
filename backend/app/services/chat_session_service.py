@@ -117,11 +117,31 @@ def next_turn_index(oturum: ChatSession) -> int:
     return max(m.turn_index for m in oturum.messages) + 1
 
 
-def previous_plan(oturum: ChatSession) -> QueryPlan | None:
+def previous_plan(
+    oturum: ChatSession,
+    parent_completion_id: str | None = None,
+) -> tuple[QueryPlan | None, str | None]:
+    """Bağlamın devralınacağı turu bulur; (plan, o turun completion_id) döner.
+
+    `parent_completion_id` verilirse bağlam O turdan alınır. Kullanıcı sohbet
+    geçmişinden eski bir tura dönüp soru sorduğunda "son turu devral" varsayımı
+    yanlış bağlam taşıyordu.
+
+    ⚠️ Tanınmayan kimlik SESSİZCE son tura düşmez: bağlam devri hiç yapılmaz.
+    Yanlış turdan devralmak, hiç devralmamaktan daha kötü bir yanıt üretir.
+    """
+    if parent_completion_id:
+        for msg in oturum.messages:
+            if msg.completion_id == parent_completion_id:
+                if not msg.plan_json:
+                    return None, msg.completion_id
+                return plan_from_json(msg.plan_json), msg.completion_id
+        return None, None
+
     for msg in reversed(oturum.messages):
         if msg.role == "assistant" and msg.plan_json:
-            return plan_from_json(msg.plan_json)
-    return None
+            return plan_from_json(msg.plan_json), msg.completion_id
+    return None, None
 
 
 def record_turn(
@@ -132,6 +152,7 @@ def record_turn(
     user_text: str,
     plan: QueryPlan,
     response: ChatResponse,
+    completion_id: str,
 ) -> None:
     now = utc_now()
     if oturum.title is None and user_text.strip():
@@ -159,6 +180,7 @@ def record_turn(
             intent=response.intent,
             source_domain=response.source_domain,
             answer_source=response.answer.source,
+            completion_id=completion_id,
             plan_json=_plan_to_json(plan),
             response_json=json.dumps(govde, ensure_ascii=False),
             created_at=now,
@@ -186,6 +208,7 @@ def session_detail(oturum: ChatSession) -> ChatSessionDetail:
                 turn_index=m.turn_index,
                 role=m.role,
                 content=m.content,
+                completion_id=m.completion_id,
                 response_json=resp,
                 intent=m.intent,
                 source_domain=m.source_domain,

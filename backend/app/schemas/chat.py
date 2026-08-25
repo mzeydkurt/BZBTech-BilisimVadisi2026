@@ -48,6 +48,15 @@ class ChatRequest(BaseModel):
             "değer sessizce yok sayılır ve yapılandırılmış sağlayıcı kullanılır."
         ),
     )
+    parent_completion_id: str | None = Field(
+        default=None,
+        description=(
+            "Bu sorunun takip ettiği cevabın `completion_id` değeri. Verilirse "
+            "bağlam O turdan devralınır; verilmezse oturumun son turu kullanılır. "
+            "Kullanıcı geçmişten eski bir tura dönüp soru sorduğunda, 'son tur' "
+            "varsayımı yanlış bağlam taşır."
+        ),
+    )
 
 
 class UnderstoodFilter(BaseModel):
@@ -277,6 +286,14 @@ class ChatResponse(BaseModel):
     # ── Oturum (eklemeli) ─────────────────────────────────
     session_id: str | None = Field(default=None, description="Sohbet oturum anahtarı (UUID)")
     turn_index: int | None = Field(default=None, description="Bu turdaki sıra numarası (0 tabanlı)")
+    completion_id: str | None = Field(
+        default=None,
+        description="Bu cevabın benzersiz kimliği. Takip sorusunda `parent_completion_id` olarak gönderilir.",
+    )
+    parent_completion_id: str | None = Field(
+        default=None,
+        description="Bağlamın devralındığı cevabın kimliği; devir olmadıysa None.",
+    )
 
 
 class ChatSessionCreateResponse(BaseModel):
@@ -293,6 +310,7 @@ class ChatSessionMessageOut(BaseModel):
     turn_index: int
     role: str
     content: str
+    completion_id: str | None = None
     response_json: dict[str, Any] | ChatResponse | None = None
     intent: str | None = None
     source_domain: str | None = None
