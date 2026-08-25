@@ -41,8 +41,8 @@ from bs4 import BeautifulSoup
 from app.config import get_settings
 from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
-from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.processing.categorizer import infer_segment
+from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.scrapers.base import BaseScraper
 from app.scrapers.models import DiscoveredUrl, RawCampaign, RawProduct
 from app.scrapers.sitemap import extract_urls
