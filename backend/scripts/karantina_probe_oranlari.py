@@ -23,14 +23,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sqlalchemy import select  # noqa: E402
-from sqlalchemy.orm import Session  # noqa: E402
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from app.db.models.bank import Bank  # noqa: E402
-from app.db.models.calculator import CalculatorProbe  # noqa: E402
-from app.db.models.product import Product, ProductRate  # noqa: E402
-from app.db.session import SessionLocal  # noqa: E402
-from app.services.calculator_probe_service import probe_orani_guvenilir_mi  # noqa: E402
+from app.db.models.bank import Bank
+from app.db.models.calculator import CalculatorProbe
+from app.db.models.product import Product, ProductRate
+from app.db.session import SessionLocal
+from app.services.calculator_probe_service import probe_orani_guvenilir_mi
 
 PROBE_KAYNAKLARI = ("calculator_playwright", "calculator_api")
 
@@ -71,9 +71,7 @@ def main() -> int:
         red: list[tuple[str, str, ProductRate, str]] = []
 
         for oran_satiri, urun, banka in satirlar:
-            probe = _probe_bul(
-                session, urun.id, oran_satiri.amount_min, oran_satiri.term_months
-            )
+            probe = _probe_bul(session, urun.id, oran_satiri.amount_min, oran_satiri.term_months)
             tamam, neden = probe_orani_guvenilir_mi(
                 profit_rate_pct=oran_satiri.profit_rate_pct,
                 term_months=oran_satiri.term_months or 0,

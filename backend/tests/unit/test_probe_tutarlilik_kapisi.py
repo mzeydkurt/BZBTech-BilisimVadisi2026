@@ -109,5 +109,5 @@ def test_oran_yoksa_yazilmaz() -> None:
 def test_tavan_belgelenen_degismezin_altinda() -> None:
     """`derive_rate_from_payment_plan`: "Aylık oran hiçbir gerçek üründe
     %100'ü aşmaz". Tavan bu değişmezin içinde kalmalı."""
-    assert AYLIK_ORAN_TAVANI < Decimal("100")
-    assert AYLIK_ORAN_TAVANI > Decimal("9")
+    assert Decimal("100") > AYLIK_ORAN_TAVANI
+    assert Decimal("9") < AYLIK_ORAN_TAVANI
