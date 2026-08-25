@@ -15,6 +15,7 @@ import time
 from collections import Counter
 from pathlib import Path
 
+from app.ai.providers import active_embedding_model
 from app.config import get_settings
 from app.db.session import SessionLocal
 from app.logging_config import configure_logging
@@ -86,7 +87,11 @@ async def _olc(limit: int | None) -> dict:
     return {
         "n": len(gold),
         "provider": settings.llm_provider,
-        "embedding_model": settings.embedding_model,
+        # ⚠️ `settings.embedding_model` DEĞİL. O alan yerel Ollama modelini
+        # tutuyor; EVREN kullanılırken vektörler `bge-m3-embed`'den geliyor ve
+        # rapor yanlış modeli beyan ediyordu. Vektörü gerçekten üreten modelin
+        # adı tek kaynaktan okunur (bkz. `active_embedding_model` gerekçesi).
+        "embedding_model": active_embedding_model(settings),
         "semantic_used_count": semantic_kullanan,
         "semantic_used_rate": semantic_kullanan / n,
         "intent_acc": dogru_niyet / n,

@@ -45,6 +45,7 @@ from app.retrieval.narrate import (
     narrate,
     relaxation_to_natural,
 )
+from app.retrieval.qdrant_store import QdrantStore, QdrantUnavailableError
 from app.retrieval.query import (
     AggregateSpec,
     QueryPlan,
@@ -55,8 +56,14 @@ from app.retrieval.query import (
 )
 from app.retrieval.rank import RankCandidate, score_candidates
 from app.retrieval.relevance import filter_relevant_hits, strip_citation_markers
-from app.retrieval.search import SearchHit, SearchResult, filter_all, search
-from app.retrieval.semantic import EmbeddingStore
+from app.retrieval.search import (
+    CHANNEL_CANDIDATES,
+    SearchHit,
+    SearchResult,
+    filter_all,
+    search,
+)
+from app.retrieval.semantic import EmbeddingStore, SemanticHit
 from app.schemas.chat import (
     AggregateBlock,
     AnswerBlock,
@@ -748,6 +755,59 @@ def _embedding_store(session: Session) -> EmbeddingStore:
         # Yazan taraf ile AYNI kaynak; ikisi ıraksarsa kanal sessizce boşalır.
         model_name=active_embedding_model(get_settings()),
     )
+
+
+async def _qdrant_ara(
+    query_vector: list[float] | None,
+) -> tuple[list[SemanticHit] | None, str | None, str | None]:
+    """Qdrant'tan anlamsal aday getirir.
+
+    ⚠️ QDRANT BİRİNCİL, YEREL TABLO YEDEK. `VECTOR_BACKEND=qdrant` iken önce
+    Qdrant denenir; erişilemezse `None` döner ve çağıran taraf yerel
+    `embeddings` tablosuna düşer. Kapalı ağ (airgap) gösterimi bu yol
+    sayesinde Qdrant olmadan da çalışır.
+
+    ⚠️ SESSİZCE DÜŞÜLMEZ. Hangi arka ucun kullanıldığı ve neden düşüldüğü
+    yanıttaki `semantic_note` alanında bildirilir; "anlamsal arama yapıldı"
+    izlenimi vermek, yapılmadığında yanlış bilgi olur.
+
+    Returns:
+        `(sonuçlar, kaynak, not)` — `sonuçlar` `None` ise yerele düşülmeli.
+    """
+    ayarlar = get_settings()
+    if ayarlar.vector_backend.strip().lower() != "qdrant":
+        return None, None, None
+    if not ayarlar.qdrant_url:
+        return None, None, "VECTOR_BACKEND=qdrant ama QDRANT_URL tanımlı değil; yerele düşüldü."
+    if not query_vector:
+        return None, None, None
+
+    depo = QdrantStore(
+        base_url=ayarlar.qdrant_url,
+        api_key=ayarlar.qdrant_api_key,
+        collection=ayarlar.qdrant_collection,
+        model_name=active_embedding_model(ayarlar),
+    )
+    try:
+        if not await depo.describe():
+            return None, None, "Qdrant koleksiyonu bulunamadı; yerel gömme tablosuna düşüldü."
+        if depo.dim and len(query_vector) != depo.dim:
+            # Boyut uyuşmazlığı yerelde de olacaktır; ama neden Qdrant'ın
+            # atlandığı yazılmalı.
+            return (
+                None,
+                None,
+                f"Qdrant koleksiyonu {depo.dim} boyutlu, sorgu vektörü "
+                f"{len(query_vector)} boyut; yerele düşüldü.",
+            )
+        vuruslar = await depo.search(
+            query_vector, limit=CHANNEL_CANDIDATES, entity_type=CAMPAIGN_ENTITY
+        )
+    except QdrantUnavailableError as exc:
+        logger.warning("qdrant_erisilemedi", hata=str(exc))
+        return None, None, f"Qdrant'a ulaşılamadı ({exc}); yerel gömme tablosuna düşüldü."
+
+    return vuruslar, "qdrant", None
 
 
 async def _query_vector(provider: LLMProvider | None, plan: QueryPlan) -> list[float] | None:
@@ -1532,10 +1592,26 @@ async def _process_chat_core(
     # ── search / kampanya compare — hibrit RAG ────────────
     saglayici = _provider_or_none(plan=plan)
     depo = _embedding_store(session)
-    vektor = await _query_vector(saglayici, plan) if not depo.is_empty else None
+    ayarlar = get_settings()
+    # ⚠️ Sorgu vektörü Qdrant için de gerekli; yerel depo boş olsa bile
+    # üretilmeli. Eski koşul (`if not depo.is_empty`) Qdrant kullanılırken
+    # vektörü hiç üretmiyordu ve anlamsal kanal sessizce kapanıyordu.
+    qdrant_secili = ayarlar.vector_backend.strip().lower() == "qdrant"
+    vektor = await _query_vector(saglayici, plan) if (qdrant_secili or not depo.is_empty) else None
+    uzak_vuruslar, uzak_kaynak, uzak_not = await _qdrant_ara(vektor)
 
     # Geniş havuzdan çek, sonra alaka süzgeciyle kırp (dolgu kampanya yok).
-    ham = search(plan, corpus, query_vector=vektor, store=depo, limit=max(req.limit, 12))
+    ham = search(
+        plan,
+        corpus,
+        query_vector=vektor,
+        store=depo,
+        semantic_hits=uzak_vuruslar,
+        semantic_source=uzak_kaynak,
+        limit=max(req.limit, 12),
+    )
+    if uzak_not:
+        ham = replace(ham, semantic_note=uzak_not)
     alakali = filter_relevant_hits(ham.hits, plan, max_n=min(req.limit, 3))
     sonuc = SearchResult(
         hits=alakali,
