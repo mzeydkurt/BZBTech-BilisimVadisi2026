@@ -1151,10 +1151,35 @@ async def _aggregate_response(
     baslangic: float,
 ) -> ChatResponse:
     docs, rapor = filter_all(corpus, plan)
-    # ⚠️ Banka EVRENİ geçilir. Yokluk ve banka sayımı soruları yalnızca
-    # süzgeçten geçen kayıtlara bakarak yanıtlanamaz: kaydı olmayan banka
+    # ⚠️ Banka EVRENİ geçilir: yokluk ve banka sayımı soruları yalnızca
+    # süzgeçten geçen kayıtlara bakarak yanıtlanamaz — kaydı olmayan banka
     # `docs` içinde hiç görünmez.
-    hesap = aggregate.compute(docs, spec, tum_bankalar=tuple(ad for _kod, ad in corpus.banks))
+    #
+    # ⚠️ AMA sorgu belirli bir bankayı süzdüyse evren O bankadır. "Albaraka'da
+    # kaç kampanya var?" sorusunda dökümde "Hayat Finans: 0" göstermek "Hayat
+    # Finans'ta kampanya yok" demek olur; gerçek neden onun süzgeçle
+    # DIŞLANMASIDIR. İki durum karıştırılamaz.
+    evren = tuple(ad for kod, ad in corpus.banks if not plan.bank_codes or kod in plan.bank_codes)
+
+    # Banka kümesi soruları ALAN'a göre farklı evrende hesaplanır. "Kaç banka
+    # taşıt finansmanı VERİYOR" ürünü sorar (ölçüldü: 7 banka); "hangi bankada
+    # taşıt KAMPANYASI yok" kampanyayı sorar (3 banka). Aynı sayıyı iki soruya
+    # da vermek, birinde yanlış yanıt demektir.
+    if spec.kind in {"count_banks", "absence"} and plan.source_domain in {
+        "finansman",
+        "katilma",
+    }:
+        olan = _urun_bankalari(corpus, plan)
+        yok = [ad for ad in evren if ad not in olan]
+        hesap = replace(
+            aggregate.compute(docs, spec, tum_bankalar=evren),
+            banks_with=tuple(sorted(olan)),
+            banks_without=tuple(sorted(yok)),
+            with_value=len(olan),
+            without_value=len(yok),
+        )
+    else:
+        hesap = aggregate.compute(docs, spec, tum_bankalar=evren)
     metin = aggregate.describe(hesap)
 
     etiket = birim = None
@@ -1231,6 +1256,34 @@ async def _aggregate_response(
         ),
         forbidden_terms_warning=uyari,
     )
+
+
+def _urun_bankalari(corpus: Corpus, plan: QueryPlan) -> set[str]:
+    """Plandaki ürün tipi süzgecini KARŞILAYAN bankaların adları.
+
+    ⚠️ Banka kümesi soruları alan (`source_domain`) bilmeden yanıtlanamaz.
+    Ölçüldü: "kaç banka taşıt finansmanı VERİYOR" sorusu kampanya gövdesinden
+    3 banka veriyordu; ürün tablosunda taşıt finansmanı ürünü olan banka
+    sayısı 7. Bir banka kampanya yapmadan da ürünü sunabilir — "veriyor"
+    ürünü sorar, "kampanyası var" kampanyayı sorar.
+    """
+    urunler = corpus.product_docs or {}
+    urun_tipleri = set(plan.axis_filters.get("product_type", ()))
+    bankalar: set[str] = set()
+    for doc in urunler.values():
+        if plan.bank_codes and doc.bank_code not in plan.bank_codes:
+            continue
+        tip = doc.product_type or ""
+        if urun_tipleri and not any(t in tip or (tip and tip in t) for t in urun_tipleri):
+            continue
+        if plan.source_domain == "katilma":
+            ad = _fold(doc.name)
+            if not any(k in tip or k in ad for k in ("katilma", "birikim", "ara_donem")):
+                continue
+        elif plan.source_domain == "finansman" and "finansman" not in tip and not urun_tipleri:
+            continue
+        bankalar.add(doc.bank_name)
+    return bankalar
 
 
 def _plan_imzasi(plan: QueryPlan) -> tuple[object, ...]:
