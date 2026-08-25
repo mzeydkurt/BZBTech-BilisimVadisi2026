@@ -101,7 +101,9 @@ class StatsResponse(BaseModel):
     limits_total: int = Field(default=0, description="Yapısal limit satırı sayısı")
     ai_coverage_pct: float = Field(
         default=0.0,
-        description="Sınıflandırma kapsamı: en az bir taksonomi etiketi olan kök kampanya oranı (%)",
+        description=(
+            "Sınıflandırma kapsamı: en az bir taksonomi etiketi olan kök kampanya oranı (%)"
+        ),
     )
     green_campaigns_count: int = Field(
         default=0, description="Yeşil / Sürdürülebilir finansman kampanya sayısı"

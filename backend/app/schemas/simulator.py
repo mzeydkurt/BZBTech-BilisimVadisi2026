@@ -74,9 +74,7 @@ class BankFinancingOffer(BaseModel):
     allocation_fee_try: Decimal | None = Field(
         default=None, description="Tahsis ücreti (TL); oran yoksa None"
     )
-    total_cost_try: Decimal = Field(
-        description="Toplam ödeme + tahsis ücreti (sigorta hariç)"
-    )
+    total_cost_try: Decimal = Field(description="Toplam ödeme + tahsis ücreti (sigorta hariç)")
     annual_cost_pct: Decimal | None = Field(
         default=None, description="Bankanın yayımladığı yıllık toplam maliyet (%)"
     )
@@ -167,9 +165,7 @@ class BDDKLimitCheckRequest(BaseModel):
     asset_type: str = Field(description="Varlık türü: tasit, konut veya ihtiyac")
     asset_value_try: Decimal = Field(
         gt=0,
-        description=(
-            "Kasko/fatura değeri, konut ekspertiz değeri veya ihtiyaç finansman tutarı"
-        ),
+        description=("Kasko/fatura değeri, konut ekspertiz değeri veya ihtiyaç finansman tutarı"),
     )
     energy_class: str | None = Field(
         default=None,
