@@ -469,6 +469,8 @@ def _understood(plan: QueryPlan) -> list[UnderstoodFilter]:
             gosterim = "banka sayısı"
         elif plan.aggregate.kind == "absence":
             gosterim = "kaydı olmayan bankalar"
+        elif plan.aggregate.kind == "bank_roster":
+            gosterim = "kapsanan bankalar"
         else:
             alan_etiketi, _ = aggregate.FIELD_LABELS.get(
                 plan.aggregate.field or "", (plan.aggregate.field or "", "")
@@ -914,11 +916,39 @@ def _glossary_bul(corpus: Corpus, terim: str | None) -> GlossaryDoc | None:
     return None
 
 
+# Sektör ekseni → ürün tipi. Ölçüldü: "en uygun kredi hangisinde konut için"
+# sorgusundan çıkan tek süzgeç `sector=konut_gayrimenkul` oluyor; ürün/oran
+# süzgeci yalnızca `product_type`a baktığı için ihtiyaç ve araç finansmanı
+# ürünleri kanıt olarak gösteriliyordu. Kullanıcı konut sordu, ekranda
+# "Enerya İhtiyaç Finansmanı" ve "Araç Finansmanı" görüyordu.
+#
+# ⚠️ Yalnızca ürün tipiyle KESİN karşılığı olan sektörler eşlenir. "genel",
+# "giyim_aksesuar" gibi sektörlerin finansman ürünü karşılığı yoktur ve
+# uydurulmaz.
+SEKTOR_URUN_TIPI: Final[dict[str, tuple[str, ...]]] = {
+    "konut_gayrimenkul": ("konut_finansmani", "arsa_finansmani"),
+    "otomotiv": ("tasit_finansmani", "digital_arac_finansmani"),
+    "ulasim_arac_kiralama": ("tasit_finansmani", "digital_arac_finansmani"),
+    "egitim_kitap": ("egitim_finansmani",),
+    "yatirim_birikim": ("yatirim_urunu", "birikim_katilma_hesabi"),
+}
+
+
+def _hedef_urun_tipleri(plan: QueryPlan) -> set[str]:
+    """Plandaki ürün tipi süzgeci; yoksa sektörden türetilir."""
+    tipler = set(plan.axis_filters.get("product_type", ()))
+    if tipler:
+        return tipler
+    for sektor in plan.axis_filters.get("sector", ()):
+        tipler.update(SEKTOR_URUN_TIPI.get(sektor, ()))
+    return tipler
+
+
 def _rate_docs_filtrele(corpus: Corpus, plan: QueryPlan) -> list[ProductRateDoc]:
     if not corpus.rate_docs:
         return []
     sonuc: list[ProductRateDoc] = []
-    urun_tipleri = set(plan.axis_filters.get("product_type", ()))
+    urun_tipleri = _hedef_urun_tipleri(plan)
     for doc in corpus.rate_docs.values():
         if plan.bank_codes and doc.bank_code not in plan.bank_codes:
             continue
@@ -1015,7 +1045,7 @@ def _product_bm25(
             continue
         if plan.bank_codes and doc.bank_code not in plan.bank_codes:
             continue
-        urun_tipleri = set(plan.axis_filters.get("product_type", ()))
+        urun_tipleri = _hedef_urun_tipleri(plan)
         if (
             urun_tipleri
             and doc.product_type
@@ -1120,6 +1150,19 @@ def _top_from_glossary(items: list[ChatGlossaryItem]) -> list[ChatTopMatch]:
     return score_candidates(adaylar)
 
 
+def _yanitlanamadi_mi(answer: AnswerBlock) -> bool:
+    """Yanıt "veriyle yanıtlanamıyor" mu diyor?
+
+    Metin eşleşmesi kullanılır çünkü bu şablon üç ayrı katmanda üretiliyor
+    (`retrieval/answer.py`, `retrieval/narrate.py`, model istemi) ve hepsi
+    aynı cümleyle başlıyor.
+    """
+    if answer.source == "refusal":
+        return True
+    metin = (answer.text or "").strip().lower()
+    return metin.startswith("bu soruya elimizdeki veriyle yanıt verilemiyor")
+
+
 def _finalize(
     resp: ChatResponse,
     plan: QueryPlan,
@@ -1128,6 +1171,21 @@ def _finalize(
 ) -> ChatResponse:
     """source_domain + top_matches ekler (sözleşme: yalnızca ekleme)."""
     resp.source_domain = plan.source_domain
+
+    # ── "Yanıtlanamıyor" diyen yanıt KANIT TAŞIMAZ ─────────
+    # Arayüzdeki başlık "Yanıtın dayandığı kanıt" der. Yanıt "elimizdeki
+    # veriyle yanıt verilemiyor" ise hiçbir kayıt o yanıtın dayanağı DEĞİLDİR;
+    # kart göstermek yanlış bir iddiadır.
+    #
+    # Ölçüldü: "ben kimim" sorusuna reddetme yanıtı dönerken kanıt olarak
+    # süresi dolmuş bir "Hac ve Umre Finansmanı" kampanyası gösteriliyordu.
+    # Erişim şeffaflığı şeridi (kaç karttan kaçı getirildi) KORUNUR — gizleme
+    # değil, yanlış etiketlemeyi düzeltme.
+    if _yanitlanamadi_mi(resp.answer):
+        resp.results = []
+        resp.products = []
+        resp.top_matches = []
+        return resp
     if top is not None:
         resp.top_matches = top
     elif not resp.top_matches:
@@ -1351,7 +1409,7 @@ def _urun_bankalari(corpus: Corpus, plan: QueryPlan) -> set[str]:
     ürünü sorar, "kampanyası var" kampanyayı sorar.
     """
     urunler = corpus.product_docs or {}
-    urun_tipleri = set(plan.axis_filters.get("product_type", ()))
+    urun_tipleri = _hedef_urun_tipleri(plan)
     bankalar: set[str] = set()
     for doc in urunler.values():
         if plan.bank_codes and doc.bank_code not in plan.bank_codes:
