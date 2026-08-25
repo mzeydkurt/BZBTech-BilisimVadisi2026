@@ -9,21 +9,27 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.db.models.chat import ChatSession
 from app.retrieval.query import parse_query
-from app.schemas.chat import ChatAnswer, ChatResponse
+from app.schemas.chat import AnswerBlock, ChatResponse, RetrievalReport
 from app.services import chat_session_service as css
 
 
 def _yanit(metin: str) -> ChatResponse:
     return ChatResponse(
-        answer=ChatAnswer(text=metin, source="computed"),
-        understood=[],
-        evidence=[],
-        comparison=None,
+        query="test",
+        intent="search",
+        answer=AnswerBlock(text=metin, source="computed"),
+        retrieval=RetrievalReport(
+            corpus_size=0,
+            returned=0,
+            lexical_used=True,
+            semantic_used=False,
+        ),
     )
 
 
-def _tur(db: Session, oturum, *, turn: int, soru: str, cid: str) -> None:
+def _tur(db: Session, oturum: ChatSession, *, turn: int, soru: str, cid: str) -> None:
     css.record_turn(
         db,
         oturum,

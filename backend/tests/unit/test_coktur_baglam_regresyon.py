@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import pytest
 
-from app.retrieval.query import merge_with_previous, parse_query
+from app.retrieval.query import QueryPlan, merge_with_previous, parse_query
 from app.retrieval.relevance import is_anaphoric_query, opens_scope
 
 
-def _birlestir(once: str, sonra: str):
+def _birlestir(once: str, sonra: str) -> QueryPlan:
     return merge_with_previous(parse_query(sonra), parse_query(once))
 
 
