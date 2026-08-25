@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,83 @@ from app.processing.limits import derive_rate_from_payment_plan
 from app.scrapers.products import band_key
 from app.scrapers.models import RawProductRate
 from app.services.bddk_limits_service import family_for_product_type, max_term_for_ihtiyac_amount
+
+log = structlog.get_logger(__name__)
+
+
+# ── Hesaplayıcı okumasının içsel tutarlılık kapıları ──────────────────────
+#
+# ÖLÇÜLDÜ (78 satır, canlı veritabanı). `calculator_playwright` kaynağı diğer
+# altı kaynaktan ayrışıyor:
+#
+#   html_table            n=291  ortalama %3.97   max %6.1
+#   calculator_api        n= 28  ortalama %3.90   max %5.7
+#   seed_manual           n= 22  ortalama %3.77   max %4.79
+#   calculator_playwright n= 78  ortalama %136.03 max %5000
+#
+# İki ayrı sessiz hata bulundu; ikisi de hata fırlatmıyor, yetkili görünen
+# yanlış sayı üretiyordu:
+#
+# 1) BAYAT OKUMA. Aynı taksit/toplam değeri farklı vadelerde tekrar ediyor:
+#    Albaraka 36 ay ve 48 ay probe'ları için taksit=10283.74, toplam=236526.84
+#    (toplam÷taksit = 23). Dünya Katılım'ın 12 aylık sonucu 24 ve 36 ay
+#    probe'larına da yazılmış. Sayfa yeni tutar/vade ile güncellenmeden
+#    okunuyor; önceki probe'un sonucu alınıyor.
+#
+# 2) YILLIK MALİYET ORANI AYLIK ALANA YAZILIYOR. `derive_rate_from_payment_plan`
+#    docstring'i bunu açıkça yasaklıyor: "Albaraka sayfasında %82,39 yazıyor;
+#    o değer ... bileşik yıllık maliyettir ... ikisi farklı büyüklüklerdir ve
+#    birbirinin yerine yazılmaz." Veritabanında tam o değer var: %82.44.
+#
+# Kapılar ham probe satırını SİLMEZ — kanıt olarak kalır (`is_binding=False`).
+# Yalnızca `product_rates`'e servis edilecek satırın yazılmasını engeller:
+# "oran bilinmiyor", "oran %5000" bilgisinden iyidir.
+
+# `derive_rate_from_payment_plan` şunu belirtiyor: "Aylık oran hiçbir gerçek
+# üründe %100'ü aşmaz" (ikili arama aralığı buna göre 0-1). Güvenilir altı
+# kaynağın ölçülen tavanı %9.0. %20 bu tavanın iki katından fazla; ayarlanacak
+# bir eşik değil, aylık oran OLMADIĞINI kanıtlayan sınırdır.
+AYLIK_ORAN_TAVANI: Final[Decimal] = Decimal("20")
+
+
+def _plan_vadesi(
+    monthly_installment: Decimal | None, total_repayment: Decimal | None
+) -> int | None:
+    """Yakalanan ödeme planının İMA ETTİĞİ vade (toplam ÷ taksit)."""
+    if not monthly_installment or not total_repayment or monthly_installment <= 0:
+        return None
+    return int((total_repayment / monthly_installment).to_integral_value())
+
+
+def probe_orani_guvenilir_mi(
+    *,
+    profit_rate_pct: Decimal | None,
+    term_months: int,
+    monthly_installment: Decimal | None,
+    total_repayment: Decimal | None,
+) -> tuple[bool, str | None]:
+    """Probe okumasının kendi içinde tutarlı olup olmadığını söyler.
+
+    Returns:
+        (güvenilir_mi, red_nedeni). Neden loglanır; sessizce düşülmez.
+    """
+    if profit_rate_pct is None:
+        return False, "oran yok"
+
+    # G1 — Bayat okuma: planın ima ettiği vade, sorulan vadeyle örtüşmeli.
+    ima = _plan_vadesi(monthly_installment, total_repayment)
+    if ima is not None and ima != term_months:
+        return False, f"bayat okuma: plan {ima} ay ima ediyor, probe {term_months} ay"
+
+    # G2 — Yıllık maliyet / ayrıştırma hatası: aylık oran olamaz.
+    if profit_rate_pct > AYLIK_ORAN_TAVANI:
+        return False, f"aylık oran olamaz: %{profit_rate_pct} > %{AYLIK_ORAN_TAVANI}"
+
+    if profit_rate_pct < 0:
+        return False, f"negatif oran: %{profit_rate_pct}"
+
+    return True, None
+
 
 # Ürün ailesine göre örnek tutar × vade çiftleri (BDDK bantlarıyla hizalı).
 _PROBE_SAMPLES: Final[dict[str, tuple[tuple[Decimal, int], ...]]] = {
@@ -152,7 +230,27 @@ def upsert_probe_and_rate(
     mevcut.is_binding = False
     session.flush()
 
-    if oran is not None:
+    # Ham probe satırı yukarıda YAZILDI ve kanıt olarak kalır. Aşağıdaki kapı
+    # yalnızca servis edilen `product_rates` satırını engeller.
+    guvenilir, red_nedeni = probe_orani_guvenilir_mi(
+        profit_rate_pct=oran,
+        term_months=term_months,
+        monthly_installment=monthly_installment,
+        total_repayment=total_repayment,
+    )
+    if oran is not None and not guvenilir:
+        log.warning(
+            "probe_orani_reddedildi",
+            banka_id=product.bank_id,
+            urun=product.name,
+            yontem=method,
+            tutar=str(amount),
+            vade=term_months,
+            oran=str(oran),
+            neden=red_nedeni,
+        )
+
+    if oran is not None and guvenilir:
         rate_source = (
             "calculator_api" if method == "api" else "calculator_playwright"
         )
