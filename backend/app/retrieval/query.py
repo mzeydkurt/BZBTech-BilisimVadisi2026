@@ -102,6 +102,33 @@ COUNT_MARKERS: Final[tuple[str, ...]] = (
     "sayisi",
     "toplam kac",
 )
+# "Kaç banka X veriyor?" — sayılan şey KAMPANYA DEĞİL, BANKADIR.
+# Ölçüldü: bu ifade `count` işaretçilerine girmediği için sorgu `search`e
+# düşüyor ve model sayıyı KENDİ üretiyordu. "Kaç banka taşıt finansmanı
+# veriyor?" sorusuna "iki banka" yanıtı geldi; gerçek sayı 7. Bu, projenin
+# "model sayı üretmez" güvencesinin doğrudan ihlaliydi.
+BANK_COUNT_MARKERS: Final[tuple[str, ...]] = (
+    "kac banka",
+    "kac tane banka",
+    "kac kurum",
+    "kac katilim bankasi",
+)
+
+# "Hangi bankada X YOK?" — yokluk sorusu. Ölçüldü: olumsuzlama tamamen
+# görmezden geliniyor, "hangi bankada taşıt finansmanı kampanyası yok"
+# sorusuna taşıt finansmanı ORANLARI listeleniyordu. Ters yanıt.
+ABSENCE_MARKERS: Final[tuple[str, ...]] = (
+    "yok mu",
+    "yok",
+    "olmayan",
+    "bulunmayan",
+    "sunmayan",
+    "vermeyen",
+    "yapmayan",
+    "eksik olan",
+    "hic yok",
+)
+
 COMPARE_MARKERS: Final[tuple[str, ...]] = ("karsilastir", "kiyasla", "hangisi daha", " ile ")
 
 # ── Tanım niyeti ──────────────────────────────────────────
@@ -788,6 +815,20 @@ def _toplama(katlanmis: str) -> AggregateSpec | None:
     Aynı ifade ("en az") iki işi de yapabildiği için ayrım sayının varlığına
     bakılarak yapılır.
     """
+    # ⚠️ SIRA ÖNEMLİ. "Kaç banka" ifadesi "kac" içerdiği için `count`
+    # işaretçilerinden ÖNCE denenir; yoksa banka sayımı kampanya sayımına
+    # dönüşür ve 7 yerine 482 yanıtı verilir.
+    if any(_kelime_var(katlanmis, m) for m in BANK_COUNT_MARKERS):
+        return AggregateSpec(kind="count_banks")
+
+    # Yokluk sorusu: "hangi bankada ... yok". Banka bağlamı ŞARTTIR — "tahsis
+    # ücreti olmayan ürünler" bir yokluk sorusu DEĞİL, süzgeçli aramadır.
+    # Bağlam koşulu olmasa her olumsuzlama banka yokluk sorusuna dönüşürdü.
+    if any(_kelime_var(katlanmis, m) for m in ABSENCE_MARKERS) and any(
+        _kelime_var(katlanmis, k) for k in ("banka", "kurum")
+    ):
+        return AggregateSpec(kind="absence")
+
     for isaretci in COUNT_MARKERS:
         if isaretci in katlanmis:
             return AggregateSpec(kind="count")

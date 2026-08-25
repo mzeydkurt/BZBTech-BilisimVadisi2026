@@ -462,6 +462,10 @@ def _understood(plan: QueryPlan) -> list[UnderstoodFilter]:
     if plan.aggregate is not None:
         if plan.aggregate.kind == "count":
             gosterim = "kayıt sayısı"
+        elif plan.aggregate.kind == "count_banks":
+            gosterim = "banka sayısı"
+        elif plan.aggregate.kind == "absence":
+            gosterim = "kaydı olmayan bankalar"
         else:
             alan_etiketi, _ = aggregate.FIELD_LABELS.get(
                 plan.aggregate.field or "", (plan.aggregate.field or "", "")
@@ -1147,7 +1151,10 @@ async def _aggregate_response(
     baslangic: float,
 ) -> ChatResponse:
     docs, rapor = filter_all(corpus, plan)
-    hesap = aggregate.compute(docs, spec)
+    # ⚠️ Banka EVRENİ geçilir. Yokluk ve banka sayımı soruları yalnızca
+    # süzgeçten geçen kayıtlara bakarak yanıtlanamaz: kaydı olmayan banka
+    # `docs` içinde hiç görünmez.
+    hesap = aggregate.compute(docs, spec, tum_bankalar=tuple(ad for _kod, ad in corpus.banks))
     metin = aggregate.describe(hesap)
 
     etiket = birim = None
@@ -1205,6 +1212,8 @@ async def _aggregate_response(
             total=hesap.total,
             tie_count=len(hesap.ties),
             by_bank=hesap.by_bank,
+            banks_with=list(hesap.banks_with),
+            banks_without=list(hesap.banks_without),
         ),
         results=kanitlar,
         retrieval=RetrievalReport(
