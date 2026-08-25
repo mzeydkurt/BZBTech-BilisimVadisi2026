@@ -88,7 +88,10 @@ def metinden_taksit_toplam(metin: str) -> tuple[Decimal | None, Decimal | None]:
 
 def bddk_ornek_vade(product_type_hint: str | None, amount: Decimal) -> int:
     """BDDK hizalı örnek vade — mümkün olan en uzun izinli."""
-    from app.services.bddk_limits_service import family_for_product_type, max_term_for_ihtiyac_amount
+    from app.services.bddk_limits_service import (
+        family_for_product_type,
+        max_term_for_ihtiyac_amount,
+    )
 
     aile = family_for_product_type(product_type_hint)
     if aile == "ihtiyac":
@@ -121,6 +124,9 @@ def urun_tipi_ipucu(etiket: str) -> str | None:
         return "tasit_finansmani"
     if any(k in d for k in ("arsa", "işyeri", "is yeri", "iş yeri", "ticari gayrimenkul")):
         return "konut_finansmani"
-    if any(k in d for k in ("ihtiyaç", "ihtiyac", "alışveriş", "alisveris", "eğitim", "egitim", "hac", "umre")):
+    if any(
+        k in d
+        for k in ("ihtiyaç", "ihtiyac", "alışveriş", "alisveris", "eğitim", "egitim", "hac", "umre")
+    ):
         return "ihtiyac_finansmani"
     return None

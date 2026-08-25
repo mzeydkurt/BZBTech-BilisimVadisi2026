@@ -965,7 +965,7 @@ def product_external_key(url_slug: str, variant: str | None) -> str:
     çoğalır.
     """
     parca = slugify(variant) if variant else None
-    _SAHTE: frozenset[str] = frozenset(
+    sahte: frozenset[str] = frozenset(
         {
             "",
             "base",
@@ -980,7 +980,7 @@ def product_external_key(url_slug: str, variant: str | None) -> str:
             "-",
         }
     )
-    if parca in _SAHTE:
+    if parca in sahte:
         parca = None
     return f"{url_slug}#{parca or 'base'}"
 
