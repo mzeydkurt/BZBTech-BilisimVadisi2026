@@ -117,9 +117,7 @@ class RankedProduct(BaseModel):
     variant_label: str | None = Field(
         default=None, description="Ürün/oran varyantı (ör. sigortalı / sigortasız)"
     )
-    account_tier: str | None = Field(
-        default=None, description="Katılma hesabı bakiye kademesi"
-    )
+    account_tier: str | None = Field(default=None, description="Katılma hesabı bakiye kademesi")
 
 
 class ProductRankingResponse(BaseModel):

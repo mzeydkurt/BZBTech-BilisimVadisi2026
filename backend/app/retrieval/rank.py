@@ -74,4 +74,4 @@ def score_candidates(adaylar: list[RankCandidate], *, limit: int = TOP_N) -> lis
     return sonuc
 
 
-__all__ = ["RankCandidate", "TOP_N", "score_candidates"]
+__all__ = ["TOP_N", "RankCandidate", "score_candidates"]
