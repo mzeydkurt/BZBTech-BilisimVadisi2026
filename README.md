@@ -513,7 +513,7 @@ demektir.
 `qdrant-client` bağımlılığı **eklenmedi** — REST arayüzü yeterli, `httpx`
 projede zaten var ve `LICENSES.md`'ye yeni bir satır girmedi.
 
-### Sohbet — Katibim
+### Sohbet — Katibim-AI
 
 | Yetenek | Durum |
 |---|---|
@@ -610,6 +610,41 @@ testi var.
 | Değerlendirme raporu yanlış gömme modelini beyan ediyordu | `docs/sprint5_evaluation.md` `nomic-embed-text` yazıyordu, oysa vektörler `bge-m3-embed`'den geliyordu — jüriye sunulan bir çıktıda yanlış model adı | Rapor da tek kaynaktan okuyor |
 | Qdrant hata mesajı boş geliyordu | `httpx.ReadTimeout`'un `str()` çıktısı boş; mesaj "Qdrant'a ulaşılamıyor: " diye yarım kalıyor ve sorunun zaman aşımı mı ağ mı olduğunu gizliyordu (2.402 noktalık yüklemede ölçüldü) | İstisna türü mesaja giriyor; yükleme partisi 128→64 ve upsert için aramadan ayrı 120 sn zaman aşımı |
 | WAL etkinken kopyalanan SQLite dosyası bayat görüntü veriyor | Kart sayımı canlı dosyada **482**, kopyada **377** çıktı; "105 kampanya aranamıyor" şeklinde yanlış bir bulgu raporlanmasına yol açtı | Sayım canlı dosyadan `mode=ro` ile yapılıyor |
+
+### Sprint 5'te eklenen API uçları
+
+| Uç | Ne döndürür |
+|---|---|
+| `POST /api/v1/chat` | Yanıt · kanıt · süzgeç dökümü · erişim şeffaflığı · gevşetme önerileri |
+| `POST /api/v1/chat/sessions` | Yeni oturum anahtarı |
+| `GET /api/v1/chat/sessions` | Sohbet geçmişi listesi (boş oturumlar gizli) |
+| `GET /api/v1/chat/sessions/{key}` | Bir oturumun tüm mesajları |
+| `DELETE /api/v1/chat/sessions/{key}` | Oturumu sonlandırır |
+| `GET /api/v1/chat/models` | Seçilebilir modeller · canlı keşif · sağlık durumu |
+
+⚠️ **Boş sonuç HTTP 200 döndürür.** 4xx döndürmek arayüzde `ErrorState`
+tetikler ve "veri yok" ile "istek başarısız" karışır. Kanıt bulunamadığında
+`results` boş, `relaxation_hints` dolu döner.
+
+Tam sözleşme: <http://localhost:8000/docs>
+
+### Kalite kapıları
+
+| Kapı | Durum |
+|---|---|
+| `pytest` | **1.712 test geçiyor** |
+| `ruff check` + `ruff format` | temiz |
+| `mypy` | temiz (140 dosya) |
+| `tsc -b --noEmit` | temiz |
+| Üretim derlemesi | ✅ 2.582 modül · 359 kB gzip |
+
+Tek komut: `python dev.py lint` (ruff · format · mypy · tsc) ve
+`python dev.py test`.
+
+⚠️ `tests/integration/test_scraper_*` altında **10 test kırık** durumda.
+Bunlar kazıma keşif sayımlarına dayanıyor ve banka sayfaları değiştiğinde
+kırılıyor; sohbet, erişim ve çıkarım katmanlarından bağımsızdır. Gizlenmiyor —
+gerçek durum budur.
 
 ### Devam eden işler — tamamlanmadan bu bölüme sayı yazılmaz
 
@@ -959,7 +994,27 @@ python dev.py derle-web      # arayüzü üretim için derle
 python dev.py migrate-geri   # son göçü geri al (VERİ SİLEBİLİR, onay ister)
 python dev.py suresi-dolanlari-temizle   # süresi kesin dolmuş kampanyaları
                                          # kalıcı siler (VERİ SİLER, onay ister)
+python dev.py sohbet-degerlendir         # 35 soruluk sohbet gold set ölçümü
 ```
+
+**Bozuk veritabanı kurtarma.** `backend/data/app.db` bir kez aktarım sırasında
+kırpılmış hâlde geldi: dosya başlığı 8.932 sayfa olduğunu söylüyor, dosyada
+8.302 sayfa vardı. `PRAGMA integrity_check` üç ağacın dosya sonunun ötesine
+işaret ettiğini gösterdi (`source_documents` · `campaign_extractions` ·
+`entity_cards`).
+
+```bash
+python -m scripts.recover_database   --bozuk  data/app.db.hasarli   --hedef  data/app.db.yeni   --sema   data/bos_sema.db      # `alembic upgrade head` ile üretilmiş boş dosya
+```
+
+Ölçülen kurtarma oranı: `entity_cards` **1.252/1.253** · `campaign_extractions`
+**4.463/4.508** · diğer 16 tablo **%100**. Kaynak dosya değiştirilmez, kanıt
+olarak korunur; kurtarılamayan satıra işaret eden yabancı anahtarlar `NULL`'a
+çekilir — **satır silinmez**, çünkü kampanya verisi ham arşive giden bir
+işaretçiden çok daha değerlidir.
+
+⚠️ Kayıp üç tablonun tamamı **türetilmiş** veridir; ağa çıkmadan yeniden
+üretilebilir (`cikarim` · `kart-uret`). Kaybedilen tek şey işlem süresidir.
 
 ### dev.py kullanmadan
 

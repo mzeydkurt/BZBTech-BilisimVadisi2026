@@ -439,7 +439,7 @@ export function ChatPage() {
               </button>
             )}
             <div>
-              <h1 className="text-base font-semibold text-text-900">Katibim</h1>
+              <h1 className="text-base font-semibold text-text-900">Katibim-AI</h1>
               <p className="text-xs text-text-500">
                 Kampanya, finansman ve katılma hesabı sorularınızı doğal dille sorun.
               </p>
