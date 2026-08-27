@@ -51,9 +51,7 @@ class FinancingTaxRates:
         return self.bsmv_rate == _SIFIR and self.kkdf_rate == _SIFIR
 
 
-def financing_tax_rates(
-    product_type: str | None, segment: str = "bireysel"
-) -> FinancingTaxRates:
+def financing_tax_rates(product_type: str | None, segment: str = "bireysel") -> FinancingTaxRates:
     """Ürün türü ve müşteri segmentine göre BSMV & KKDF oranlarını döndürür."""
     seg = (segment or "bireysel").lower()
 

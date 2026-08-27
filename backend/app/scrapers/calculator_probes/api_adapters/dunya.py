@@ -211,9 +211,7 @@ def calculate(
             monthly_installment=taksit,
             total_payment=toplam,
             source_url=CALCULATOR_URL,
-            source_endpoint=(
-                f"{RATE_URL} (code={kod}, amount={amount_str}, term={vade})"
-            ),
+            source_endpoint=(f"{RATE_URL} (code={kod}, amount={amount_str}, term={vade})"),
             raw_response={"values": values, "rate": res_data},
         )
     except Exception as exc:

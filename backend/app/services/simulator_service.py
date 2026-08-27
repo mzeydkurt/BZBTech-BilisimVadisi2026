@@ -154,16 +154,29 @@ def _en_yakin_vade(
             aday, key=lambda o: o.profit_rate_pct if o.profit_rate_pct is not None else uc
         )
 
+    # ⚠️ BAĞLAYICI ORAN ÖNCE GELİR — ama tek aday oysa eleme YAPILMAZ.
+    # Ölçüldü: Türkiye Finans taşıt simülasyonunda hesaplayıcıdan gelen
+    # `%0,50` (bağlayıcı değil) bankanın yayımladığı `%4,02` tablosunu
+    # eziyor ve "En uygun" rozetini alıyordu. Sert süzgeç ise 13 banka ×
+    # ürün kombinasyonunu (Kuveyt Türk konut dahil) listeden tamamen
+    # düşürürdü; tercih sırası hem doğruyu seçer hem kapsamı korur.
+    def _sec(aday: list[ProductRate]) -> ProductRate:
+        baglayici = [o for o in aday if o.is_binding]
+        return _lehte(baglayici or aday)
+
     tam = [o for o in oranlar if o.term_months == istenen_ay]
     if tam:
-        return _lehte(tam), True
+        return _sec(tam), True
 
     vadeli = [o for o in oranlar if o.term_months is not None]
     if not vadeli:
         return None, False
 
-    en_yakin_fark = min(abs((o.term_months or 0) - istenen_ay) for o in vadeli)
-    adaylar = [o for o in vadeli if abs((o.term_months or 0) - istenen_ay) == en_yakin_fark]
+    # Bağlayıcı satırların vadesi varsa en yakınlık onlar üzerinden ölçülür:
+    # aksi hâlde bağlayıcı olmayan bir satır sırf vadesi yakın diye seçilir.
+    havuz = [o for o in vadeli if o.is_binding] or vadeli
+    en_yakin_fark = min(abs((o.term_months or 0) - istenen_ay) for o in havuz)
+    adaylar = [o for o in havuz if abs((o.term_months or 0) - istenen_ay) == en_yakin_fark]
     return _lehte(adaylar), False
 
 
@@ -326,6 +339,15 @@ def calculate_financing_simulation(
                 total_cost_try=toplam_maliyet,
                 annual_cost_pct=oran.annual_cost_pct,
                 installments=plan,
+                is_binding=oran.is_binding,
+                binding_note=(
+                    None
+                    if oran.is_binding
+                    else (
+                        "Bu oran bankanın taahhüdü değildir; hesaplayıcı sorgusundan "
+                        "okunmuştur. Kesin teklif için bankaya başvurun."
+                    )
+                ),
                 source_url=_kaynak_url(session, urun) if urun else None,
                 evidence_text=oran.evidence_text,
             )
@@ -333,16 +355,22 @@ def calculate_financing_simulation(
 
     en_iyi: str | None = None
     if teklifler:
-        kazanan = min(teklifler, key=lambda t: t.total_cost_try)
+        teklifler.sort(key=lambda t: t.total_cost_try)
+        # ⚠️ "En uygun" rozeti BAĞLAYICI tekliflere ayrılır. Bağlayıcı olmayan
+        # teklif listede kalır ama bankanın taahhüdü olmayan bir sayıyla
+        # kazanan ilan edilmez. Hiç bağlayıcı teklif yoksa en ucuz seçilir.
+        kazanan = next((t for t in teklifler if t.is_binding), teklifler[0])
         kazanan.is_best_offer = True
         en_iyi = kazanan.bank_code
-        teklifler.sort(key=lambda t: t.total_cost_try)
 
     tax_info = financing_tax_rates(req.product_type)
     tax_desc = (
         "Vergisiz (Konut mevzuatı gereği BSMV ve KKDF'den muaftır)."
         if tax_info.is_tax_exempt
-        else f"Vergiler dahil: %{tax_info.bsmv_pct:g} BSMV + %{tax_info.kkdf_pct:g} KKDF kâr payı üzerine eklenmiştir."
+        else (
+            f"Vergiler dahil: %{tax_info.bsmv_pct:g} BSMV + %{tax_info.kkdf_pct:g} KKDF "
+            "kâr payı üzerine eklenmiştir."
+        )
     )
 
     if tahsis_dahil:
@@ -358,8 +386,10 @@ def calculate_financing_simulation(
         method = (
             f"Eşit taksitli (annüite) plan; {tax_desc} "
             "Aylık oran, bankanın yayımladığı aylık kâr payı oranıdır. "
-            "Tahsis ücretleri bankadan bankaya azami olarak finansman tutarının binde beşi yani %0.50'si olarak tahsil edilmektedir; "
-            "bankalar arası farklılıklar gösterebileceğinden hesaplamaya dahil edilmemiştir; sigorta gibi ek maliyetler de dahil değildir."
+            "Tahsis ücretleri bankadan bankaya azami olarak finansman tutarının "
+            "binde beşi yani %0.50'si olarak tahsil edilmektedir; bankalar arası "
+            "farklılıklar gösterebileceğinden hesaplamaya dahil edilmemiştir; "
+            "sigorta gibi ek maliyetler de dahil değildir."
         )
     if bddk_vade_notu:
         method = f"{method} {bddk_vade_notu}"

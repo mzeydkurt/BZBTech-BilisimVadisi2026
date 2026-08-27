@@ -263,7 +263,11 @@ def rank_products(
         if oran.id not in guncel_idler:
             continue
         # Meşru bir 0 kâr payı kampanyası değilse ve oran <= 0.05 ise sıralamaya sokma
-        if oran.rate_type == "financing_rate" and oran.profit_rate_pct is not None and oran.profit_rate_pct <= Decimal("0.05"):
+        if (
+            oran.rate_type == "financing_rate"
+            and oran.profit_rate_pct is not None
+            and oran.profit_rate_pct <= Decimal("0.05")
+        ):
             if not is_zero_rate_promotional(
                 product_name=urun.name,
                 description=urun.description,

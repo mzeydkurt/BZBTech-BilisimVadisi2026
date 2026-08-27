@@ -88,6 +88,16 @@ class BankFinancingOffer(BaseModel):
         default_factory=list, description="Eşit taksitli amortisman tablosu"
     )
     is_best_offer: bool = False
+    is_binding: bool = Field(
+        default=True,
+        description=(
+            "Oran bankanın taahhüdü mü? Hesaplayıcı sorgusundan gelen ya da "
+            "'bilgilendirme amaçlıdır' notu taşıyan oranlarda False olur."
+        ),
+    )
+    binding_note: str | None = Field(
+        default=None, description="Teklif bağlayıcı değilse gösterilecek uyarı"
+    )
     source_url: str | None = None
     evidence_text: str | None = Field(default=None, description="Oranın okunduğu tablo satırı")
 

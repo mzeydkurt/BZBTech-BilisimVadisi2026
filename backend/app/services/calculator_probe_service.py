@@ -312,7 +312,8 @@ def upsert_probe_and_rate(
         total_repayment=total_repayment,
         product_name=product.name,
         description=product.description,
-        evidence_text=probe_variant or (request_payload.get("variant") if request_payload else None),
+        evidence_text=probe_variant
+        or (request_payload.get("variant") if request_payload else None),
         product_type=product.product_type,
     )
     if oran is not None and not guvenilir:
