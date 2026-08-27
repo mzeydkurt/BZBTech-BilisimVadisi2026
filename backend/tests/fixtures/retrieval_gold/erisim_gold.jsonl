@@ -1,0 +1,38 @@
+# Erişim gold set — recall@k ve kanal ablasyonu (E3 · B5).
+#
+# ⚠️ ETİKETLER SİSTEMİN SIRALAMASINDAN TÜRETİLMEDİ. Sızıntı olmaması için
+# etiketleme protokolü şu: her sorgu için `havuz_terimleri` ile gövdenin
+# TAMAMI (482 kampanya) taranır — bu tarama BM25'ten, gömmeden ve RRF'ten
+# tamamen bağımsız, düz alt dize eşleşmesidir. Çıkan havuzun her kaydı
+# başlığı ve kart metni okunarak ilgili/ilgisiz olarak işaretlenir.
+# `scripts/retrieval_recall.py --denetle` havuzda olup etiketlenmemiş kayıt
+# kalmadığını doğrular; yani etiket kümesinin TAM olduğu denetlenebilir.
+#
+# ⚠️ İLGİLİLİK, SÜZGEÇ ÖLÇÜTÜNDEN DARDIR ve öyle olmak zorunda. Eğer
+# ilgililik "sert süzgecin geçirdiği her kayıt" olarak tanımlanırsa ölçüm
+# döngüsel olur: süzgeç bir KAPI olduğu için recall@k kendiliğinden 1,0
+# çıkar ve SIRALAMA hakkında hiçbir şey söylemez. Bu yüzden ilgililik
+# kampanyanın gerçekten ne vaat ettiğine bakılarak belirlenir.
+#
+# ⚠️ TAKSONOMİ ETİKETİ İLGİLİLİK KANITI DEĞİLDİR. Ölçüldü: Albaraka'nın
+# segment kartlarından gelen `audience=[ciftci, emekli, ozel_bankacilik]`
+# etiketi 10 kampanyada "emeklilere özel" anlamına GELMİYOR — kartta
+# segment listesi geçiyor diye eksene yazılmış. İlgililik kararı metinden
+# verilir, etiketten değil.
+#
+# ⚠️ İLGİLİ KÜME KÜÇÜK TUTULDU (1–6). recall@5'in 1,0'a ulaşabilmesi için
+# ilgili sayısı k'yı aşmamalı; 8 ilgilinin olduğu bir sorguda recall@5 tavanı
+# yapay olarak 0,63'tür ve sıralamanın iyiliğini ölçmez.
+#
+# Biçim: {"kod", "sorgu", "ilgili": {campaign_id: gerekçe}, "havuz_terimleri": [...]}
+{"kod": "e01", "sorgu": "Kuveyt Türk akaryakıt harcamalarına puan veren kampanyalar", "havuz_terimleri": ["akaryakıt", "benzin", "petrol ofisi", "opet", "shell"], "ilgili": {"773": "Akaryakıt Sektöründe Sağlam Oran — akaryakıt sektörüne özel oran", "777": "Sağlam Business Kart akaryakıt harcamalarına Altın Puan", "780": "Akaryakıt harcamalarına her ay ekstra Mil"}, "not": "Diğer bankaların akaryakıt kampanyaları (681 Emlak, 803/840 TOM, 900 Ziraat, 1162 Albaraka) sorguda banka adı geçtiği için ilgili DEĞİL."}
+{"kod": "e02", "sorgu": "Uçak bileti alımlarında nakit iade veren TOM Bank kampanyaları", "havuz_terimleri": ["uçak bileti", "pegasus", "uçuş"], "ilgili": {"817": "Hadi Black ile tüm Pegasus uçuşlarında %50 iade", "860": "Uçak bileti alımlarında ayda 3.500 TL", "865": "Uçak bileti alımlarında her ay 3.500 TL'ye varan iade", "866": "Uçak bileti alımlarında her ay 1.250 TL'ye varan iade", "839": "Pegasus koduyla müşteri ol, Pegasus harcamalarından iade"}}
+{"kod": "e03", "sorgu": "Emeklilere özel kampanyalar", "havuz_terimleri": ["emekli", "eyt", "emekli maaşı"], "ilgili": {"506": "EYT Finansmanı — emekliliği gelen müşteriye özel ürün", "738": "Emekli Müşterilerimize Özel Ayrıcalıklar", "1085": "Maaşlar Türkiye Finans'a Taşınıyor, Emekliler Kazanıyor", "1170": "Emekli Promosyon 2026"}, "not": "Albaraka'nın segment kartından `audience=emekli` etiketi alan 10 kampanya (589, 592, 594, 596, 597, 605, 619, 1161, 1166, 1174, 1178, 1184) emekliye ÖZEL değil; kartta segment listesi geçiyor. 626, 1089, 1155, 1181 de emekli-özel değil."}
+{"kod": "e04", "sorgu": "Konut finansmanı kampanyası", "havuz_terimleri": ["konut", "ev sahibi", "gayrimenkul", "mortgage", "ipotek"], "ilgili": {"1178": "Dijitale Özel Konut ve Taşıt Finansmanı Kampanyası — kampanya tarafındaki TEK konut finansmanı kaydı"}, "not": "⚠️ BU SORGU BİR SEKTÖR BULGUSUNU DA DOĞRULAR (bkz. B4): şartnamenin 8 ürün türünden `konut_finansmani` kampanya tarafında neredeyse yok; bankalar konutu ürün sayfasında oran tablosu olarak yayımlıyor (7 bankada 137 oran satırı)."}
+{"kod": "e05", "sorgu": "Özel okul ödemelerinde taksit fırsatı", "havuz_terimleri": ["okul", "özel okul", "eğitim ödemesi", "okul ödemeleri"], "ilgili": {"838": "Özel okul ödemelerinde vade farksız tam 10 taksit", "885": "Okul Ödemelerinizde 12 Aya Varan Taksit Fırsatı", "1103": "Seçili Okullarda Peşin Ödemelerinize 5'e Varan Taksit"}, "not": "Eğitim HARCAMASI kampanyaları (579, 580, 606, 758, 1117) okul ÖDEMESİ değil; kırtasiye/okula dönüş (1140) da değil."}
+{"kod": "e06", "sorgu": "Emlak Katılım market alışverişlerinde ParafPara", "havuz_terimleri": ["market", "parafpara"], "ilgili": {"685": "Market Alışverişlerinize 800 TL ParafPara", "686": "Market Alışverişlerinize 2.000 TL ParafPara"}, "not": "684 'Mobilya, Dekorasyon ve Yapı Marketi' — yapı marketi gıda marketi değil, ilgili değil."}
+{"kod": "e07", "sorgu": "Araç kiralamada indirim kampanyaları", "havuz_terimleri": ["araç kiralama", "yolcu360", "rent a car", "windy car"], "ilgili": {"694": "Yolcu360'ta yurt içi araç kiralamada net %10 indirim", "1023": "Yolcu360'ta yurt dışı araç kiralamada %15 indirim", "1024": "Yolcu360'ta yurt içi araç kiralamada %10 indirim", "1153": "Yolcu360'ta araç kiralamada indirim fırsatı", "1160": "Yolcu360'ta yurt içi araç kiralamalarına net %10 indirim", "1135": "Windy Car'da %30 indirim"}}
+{"kod": "e08", "sorgu": "POS kampanyaları", "havuz_terimleri": ["pos", "üye işyeri", "sanal pos"], "ilgili": {"793": "Eğitime Özel Taksitli POS Kampanyası", "794": "Yeni Müşterilere Özel POS Kampanyası", "795": "Sanal POS Kampanyası"}}
+{"kod": "e09", "sorgu": "E-ihracat ve kargo gönderilerinde avantaj", "havuz_terimleri": ["e-ihracat", "ihracat", "kargo", "shipentegra", "gönderi"], "ilgili": {"774": "E-İhracat gönderilerinizde Mil kazanın", "782": "ShipEntegra ile yurtdışı kargo gönderilerinde vade farksız taksit", "786": "E-Ticaret yapan KOBİ'lere %75'e varan kargo indirimi", "779": "E-Ticaret, E-İhracat ve Tekno Girişimcilere özel fırsat"}, "not": "784 'İhracatınız Fazlaysa Avantajınız da Fazla' ihracat finansmanı — kargo/gönderi değil, sınırda; ilgili sayılmadı."}
+{"kod": "e10", "sorgu": "Umre ve hac finansmanı", "havuz_terimleri": ["umre", "hac", "diyanet"], "ilgili": {"510": "Hac ve Umre Finansmanı", "772": "Diyanet Umre Finansmanı ile vade farksız 3 taksit", "1193": "Şubesiz Umre Finansmanı", "756": "Toprak Turizm umre turlarında indirim"}}
+{"kod": "e11", "sorgu": "Lastik alışverişinde taksit", "havuz_terimleri": ["lastik", "goodyear", "bridgestone", "michelin", "petlas"], "ilgili": {"881": "Goodyear'da 4 Taksit", "882": "Bridgestone'da 5 Taksit", "1031": "Michelin'de 4 Taksit", "1032": "PETLAS'ta Peşin Fiyatına 6 Taksit"}}

@@ -1,213 +1,284 @@
 {
   "mode": "llm_only",
-  "gold_campaigns": 60,
-  "gold_annotations": 1320,
-  "micro_f1": 0.0,
-  "macro_f1": 0.0,
-  "hallucination_rate": 0.0,
-  "correct_silence_rate": 1.0,
+  "gold_campaigns": 66,
+  "gold_annotations": 1452,
+  "micro_f1": 0.0361,
+  "macro_f1": 0.0574,
+  "precision": 0.0594,
+  "recall": 0.0259,
+  "hallucination_rate": 0.9406,
+  "invention_rate": 0.1187,
+  "value_error_rate": 0.8219,
+  "correct_silence_rate": 0.9726,
+  "silence_opportunities": 950,
   "overall": {
-    "tp": 0,
-    "fp": 0,
-    "fn": 486,
-    "tn": 834
+    "tp": 13,
+    "fp": 206,
+    "fn": 489,
+    "tn": 924,
+    "fp_invented": 26,
+    "fp_wrong": 180
   },
   "by_field": {
     "profit_rate_pct": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 8,
-      "tn": 52
+      "tp": 1,
+      "fp": 2,
+      "fn": 12,
+      "tn": 52,
+      "fp_invented": 1,
+      "fp_wrong": 1
     },
     "profit_share_rate_pct": {
       "tp": 0,
-      "fp": 0,
+      "fp": 1,
       "fn": 1,
-      "tn": 59
+      "tn": 64,
+      "fp_invented": 1,
+      "fp_wrong": 0
     },
     "allocation_fee_pct": {
       "tp": 0,
       "fp": 0,
       "fn": 0,
-      "tn": 60
+      "tn": 66,
+      "fp_invented": 0,
+      "fp_wrong": 0
     },
     "file_fee_try": {
       "tp": 0,
       "fp": 0,
       "fn": 0,
-      "tn": 60
+      "tn": 66,
+      "fp_invented": 0,
+      "fp_wrong": 0
     },
     "has_no_fee": {
       "tp": 0,
-      "fp": 0,
-      "fn": 3,
-      "tn": 57
+      "fp": 1,
+      "fn": 4,
+      "tn": 61,
+      "fp_invented": 1,
+      "fp_wrong": 0
     },
     "term_months_min": {
       "tp": 0,
-      "fp": 0,
-      "fn": 2,
-      "tn": 58
+      "fp": 2,
+      "fn": 4,
+      "tn": 60,
+      "fp_invented": 2,
+      "fp_wrong": 0
     },
     "term_months_max": {
       "tp": 0,
-      "fp": 0,
-      "fn": 5,
-      "tn": 55
+      "fp": 1,
+      "fn": 7,
+      "tn": 58,
+      "fp_invented": 1,
+      "fp_wrong": 0
     },
     "installment_count": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 19,
-      "tn": 41
+      "tp": 2,
+      "fp": 1,
+      "fn": 28,
+      "tn": 35,
+      "fp_invented": 1,
+      "fp_wrong": 0
     },
     "financing_amount_min": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 3,
-      "tn": 57
+      "tp": 1,
+      "fp": 6,
+      "fn": 1,
+      "tn": 58,
+      "fp_invented": 6,
+      "fp_wrong": 0
     },
     "financing_amount_max": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 4,
-      "tn": 56
+      "tp": 1,
+      "fp": 3,
+      "fn": 2,
+      "tn": 60,
+      "fp_invented": 3,
+      "fp_wrong": 0
     },
     "min_spend_try": {
-      "tp": 0,
+      "tp": 2,
       "fp": 0,
-      "fn": 27,
-      "tn": 33
+      "fn": 20,
+      "tn": 44,
+      "fp_invented": 0,
+      "fp_wrong": 0
     },
     "max_spend_try": {
       "tp": 0,
-      "fp": 0,
-      "fn": 6,
-      "tn": 54
+      "fp": 2,
+      "fn": 7,
+      "tn": 57,
+      "fp_invented": 2,
+      "fp_wrong": 0
     },
     "reward_amount_try": {
-      "tp": 0,
+      "tp": 1,
       "fp": 0,
-      "fn": 29,
-      "tn": 31
+      "fn": 21,
+      "tn": 44,
+      "fp_invented": 0,
+      "fp_wrong": 0
     },
     "reward_type": {
       "tp": 0,
-      "fp": 0,
-      "fn": 54,
-      "tn": 6
+      "fp": 3,
+      "fn": 58,
+      "tn": 8,
+      "fp_invented": 0,
+      "fp_wrong": 3
     },
     "cashback_pct": {
       "tp": 0,
-      "fp": 0,
-      "fn": 10,
-      "tn": 50
+      "fp": 5,
+      "fn": 3,
+      "tn": 58,
+      "fp_invented": 5,
+      "fp_wrong": 0
     },
     "discount_pct": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 10,
-      "tn": 50
+      "tp": 1,
+      "fp": 3,
+      "fn": 6,
+      "tn": 56,
+      "fp_invented": 3,
+      "fp_wrong": 0
     },
     "loyalty_points": {
       "tp": 0,
       "fp": 0,
-      "fn": 18,
-      "tn": 42
+      "fn": 14,
+      "tn": 52,
+      "fp_invented": 0,
+      "fp_wrong": 0
     },
     "start_date": {
-      "tp": 0,
+      "tp": 1,
       "fp": 0,
-      "fn": 49,
-      "tn": 11
+      "fn": 46,
+      "tn": 19,
+      "fp_invented": 0,
+      "fp_wrong": 0
     },
     "end_date": {
-      "tp": 0,
+      "tp": 2,
       "fp": 0,
       "fn": 58,
-      "tn": 2
+      "tn": 6,
+      "fp_invented": 0,
+      "fp_wrong": 0
     },
     "target_customer": {
       "tp": 0,
-      "fp": 0,
-      "fn": 60,
-      "tn": 0
+      "fp": 64,
+      "fn": 66,
+      "tn": 0,
+      "fp_invented": 0,
+      "fp_wrong": 64
     },
     "product_type": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 60,
-      "tn": 0
+      "tp": 1,
+      "fp": 64,
+      "fn": 65,
+      "tn": 0,
+      "fp_invented": 0,
+      "fp_wrong": 64
     },
     "sector": {
       "tp": 0,
-      "fp": 0,
-      "fn": 60,
-      "tn": 0
+      "fp": 48,
+      "fn": 66,
+      "tn": 0,
+      "fp_invented": 0,
+      "fp_wrong": 48
     }
   },
   "by_method": {
     "blind": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 243,
-      "tn": 417
+      "tp": 7,
+      "fp": 68,
+      "fn": 173,
+      "tn": 320,
+      "fp_invented": 6,
+      "fp_wrong": 62
     },
     "assisted": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 243,
-      "tn": 417
+      "tp": 6,
+      "fp": 138,
+      "fn": 316,
+      "tn": 604,
+      "fp_invented": 20,
+      "fp_wrong": 118
     }
   },
   "by_bank": {
     "ziraat_katilim": {
       "tp": 0,
-      "fp": 0,
-      "fn": 182,
-      "tn": 302
+      "fp": 41,
+      "fn": 110,
+      "tn": 198,
+      "fp_invented": 0,
+      "fp_wrong": 41
     },
     "emlak_katilim": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 54,
-      "tn": 100
+      "tp": 2,
+      "fp": 33,
+      "fn": 83,
+      "tn": 155,
+      "fp_invented": 2,
+      "fp_wrong": 31
     },
     "vakif_katilim": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 48,
-      "tn": 84
+      "tp": 4,
+      "fp": 9,
+      "fn": 22,
+      "tn": 39,
+      "fp_invented": 1,
+      "fp_wrong": 8
     },
     "hayat_finans": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 44,
-      "tn": 88
+      "tp": 1,
+      "fp": 22,
+      "fn": 48,
+      "tn": 102,
+      "fp_invented": 3,
+      "fp_wrong": 19
+    },
+    "kuveyt_turk": {
+      "tp": 2,
+      "fp": 35,
+      "fn": 96,
+      "tn": 161,
+      "fp_invented": 5,
+      "fp_wrong": 30
     },
     "albaraka": {
       "tp": 0,
-      "fp": 0,
-      "fn": 43,
-      "tn": 67
-    },
-    "kuveyt_turk": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 79,
-      "tn": 119
+      "fp": 14,
+      "fn": 36,
+      "tn": 71,
+      "fp_invented": 3,
+      "fp_wrong": 11
     },
     "dunya_katilim": {
       "tp": 0,
-      "fp": 0,
-      "fn": 17,
-      "tn": 49
+      "fp": 20,
+      "fn": 42,
+      "tn": 111,
+      "fp_invented": 1,
+      "fp_wrong": 19
     },
     "tom_bank": {
-      "tp": 0,
-      "fp": 0,
-      "fn": 19,
-      "tn": 25
+      "tp": 4,
+      "fp": 32,
+      "fn": 52,
+      "tn": 87,
+      "fp_invented": 11,
+      "fp_wrong": 21
     }
   }
 }

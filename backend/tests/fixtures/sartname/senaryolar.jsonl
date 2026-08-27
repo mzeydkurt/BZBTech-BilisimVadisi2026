@@ -1,0 +1,23 @@
+# Şartnamenin KENDİ örnek senaryoları — birebir (E6).
+#
+# ⚠️ BU METİNLER BİZİM YAZDIĞIMIZ ÖRNEKLER DEĞİL. Şartnamenin "Örnek Temsili
+# Senaryo-1"indeki A/B/C Bankası konut finansmanı satırlarından türetildi
+# (bkz. `docs/SPRINT5_CHATBOT_RAG_PROMPT_2.md` §4.1 tablosu). Jüri kendi
+# örneğinin çalıştığını görmek ister; kendi örneğimizle göstermek o soruyu
+# yanıtlamaz.
+#
+# ⚠️ ÜÇ BANKA ÜÇ FARKLI YAZIM BİÇİMİ TAŞIYOR ve bu bilinçli: senaryo aynı
+# zamanda paraf değişmezliğinin (K4 ilk alt madde) sınavıdır.
+#     A → "%1,89"        · "120 aya kadar"  · "50.000 TL'ye kadar masraf yok"
+#     B → "yüzde 1,95"   · "10 yıl"          · "Ekspertiz ücretsiz"
+#     C → "1.87 %"       · "96 ay"           · masraf BELİRTİLMEMİŞ → susulmalı
+#
+# ⚠️ `beklenen_bos` ALANI ÖLÇÜMÜN YARISI. C Bankası satırında masraf bilgisi
+# YOK; sistem o alanı boş bırakmak ZORUNDA. Şartname 7 "bilgi yokken bilgi
+# üretmeme"yi puanlıyor — yalnızca doldurulan alanlara bakan bir ölçüm bu
+# yeteneği hiç görmez.
+#
+# Biçim: {"kod", "banka", "metin", "beklenen": {alan: değer}, "beklenen_bos": [alan]}
+{"kod": "s1-a", "banka": "A Bankası", "metin": "A Bankası Konut Finansmanı Kampanyası. Kâr payı oranı %1,89 ile 120 aya kadar vade imkânı. 50.000 TL'ye kadar masraf yok.", "beklenen": {"profit_rate_pct": "1.89", "term_months_max": "120", "has_no_fee": "true", "file_fee_try": "0"}, "beklenen_bos": ["appraisal_fee_covered", "allocation_fee_pct"]}
+{"kod": "s1-b", "banka": "B Bankası", "metin": "B Bankası Konut Finansmanı. Kâr payı oranı yüzde 1,95 ile 10 yıl vadeye kadar finansman. Ekspertiz ücretsiz.", "beklenen": {"profit_rate_pct": "1.95", "term_months_max": "120", "appraisal_fee_covered": "true"}, "beklenen_bos": ["allocation_fee_pct"]}
+{"kod": "s1-c", "banka": "C Bankası", "metin": "C Bankası Konut Finansmanı. 1.87 % kâr payı oranı ile 96 ay vade.", "beklenen": {"profit_rate_pct": "1.87", "term_months_max": "96"}, "beklenen_bos": ["has_no_fee", "file_fee_try", "appraisal_fee_covered", "allocation_fee_pct"]}

@@ -1,0 +1,146 @@
+{
+  "field_variants": 71,
+  "field_resolved": 70,
+  "label_variants": 16,
+  "label_resolved": 16,
+  "total_variants": 87,
+  "total_resolved": 86,
+  "invariance": 0.9885,
+  "known_gaps": 1,
+  "surprises": 0,
+  "groups": [
+    {
+      "group": "oran-2.05",
+      "target": "profit_rate_pct",
+      "expected": "2.05",
+      "variants": 7,
+      "resolved": 7
+    },
+    {
+      "group": "oran-sifir",
+      "target": "profit_rate_pct",
+      "expected": "0",
+      "variants": 3,
+      "resolved": 3
+    },
+    {
+      "group": "vade-120",
+      "target": "term_months_max",
+      "expected": "120",
+      "variants": 5,
+      "resolved": 4
+    },
+    {
+      "group": "masrafsizlik",
+      "target": "file_fee_try",
+      "expected": "0",
+      "variants": 8,
+      "resolved": 8
+    },
+    {
+      "group": "finansman-1m",
+      "target": "financing_amount_max",
+      "expected": "1000000",
+      "variants": 6,
+      "resolved": 6
+    },
+    {
+      "group": "odul-500",
+      "target": "reward_amount_try",
+      "expected": "500",
+      "variants": 6,
+      "resolved": 6
+    },
+    {
+      "group": "esik-5000",
+      "target": "min_spend_try",
+      "expected": "5000",
+      "variants": 6,
+      "resolved": 6
+    },
+    {
+      "group": "taksit-6",
+      "target": "installment_count",
+      "expected": "6",
+      "variants": 4,
+      "resolved": 4
+    },
+    {
+      "group": "iade-yuzde-10",
+      "target": "cashback_pct",
+      "expected": "10",
+      "variants": 5,
+      "resolved": 5
+    },
+    {
+      "group": "indirim-yuzde-20",
+      "target": "discount_pct",
+      "expected": "20",
+      "variants": 5,
+      "resolved": 5
+    },
+    {
+      "group": "bitis-2026-12-31",
+      "target": "end_date",
+      "expected": "2026-12-31",
+      "variants": 6,
+      "resolved": 6
+    },
+    {
+      "group": "puan-750",
+      "target": "loyalty_points",
+      "expected": "750",
+      "variants": 4,
+      "resolved": 4
+    },
+    {
+      "group": "tavan-100000",
+      "target": "max_spend_try",
+      "expected": "100000",
+      "variants": 3,
+      "resolved": 3
+    },
+    {
+      "group": "odul-turu-nakit",
+      "target": "reward_type",
+      "expected": "nakit_iade",
+      "variants": 3,
+      "resolved": 3
+    },
+    {
+      "group": "kitle-emekli",
+      "target": "audience",
+      "expected": "emekli",
+      "variants": 4,
+      "resolved": 4
+    },
+    {
+      "group": "kitle-yeni-musteri",
+      "target": "audience",
+      "expected": "yeni_musteri",
+      "variants": 3,
+      "resolved": 3
+    },
+    {
+      "group": "urun-kredi-karti",
+      "target": "product_type",
+      "expected": "kart",
+      "variants": 3,
+      "resolved": 3
+    },
+    {
+      "group": "urun-konut",
+      "target": "product_type",
+      "expected": "konut_finansmani",
+      "variants": 3,
+      "resolved": 3
+    },
+    {
+      "group": "sektor-akaryakit",
+      "target": "sector",
+      "expected": "akaryakit",
+      "variants": 3,
+      "resolved": 3
+    }
+  ]
+}

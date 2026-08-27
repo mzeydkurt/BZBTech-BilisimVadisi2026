@@ -1,0 +1,16 @@
+# Etiket değişmezliği — sınıflandırma ekseninde aynı ölçüm.
+#
+# ⚠️ ALAN ÇIKARIMINDAN AYRI DOSYA. Sınıflandırma `categorize()` ile yapılır,
+# alan çıkarımı `extract_rule_based()` ile; ikisi farklı kod yolları ve
+# birlikte ölçülürse hangi katmanın değişmez olduğu belirsizleşir.
+#
+# ⚠️ Şartname "hedef müşteri" alanını ADIYLA sayıyor; hedef kitlenin farklı
+# yazımları (emekli / SGK emeklisi / emeklilerimize) aynı etikete düşmek
+# zorunda.
+#
+# Biçim: {"grup", "eksen", "beklenen", "kaynak", "varyantlar": [...]}
+{"grup": "kitle-emekli", "eksen": "audience", "beklenen": "emekli", "kaynak": "Ziraat/Vakıf emekli kampanyası başlıkları", "varyantlar": ["Emeklilere özel kampanya", "Emekli müşterilerimize özel kampanya", "SGK emeklilerine özel kampanya", "Emekli maaşını bankamıza taşıyanlara özel kampanya"]}
+{"grup": "kitle-yeni-musteri", "eksen": "audience", "beklenen": "yeni_musteri", "kaynak": "Albaraka 'Şimdi Albaraka Mobil'den müşteri olanlar' · TOM Bank 'müşteri ol'", "varyantlar": ["Yeni müşterilerimize özel kampanya", "İlk kez müşterimiz olanlara özel kampanya", "Yeni müşteri olanlara özel kampanya"]}
+{"grup": "urun-kredi-karti", "eksen": "product_type", "beklenen": "kart", "kaynak": "Ziraat 'kart kampanyaları' · TOM 'Hadi Kredi Kartı'", "varyantlar": ["Kredi kartı kampanyası", "Kredi Kartınızla kazanın", "Kart sahiplerine özel kredi kartı fırsatı"]}
+{"grup": "urun-konut", "eksen": "product_type", "beklenen": "konut_finansmani", "kaynak": "ürün sayfası oran tabloları; kampanya tarafında 0 (bkz. B4)", "varyantlar": ["Konut finansmanı kampanyası", "Ev sahibi olmak için konut finansmanı", "Konut kredisi yerine konut finansmanı avantajı"]}
+{"grup": "sektor-akaryakit", "eksen": "sector", "beklenen": "akaryakit", "kaynak": "Kuveyt Türk akaryakıt kampanyaları", "varyantlar": ["Akaryakıt alışverişlerinde indirim", "Benzin alımlarında akaryakıt indirimi", "Petrol istasyonlarında akaryakıt avantajı"]}

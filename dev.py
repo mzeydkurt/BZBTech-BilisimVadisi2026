@@ -530,6 +530,55 @@ def degerlendir() -> int:
     return _calistir([_python(), "-m", "scripts.evaluate", *_ek_argumanlar()], cwd=BACKEND)
 
 
+def kapsama() -> int:
+    """Doldurma oranı ile geri çağırmayı doğru paydalarla yan yana koyar.
+
+    ⚠️ "Alan %36'sında dolu" ile "geri çağırma %83" AYNI PAYDADAN ÇIKMAZ.
+    Rapor hangi sayının hangi paydadan çıktığını satır satır yazar; jürinin
+    ilk sorduğu soru budur. Çıktı: docs/kapsama_ve_geri_cagirma.md
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.coverage_report", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
+def sartname_senaryo() -> int:
+    """Şartnamenin kendi örnek senaryolarını birebir koşar.
+
+    ⚠️ İKİ ŞEYİ BİRDEN ÖLÇER: doldurulması gereken alanlar üretildi mi VE
+    kaynakta bilgi olmayan alanlar BOŞ bırakıldı mı (şartname 7).
+    AĞA ÇIKMAZ. Çıktı: docs/sartname_senaryolari.md
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.spec_scenarios", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
+def erisim_recall() -> int:
+    """Erişim isabetini (recall@k) ve kanal ablasyonunu ölçer.
+
+    E3 + B5 aynı etiketli kümeden çıkar: recall@1/3/5/10 · MRR ve hibrit /
+    yalnızca sözcüksel / yalnızca anlamsal karşılaştırması. Sorgu gömmesi
+    için AĞA ÇIKAR; `--agsiz` ile anlamsal kanal kapalı koşar.
+    Çıktı: docs/erisim_recall.md
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.retrieval_recall", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
+def paraf_degismezlik() -> int:
+    """Aynı olgunun N yazımında aynı değeri üretip üretmediğini ölçer.
+
+    Şartname K4'ün ilk alt maddesi ("farklı ifade biçimlerini doğru
+    yorumlayabilmesi") için doğrudan ölçüm. AĞA ÇIKMAZ — yalnızca kural
+    katmanı çalışır. Çıktı: docs/paraf_degismezlik.md
+    """
+    return _calistir(
+        [_python(), "-m", "scripts.paraphrase_invariance", *_ek_argumanlar()], cwd=BACKEND
+    )
+
+
 # ── Sprint 5 (sohbet) ─────────────────────────────────────
 # ⚠️ 3B komutlarından AYRI bölüm. Merge conflict'i azaltmak için
 # sohbet-degerlendir / gomme-uret burada toplanır.
@@ -705,8 +754,20 @@ _HAT_ADIMLARI: dict[str, tuple[str, bool]] = {
     "urun-kazi": ("Ürün/oran/limit sayfalarını çeker", True),
     "tkbb-cek": ("TKBB katılma oranlarını çeker", True),
     "yeniden-isle": ("Temiz metni arşivden tazeler", False),
-    "cikarim": ("Metinlerden alanları çıkarır", False),
+    # ⚠️ `siniflandir` `cikarim`DAN ÖNCE. Bağımlılık yönü tersti ve sessiz bir
+    # tutarsızlık üretiyordu:
+    #
+    #   siniflandir  → `campaign_categories` YAZAR
+    #   cikarim      → `campaign_categories` OKUR (`_taxonomy_fields`)
+    #
+    # Sıra ters olduğunda `cikarim` bir ÖNCEKİ koşunun etiketlerini okuyor,
+    # sonra `siniflandir` etiketleri yeniden yazıyor ve
+    # `campaign_extractions.sector/product_type` ile `campaign_categories`
+    # AYRIŞIYOR. Ölçüldü: 91 kampanyada arayüz `genel` gösterirken F1 ölçümü
+    # artık var olmayan özgül etiketi doğru sayıyordu — yani rapor ile
+    # ekran farklı şey söylüyordu.
     "siniflandir": ("Dört eksende sınıflandırır", False),
+    "cikarim": ("Metinlerden alanları çıkarır", False),
     "kart-uret": ("Varlık kartlarını üretir", False),
     "urun-esle": ("Kampanyaları ürünlerle eşleştirir", False),
     "urun-dogrula": ("Ürün/oran kapsamasını denetler", False),
@@ -794,8 +855,9 @@ _HAT_MODULLERI: dict[str, tuple[str, list[str]]] = {
     "urun-kazi": ("scripts.scrape_products", []),
     "tkbb-cek": ("scripts.scrape_tkbb", []),
     "yeniden-isle": ("scripts.reprocess_clean_text", []),
-    "cikarim": ("scripts.extract", ["--sadece-kural"]),
+    # ⚠️ Sıra `_HAT_ADIMLARI` ile AYNI olmak zorunda (gerekçe orada).
     "siniflandir": ("scripts.categorize", []),
+    "cikarim": ("scripts.extract", ["--sadece-kural"]),
     "kart-uret": ("scripts.build_cards", []),
     "urun-esle": ("scripts.match_campaign_products", []),
     "urun-dogrula": ("scripts.verify_products", []),
@@ -872,6 +934,19 @@ GOREVLER: dict[str, tuple[Callable[[], int], str]] = {
     "cikarim": (cikarim, "Kampanya metinlerinden bilgi çıkarır (ağa çıkmaz)"),
     "degerlendir": (degerlendir, "Gold set'e karşı F1 ölçer (ağa çıkmaz)"),
     "ablation": (ablation, "Üç kipi karşılaştırır, ablasyon tablosunu üretir"),
+    "kapsama": (kapsama, "Doldurma oranı ve geri çağırmayı doğru paydayla raporlar"),
+    "sartname-senaryo": (
+        sartname_senaryo,
+        "Şartnamenin kendi örnek senaryolarını koşar (ağa çıkmaz)",
+    ),
+    "erisim-recall": (
+        erisim_recall,
+        "Erişim isabeti (recall@k) ve hibrit/yoğun kanal ablasyonu",
+    ),
+    "paraf-degismezlik": (
+        paraf_degismezlik,
+        "Aynı olgunun N yazımında aynı değer çıkıyor mu (ağa çıkmaz)",
+    ),
     "kart-uret": (kart_uret, "Varlık kartlarını üretir (ağa çıkmaz)"),
     # ── Sprint 5 (sohbet) — 3B komutlarından ayrı ──
     "sohbet-degerlendir": (
