@@ -35,9 +35,7 @@ TASIT_URL = "https://www.albaraka.com.tr/tr/bireysel/finansmanlar/tasit-finansma
 MOTOSIKLET_URL = (
     "https://www.albaraka.com.tr/tr/bireysel/finansmanlar/ihtiyac/motosiklet-atv-bisiklet"
 )
-DENIZ_URL = (
-    "https://www.albaraka.com.tr/tr/bireysel/finansmanlar/tasit-finansmani/deniz-tasitlari-finansmani"
-)
+DENIZ_URL = "https://www.albaraka.com.tr/tr/bireysel/finansmanlar/tasit-finansmani/deniz-tasitlari-finansmani"
 
 
 @pytest.fixture

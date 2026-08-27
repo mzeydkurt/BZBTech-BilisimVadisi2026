@@ -305,9 +305,7 @@ def codes_for_url(url: str) -> tuple[str | None, str | None]:
     # ihtiyaç tavanı (100 bin) yazılır ve `amount_min=125000` CHECK bozar.
     if subtype in {"139", "152"}:
         family = FAMILY_TASIT
-    elif family is None and "/ihtiyac" in path:
-        family = FAMILY_IHTIYAC
-    elif family is None and subtype is not None:
+    elif (family is None and "/ihtiyac" in path) or (family is None and subtype is not None):
         family = FAMILY_IHTIYAC
     return family, subtype
 
