@@ -38,7 +38,8 @@ Varyant örnekleri (ürün adımı için): `arac-finansmani` / `cevre-dostu-arac
 
 from __future__ import annotations
 
-from typing import Final
+from decimal import Decimal
+from typing import Any, Final
 from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
@@ -48,7 +49,13 @@ from app.logging_config import get_logger
 from app.processing.categorizer import infer_segment
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
 from app.scrapers.base import BaseScraper
-from app.scrapers.models import DiscoveredUrl, RawCampaign, RawProduct, RawProductRate
+from app.scrapers.models import (
+    DiscoveredUrl,
+    RawCampaign,
+    RawProduct,
+    RawProductLimit,
+    RawProductRate,
+)
 from app.scrapers.sitemap import extract_urls
 from app.utils.slugify import slug_from_url_path
 from app.utils.urls import dedupe_urls, is_same_site
@@ -142,6 +149,35 @@ EXCLUSION_KEYWORDS: Final[tuple[str, ...]] = (
     "kapsam dışı",
     "istisna",
 )
+
+
+# Dünya Katılım form / API limitleri (LoanInstallmentValues ile doğrulanmıştır)
+DUNYA_PRODUCT_LIMITS: Final[dict[str, dict[str, Any]]] = {
+    "tasit_finansmani": {
+        "amount_min": None,
+        "amount_max": Decimal("400000"),
+        "term_months_min": 1,
+        "term_months_max": 48,
+        "allowed_terms": [12, 24, 36, 48],
+        "evidence_text": "Dünya Katılım araç finansmanı azami üst limiti 400.000 TL, azami vade 48 aydır.",
+    },
+    "ihtiyac_finansmani": {
+        "amount_min": None,
+        "amount_max": Decimal("2000000"),
+        "term_months_min": 1,
+        "term_months_max": 36,
+        "allowed_terms": [12, 24, 36],
+        "evidence_text": "Dünya Katılım ihtiyaç finansmanı azami üst limiti 2.000.000 TL, azami vade 36 aydır.",
+    },
+    "konut_finansmani": {
+        "amount_min": None,
+        "amount_max": Decimal("12000000"),
+        "term_months_min": 1,
+        "term_months_max": 84,
+        "allowed_terms": [12, 24, 36, 48, 60, 72, 84],
+        "evidence_text": "Dünya Katılım yeni konut finansmanı azami üst limiti 12.000.000 TL (2. el konut için 3.000.000 TL), azami vade 84 aydır.",
+    },
+}
 
 
 class DunyaKatilimScraper(BaseScraper):
@@ -330,7 +366,12 @@ class DunyaKatilimScraper(BaseScraper):
         return self._first_paragraph(body_text, title)
 
     def parse_products(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawProduct]:
-        """Genel ayrıştırıcıyı çalıştırır, Karz-ı Hasen'e özel oranı ekler.
+        """Genel ayrıştırıcıyı çalıştırır, limitleri ve Karz-ı Hasen'e özel oranı ekler.
+
+        ⚠️ Dünya Katılım finansman limitleri form / API üzerinden doğrulanmıştır:
+        - Taşıt finansmanı: Azami 400.000 TL, 48 ay.
+        - İhtiyaç finansmanı: Azami 2.000.000 TL, 36 ay.
+        - Konut finansmanı: Azami 12.000.000 TL (2. El için 3.000.000 TL), 84 ay.
 
         ⚠️ Enerya Karz-ı Hasen sayfasında oran TABLOSU YOK (vade farksız —
         kâr payı kavramı bulunmuyor). Genel `BaseScraper.parse_products()`
@@ -341,6 +382,36 @@ class DunyaKatilimScraper(BaseScraper):
         `profit_rate_pct=NULL` (0 DEĞİL, "oran kavramı yok" demek).
         """
         urunler = super().parse_products(html, url, hint)
+
+        # Finansman türü limitlerini uygula
+        for urun in urunler:
+            ptype = urun.product_type or hint.category_hint
+            if ptype in DUNYA_PRODUCT_LIMITS:
+                cfg = DUNYA_PRODUCT_LIMITS[ptype]
+                if urun.amount_max is None or urun.amount_max > cfg["amount_max"]:
+                    urun.amount_max = cfg["amount_max"]
+                if urun.term_months_min is None:
+                    urun.term_months_min = cfg["term_months_min"]
+                if urun.term_months_max is None or urun.term_months_max > cfg["term_months_max"]:
+                    urun.term_months_max = cfg["term_months_max"]
+                if not urun.allowed_terms:
+                    urun.allowed_terms = list(cfg["allowed_terms"])
+                urun.limits_source = "calculator"
+                urun.limits_evidence = cfg["evidence_text"]
+
+                # RawProductLimit ekle (zaten yoksa)
+                if not any(l.amount_max == cfg["amount_max"] for l in urun.limits):
+                    urun.limits.append(
+                        RawProductLimit(
+                            amount_max=cfg["amount_max"],
+                            term_months_min=cfg["term_months_min"],
+                            term_months_max=cfg["term_months_max"],
+                            source_url=url,
+                            evidence_text=cfg["evidence_text"],
+                            extraction_method="text",
+                        )
+                    )
+
         if urlsplit(url).path.rstrip("/") != KARZ_I_HASEN_PATH:
             return urunler
 

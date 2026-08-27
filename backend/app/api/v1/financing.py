@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DbSession
+from app.api.v1.products import _urun_cikti
 from app.core.vocab import FINANSMAN_TIPLERI
 from app.db.models.bank import Bank
 from app.db.models.product import Product
@@ -102,11 +103,9 @@ def list_financing(
     no_data_products: list[str] = []
     products_with_limits_only: list[str] = []
     for urun in urunler:
-        cikti = ProductOut.model_validate(urun)
-        cikti.bank_code = urun.bank.code if urun.bank else None
-        cikti.bank_name = urun.bank.name if urun.bank else None
+        cikti = _urun_cikti(urun)
         financing.append(cikti)
-        if urun.rates:
+        if cikti.rates:
             continue
         etiket = _urun_etiketi(urun)
         if _limiti_var_mi(urun):
@@ -114,16 +113,16 @@ def list_financing(
         else:
             no_data_products.append(etiket)
 
-    tablo_sayisi = sum(1 for u in urunler if any(r.rate_source == "html_table" for r in u.rates))
+    tablo_sayisi = sum(1 for u in financing if any(r.rate_source == "html_table" for r in u.rates))
     probe_sayisi = sum(
         1
-        for u in urunler
+        for u in financing
         if any(
             r.rate_source in ("calculator_api", "calculator_playwright", "payment_plan_derived")
             for r in u.rates
         )
     )
-    oranli = sum(1 for u in urunler if u.rates)
+    oranli = sum(1 for u in financing if u.rates)
     limit_only = len(products_with_limits_only)
     bos = len(no_data_products)
 

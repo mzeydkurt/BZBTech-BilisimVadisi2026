@@ -527,3 +527,77 @@ class TestOdemePlaniVeTahsis:
 
         assert [t.bank_code for t in sonuc.offers] == ["albaraka"]
         assert "kuveyt_turk" not in {b.bank_code for b in sonuc.banks_without_data}
+
+    def test_dunya_katilim_tasit_finansmani_bsmv_kkdf_ile_tam_uyusur(
+        self, seeded_session: Session
+    ) -> None:
+        """400.000 TL, 48 ay, %3.39 oranında taksit 20.173,41 TL ve toplam geri ödeme 968.323,48 TL çıkmalı."""
+        _oran_ekle(
+            seeded_session,
+            "dunya_katilim",
+            "Araç Binek 2.El",
+            profit_rate_pct=Decimal("3.39"),
+            term_months=48,
+            product_type="tasit_finansmani",
+        )
+
+        sonuc = calculate_financing_simulation(
+            seeded_session,
+            FinancingSimulationRequest(
+                amount_try=Decimal("400000"),
+                term_months=48,
+                product_type="tasit_finansmani",
+                bank_codes=["dunya_katilim"],
+            ),
+        )
+
+        assert len(sonuc.offers) == 1
+        teklif = sonuc.offers[0]
+        assert teklif.monthly_payment_try == Decimal("20173.41")
+        assert teklif.total_payment_try == Decimal("968323.48")
+        assert teklif.bsmv_rate_pct == Decimal("15.00")
+        assert teklif.kkdf_rate_pct == Decimal("15.00")
+        assert len(teklif.installments) == 48
+
+        # 1. Ay doğrulama
+        ay1 = teklif.installments[0]
+        assert ay1.month == 1
+        assert ay1.installment == Decimal("20173.41")
+        assert ay1.profit_share == Decimal("13560.00")
+        assert ay1.bsmv == Decimal("2034.00")
+        assert ay1.kkdf == Decimal("2034.00")
+        assert ay1.principal == Decimal("2545.41")
+        assert ay1.remaining_balance == Decimal("397454.59")
+
+    def test_konut_finansmani_vergisiz_muaf_hesaplanir(
+        self, seeded_session: Session
+    ) -> None:
+        """Konut finansmanında BSMV ve KKDF %0 olmalı."""
+        _oran_ekle(
+            seeded_session,
+            "dunya_katilim",
+            "Konut Finansmanı",
+            profit_rate_pct=Decimal("2.99"),
+            term_months=60,
+            product_type="konut_finansmani",
+        )
+
+        sonuc = calculate_financing_simulation(
+            seeded_session,
+            FinancingSimulationRequest(
+                amount_try=Decimal("1000000"),
+                term_months=60,
+                product_type="konut_finansmani",
+                bank_codes=["dunya_katilim"],
+            ),
+        )
+
+        assert len(sonuc.offers) == 1
+        teklif = sonuc.offers[0]
+        assert teklif.bsmv_rate_pct == Decimal("0.00")
+        assert teklif.kkdf_rate_pct == Decimal("0.00")
+        assert teklif.total_bsmv_try == Decimal("0.00")
+        assert teklif.total_kkdf_try == Decimal("0.00")
+        assert teklif.monthly_payment_try == Decimal("36055.58")
+        assert teklif.installments[0].bsmv == Decimal("0.00")
+        assert teklif.installments[0].kkdf == Decimal("0.00")

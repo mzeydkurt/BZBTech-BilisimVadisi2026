@@ -30,6 +30,10 @@ function InstallmentTable({ offer }: { offer: BankFinancingOffer }) {
   if (rows.length === 0) {
     return <p className="px-4 py-3 text-xs text-text-500">Taksit planı bu teklifte yok.</p>;
   }
+
+  const hasBsmv = rows.some((r) => (parseDecimal(r.bsmv ?? "0") ?? 0) > 0);
+  const hasKkdf = rows.some((r) => (parseDecimal(r.kkdf ?? "0") ?? 0) > 0);
+
   return (
     <div className="max-h-72 overflow-auto border-t border-border">
       <Table>
@@ -37,7 +41,17 @@ function InstallmentTable({ offer }: { offer: BankFinancingOffer }) {
           <TableRow className="hover:bg-neutral-50">
             <TableHead className="text-right">Ay</TableHead>
             <TableHead className="text-right">Taksit</TableHead>
-            <TableHead className="text-right">Kâr payı</TableHead>
+            <TableHead className="text-right">Kâr Payı</TableHead>
+            {hasBsmv && (
+              <TableHead className="text-right">
+                BSMV {offer.bsmv_rate_pct ? `(%${offer.bsmv_rate_pct})` : ""}
+              </TableHead>
+            )}
+            {hasKkdf && (
+              <TableHead className="text-right">
+                KKDF {offer.kkdf_rate_pct ? `(%${offer.kkdf_rate_pct})` : ""}
+              </TableHead>
+            )}
             <TableHead className="text-right">Anapara</TableHead>
             <TableHead className="text-right">Kalan</TableHead>
           </TableRow>
@@ -46,12 +60,22 @@ function InstallmentTable({ offer }: { offer: BankFinancingOffer }) {
           {rows.map((row) => (
             <TableRow key={row.month}>
               <TableCell className="tabular text-right text-text-500">{row.month}</TableCell>
-              <TableCell className="tabular text-right">
+              <TableCell className="tabular text-right font-medium">
                 {formatCurrencyTRY(row.installment, 2)}
               </TableCell>
               <TableCell className="tabular text-right text-text-500">
                 {formatCurrencyTRY(row.profit_share, 2)}
               </TableCell>
+              {hasBsmv && (
+                <TableCell className="tabular text-right text-text-500">
+                  {formatCurrencyTRY(row.bsmv ?? "0", 2)}
+                </TableCell>
+              )}
+              {hasKkdf && (
+                <TableCell className="tabular text-right text-text-500">
+                  {formatCurrencyTRY(row.kkdf ?? "0", 2)}
+                </TableCell>
+              )}
               <TableCell className="tabular text-right text-text-500">
                 {formatCurrencyTRY(row.principal, 2)}
               </TableCell>
@@ -82,8 +106,12 @@ export function FinancingResults({ result }: { result: FinancingSimulationRespon
       "Banka",
       "Ürün",
       "Kâr payı (%)",
+      "BSMV (%)",
+      "KKDF (%)",
       "Aylık taksit (TL)",
       "Toplam kâr payı (TL)",
+      "Toplam BSMV (TL)",
+      "Toplam KKDF (TL)",
       "Toplam ödeme (TL)",
       "Tahsis ücreti (TL)",
       "Toplam maliyet (TL)",
@@ -94,8 +122,12 @@ export function FinancingResults({ result }: { result: FinancingSimulationRespon
       o.bank_name,
       o.product_name,
       o.profit_rate_pct,
+      o.bsmv_rate_pct ?? "0",
+      o.kkdf_rate_pct ?? "0",
       o.monthly_payment_try,
       o.total_profit_try,
+      o.total_bsmv_try ?? "0",
+      o.total_kkdf_try ?? "0",
       o.total_payment_try,
       o.allocation_fee_try,
       o.total_cost_try,
@@ -114,11 +146,21 @@ export function FinancingResults({ result }: { result: FinancingSimulationRespon
       installments.length > 0
         ? {
             name: "Taksit planı (en iyi)",
-            headers: ["Ay", "Taksit (TL)", "Kâr payı (TL)", "Anapara (TL)", "Kalan (TL)"],
+            headers: [
+              "Ay",
+              "Taksit (TL)",
+              "Kâr payı (TL)",
+              "BSMV (TL)",
+              "KKDF (TL)",
+              "Anapara (TL)",
+              "Kalan (TL)",
+            ],
             rows: installments.map((r) => [
               r.month,
               r.installment,
               r.profit_share,
+              r.bsmv ?? "0",
+              r.kkdf ?? "0",
               r.principal,
               r.remaining_balance,
             ]),

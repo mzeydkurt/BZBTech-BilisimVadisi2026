@@ -49,6 +49,8 @@ class InstallmentRow(BaseModel):
     month: int = Field(ge=1, description="Taksit sırası (1…n)")
     installment: Decimal = Field(description="Aylık taksit tutarı (TL)")
     profit_share: Decimal = Field(description="Bu aydaki kâr payı (TL)")
+    bsmv: Decimal = Field(default=Decimal("0.00"), description="Bu aydaki BSMV (TL)")
+    kkdf: Decimal = Field(default=Decimal("0.00"), description="Bu aydaki KKDF (TL)")
     principal: Decimal = Field(description="Bu aydaki anapara payı (TL)")
     remaining_balance: Decimal = Field(description="Ödeme sonrası kalan bakiye (TL)")
 
@@ -68,8 +70,12 @@ class BankFinancingOffer(BaseModel):
     profit_rate_pct: Decimal = Field(description="Aylık kâr payı oranı (%)")
     rate_term_months: int | None = Field(default=None, description="Oranın yayımlandığı vade")
     is_exact_term_match: bool = Field(description="Oran tam istenen vadeye mi ait?")
+    bsmv_rate_pct: Decimal = Field(default=Decimal("0.00"), description="Uygulanan BSMV oranı (%)")
+    kkdf_rate_pct: Decimal = Field(default=Decimal("0.00"), description="Uygulanan KKDF oranı (%)")
     monthly_payment_try: Decimal
     total_profit_try: Decimal
+    total_bsmv_try: Decimal = Field(default=Decimal("0.00"), description="Toplam BSMV tutarı (TL)")
+    total_kkdf_try: Decimal = Field(default=Decimal("0.00"), description="Toplam KKDF tutarı (TL)")
     total_payment_try: Decimal
     allocation_fee_try: Decimal | None = Field(
         default=None, description="Tahsis ücreti (TL); oran yoksa None"

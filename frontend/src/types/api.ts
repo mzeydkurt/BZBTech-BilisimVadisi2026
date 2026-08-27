@@ -594,6 +594,8 @@ export interface InstallmentRow {
   month: number;
   installment: string;
   profit_share: string;
+  bsmv?: string;
+  kkdf?: string;
   principal: string;
   remaining_balance: string;
 }
@@ -606,8 +608,12 @@ export interface BankFinancingOffer {
   profit_rate_pct: string;
   rate_term_months: number | null;
   is_exact_term_match: boolean;
+  bsmv_rate_pct?: string;
+  kkdf_rate_pct?: string;
   monthly_payment_try: string;
   total_profit_try: string;
+  total_bsmv_try?: string;
+  total_kkdf_try?: string;
   total_payment_try: string;
   allocation_fee_try?: string | null;
   total_cost_try?: string | null;

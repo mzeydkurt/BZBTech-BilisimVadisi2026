@@ -38,6 +38,7 @@ from app.scrapers.browser import (
     playwright_kurulum_mesaji,
 )
 from app.services.calculator_probe_service import (
+    is_zero_rate_promotional,
     probe_samples_for_product,
     products_needing_probe,
     upsert_probe_and_rate,
@@ -185,30 +186,52 @@ def _sayfayi_sorgula(
 
     ornekler = probe_samples_for_product(product.product_type)[:MAX_ORNEK_SAYFA]
     yazilan = 0
+    denenen_kombinasyonlar: set[tuple[Decimal, int]] = set()
 
     with browser_page() as page:
         page.goto(url, wait_until="domcontentloaded")
         page.wait_for_timeout(NETWORK_IDLE_MS)
 
         for ornek in ornekler:
+            tutar = ornek.amount
+            if product.amount_max is not None and product.amount_max > 0 and tutar > product.amount_max:
+                tutar = product.amount_max
+            vade = ornek.term_months
+            if product.term_months_max is not None and product.term_months_max > 0 and vade > product.term_months_max:
+                vade = product.term_months_max
+
+            cift = (tutar, vade)
+            if cift in denenen_kombinasyonlar:
+                continue
+            denenen_kombinasyonlar.add(cift)
+
             time.sleep(BEKLEME)
-            doldu = _formu_doldur(page, ornek.amount, ornek.term_months)
+            doldu = _formu_doldur(page, tutar, vade)
             metin = page.inner_text("body")
             oran, taksit, toplam = _metinden_oran_ve_taksit(metin)
+
+            # Sıfır veya negatif oran kontrolü
+            if oran is not None and oran <= Decimal("0.05"):
+                if not is_zero_rate_promotional(
+                    product_name=product.name,
+                    description=product.description,
+                    product_type=product.product_type,
+                ):
+                    oran = None
 
             if oran is None and taksit is None and not doldu:
                 logger.info(
                     "probe_sonuc_yok",
                     product_id=product.id,
-                    amount=str(ornek.amount),
+                    amount=str(tutar),
                 )
                 continue
 
             logger.info(
                 "probe_ok",
                 product_id=product.id,
-                amount=str(ornek.amount),
-                term=ornek.term_months,
+                amount=str(tutar),
+                term=vade,
                 oran=str(oran),
                 taksit=str(taksit),
             )
@@ -220,16 +243,16 @@ def _sayfayi_sorgula(
                 session,
                 product=product,
                 inventory=inventory,
-                amount=ornek.amount,
-                term_months=ornek.term_months,
+                amount=tutar,
+                term_months=vade,
                 method="playwright",
                 profit_rate_pct=oran,
                 monthly_installment=taksit,
                 total_repayment=toplam,
                 response_raw=metin[:8000],
                 request_payload={
-                    "amount": str(ornek.amount),
-                    "term_months": ornek.term_months,
+                    "amount": str(tutar),
+                    "term_months": vade,
                     "url": url,
                 },
             )

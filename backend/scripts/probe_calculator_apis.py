@@ -2,6 +2,7 @@
 
 httpx (method=api, is_binding=False):
   - Albaraka — getFinanceCalculate
+  - Dünya Katılım — LoanInstallmentValues + LoanCheckRate
   - Vakıf Katılım — InstallmentPayBack
   - Hayat Finans — calculateloansproduct
   - Emlak Katılım — CalculateLoansProduct
@@ -10,11 +11,10 @@ httpx (method=api, is_binding=False):
 
 Playwright kalır:
   - Ziraat Katılım — ajax/finansmanhesapla httpx'te 493 (WAF); ziraat_product_dropdown
-  - Dünya Katılım — gömülü DOM
 
 Çalıştırma:
     python -m scripts.probe_calculator_apis
-    python -m scripts.probe_calculator_apis --banka kuveyt_turk
+    python -m scripts.probe_calculator_apis --banka dunya_katilim
     python -m scripts.probe_calculator_apis --kuru
     python dev.py hesaplayici-api-sorgula
 """
@@ -36,8 +36,8 @@ def main(argv: list[str] | None = None) -> int:
         "--banka",
         default=None,
         help=(
-            "albaraka | vakif_katilim | hayat_finans | emlak_katilim | "
-            "kuveyt_turk | turkiye_finans"
+            "albaraka | dunya_katilim | vakif_katilim | hayat_finans | "
+            "emlak_katilim | kuveyt_turk | turkiye_finans"
         ),
     )
     parser.add_argument("--kuru", action="store_true", help="DB'ye yazma")

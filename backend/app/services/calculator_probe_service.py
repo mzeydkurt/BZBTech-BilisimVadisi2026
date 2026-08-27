@@ -66,6 +66,56 @@ log = structlog.get_logger(__name__)
 AYLIK_ORAN_TAVANI: Final[Decimal] = Decimal("20")
 
 
+def is_zero_rate_promotional(
+    *,
+    product_name: str | None = None,
+    description: str | None = None,
+    evidence_text: str | None = None,
+    product_type: str | None = None,
+    rate_type: str | None = None,
+    variant_label: str | None = None,
+) -> bool:
+    """Ürünün meşru bir sıfır kâr payı / faizsiz finansman olup olmadığını denetler."""
+    if rate_type == "interest_free_benevolent_loan" or product_type == "karz_i_hasen":
+        return True
+
+    from app.core.normalization.text import ascii_fold_tr, lower_tr
+
+    bilesik = " ".join(
+        filter(
+            None,
+            [
+                product_name,
+                description,
+                evidence_text,
+                variant_label,
+            ],
+        )
+    )
+    if not bilesik:
+        return False
+
+    metin = ascii_fold_tr(lower_tr(bilesik))
+    anahtarlar = (
+        "sifir kar payi",
+        "sifir kar orani",
+        "0 kar payi",
+        "0 kar orani",
+        "%0 kar payi",
+        "%0 kar orani",
+        "vade farksiz",
+        "0 faiz",
+        "%0 faiz",
+        "faizsiz finansman",
+        "faizsiz borc",
+        "karz-i hasen",
+        "karz i hasen",
+        "karzi hasen",
+        "togg",
+    )
+    return any(a in metin for a in anahtarlar)
+
+
 def _plan_vadesi(
     monthly_installment: Decimal | None, total_repayment: Decimal | None
 ) -> int | None:
@@ -81,6 +131,11 @@ def probe_orani_guvenilir_mi(
     term_months: int,
     monthly_installment: Decimal | None,
     total_repayment: Decimal | None,
+    product_name: str | None = None,
+    description: str | None = None,
+    evidence_text: str | None = None,
+    product_type: str | None = None,
+    rate_type: str | None = None,
 ) -> tuple[bool, str | None]:
     """Probe okumasının kendi içinde tutarlı olup olmadığını söyler.
 
@@ -101,6 +156,21 @@ def probe_orani_guvenilir_mi(
 
     if profit_rate_pct < 0:
         return False, f"negatif oran: %{profit_rate_pct}"
+
+    # G3 — Sıfır kâr payı: üründe açıkça sıfır kâr payı / vade farksız kampanya
+    # belirtilmemişse 0 veya 0.05 altı oranlar geçersizdir (API hatası veya limit aşımı).
+    if profit_rate_pct <= Decimal("0.05"):
+        if not is_zero_rate_promotional(
+            product_name=product_name,
+            description=description,
+            evidence_text=evidence_text,
+            product_type=product_type,
+            rate_type=rate_type,
+        ):
+            return (
+                False,
+                f"sıfır/geçersiz kâr payı: %{profit_rate_pct} (üründe sıfır kâr payı koşulu belirtilmemiş)",
+            )
 
     return True, None
 
@@ -240,6 +310,10 @@ def upsert_probe_and_rate(
         term_months=term_months,
         monthly_installment=monthly_installment,
         total_repayment=total_repayment,
+        product_name=product.name,
+        description=product.description,
+        evidence_text=probe_variant or (request_payload.get("variant") if request_payload else None),
+        product_type=product.product_type,
     )
     if oran is not None and not guvenilir:
         log.warning(
@@ -266,8 +340,8 @@ def upsert_probe_and_rate(
                 else None
             ),
             annual_cost_pct=annual_cost_pct,
-            amount_min=amount,
-            amount_max=amount,
+            amount_min=product.amount_min,
+            amount_max=product.amount_max,
             evidence_text=(
                 f"Hesaplayıcı sorgusu: {amount} TL / {term_months} ay"
                 + (f" → taksit {monthly_installment} TL" if monthly_installment else "")
@@ -297,8 +371,8 @@ def upsert_probe_and_rate(
         oran_satiri.profit_rate_pct = oran
         oran_satiri.allocation_fee_pct = raw.allocation_fee_pct
         oran_satiri.annual_cost_pct = annual_cost_pct
-        oran_satiri.amount_min = amount
-        oran_satiri.amount_max = amount
+        oran_satiri.amount_min = product.amount_min
+        oran_satiri.amount_max = product.amount_max
         oran_satiri.evidence_text = raw.evidence_text
         oran_satiri.is_binding = False
         # Ürün bağlayıcı değil sayılır (hesaplayıcı tahmini içeriyor)

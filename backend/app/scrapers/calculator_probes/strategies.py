@@ -399,22 +399,24 @@ def _dunya_oran_oku(page: Any) -> Decimal | None:
         rv = page.locator("#checkProfitRateInput").input_value()
         if rv:
             o = parse_decimal_tr(rv)
-            if o is not None and o > Decimal("0"):
+            if o is not None and o > Decimal("0.05"):
                 return o
     except Exception:
         pass
     metin = page.inner_text("body")
     m = re.search(r"Aylık Kâr Oranı\s*\n\s*%\s*([\d.,]+)", metin)
     if m:
-        return parse_decimal_tr(m.group(1))
+        o = parse_decimal_tr(m.group(1))
+        if o is not None and o > Decimal("0.05"):
+            return o
     return metinden_oran(metin)
 
 
 def probe_dunya_embedded(page: Any, hedef: ProbeTarget) -> list[ProbeReading]:
     """Dünya gömülü hesaplayıcı — LoanInstallmentValues + LoanCheckRate JSON.
 
-    Tutar/vade ürün limitlerine göre seçilir (araçta 1.5M gibi BDDK dışı örnekler
-    RATE_ERROR verir). Oran DOM yerine API `rate` alanından okunur.
+    Tutar/vade ürün limitlerine (maxAmount/maxInstallment) göre sınırlandırılır.
+    Oran DOM yerine API `rate` alanından okunur; sıfır veya hata durumunda atlanır.
     """
     page.goto(hedef.url, wait_until="domcontentloaded", timeout=90000)
     page.wait_for_timeout(3000)
@@ -452,8 +454,17 @@ def probe_dunya_embedded(page: Any, hedef: ProbeTarget) -> list[ProbeReading]:
             if (!values || values.result !== 'SUCCESS') {
                 return { values, rate: null };
             }
-            const amountNum = Number(values.defaultAmount) || 0;
-            const installment = values.maxInstallment || values.defaultInstallment || 12;
+            const maxAmount = Number(values.maxAmount) || 0;
+            const minAmount = Number(values.minAmount) || 0;
+            let amountNum = Number(values.defaultAmount) || 0;
+            if (maxAmount > 0 && (amountNum <= 0 || amountNum > maxAmount)) {
+                amountNum = maxAmount;
+            }
+            const maxInst = Number(values.maxInstallment) || 12;
+            let installment = Number(values.defaultInstallment) || 12;
+            if (maxInst > 0 && installment > maxInst) {
+                installment = maxInst;
+            }
             const productName =
                 ($('#loanSelect option[value=\"' + productCode + '\"]').text() || '').trim();
             const category = values.category || '';
@@ -486,7 +497,7 @@ def probe_dunya_embedded(page: Any, hedef: ProbeTarget) -> list[ProbeReading]:
             oran = Decimal(str(rate_body["rate"]))
         except Exception:
             continue
-        if not oran_gecerli(oran):
+        if not oran_gecerli(oran) or oran <= Decimal("0.05"):
             continue
         amount_raw = api.get("amount")
         try:

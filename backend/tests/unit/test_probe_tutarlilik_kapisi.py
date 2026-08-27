@@ -87,11 +87,34 @@ def test_yillik_maliyet_orani_reddedilir() -> None:
     assert "aylık oran olamaz" in str(neden)
 
 
-@pytest.mark.parametrize("oran", [0, 0.89, 3.05, 6.1, 9.0, 19.99])
+@pytest.mark.parametrize("oran", [0.89, 3.05, 6.1, 9.0, 19.99])
 def test_guvenilir_kaynaklarin_araligi_korunur(oran) -> None:
     """Ölçülen tavan %9.0 (pdf_table); kapı meşru hiçbir oranı düşürmez."""
     tamam, neden = _kontrol(oran, 36)
     assert tamam, neden
+
+
+def test_sifir_oran_yalnizca_promosyon_ile_gecerli() -> None:
+    """Sıfır kâr payı yalnızca promosyon / faizsiz finansman niteliği açık olan ürünlerde geçerlidir."""
+    tamam_standart, neden_standart = probe_orani_guvenilir_mi(
+        profit_rate_pct=Decimal("0"),
+        term_months=36,
+        monthly_installment=Decimal("10000"),
+        total_repayment=Decimal("360000"),
+        product_name="İhtiyaç Finansmanı",
+    )
+    assert not tamam_standart
+    assert "sıfır/geçersiz kâr payı" in str(neden_standart)
+
+    tamam_promo, neden_promo = probe_orani_guvenilir_mi(
+        profit_rate_pct=Decimal("0"),
+        term_months=36,
+        monthly_installment=Decimal("10000"),
+        total_repayment=Decimal("360000"),
+        product_name="Togg Finansmanı",
+    )
+    assert tamam_promo
+    assert neden_promo is None
 
 
 def test_negatif_oran_reddedilir() -> None:

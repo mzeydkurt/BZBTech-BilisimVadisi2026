@@ -13,6 +13,7 @@ from app.db.session import SessionLocal
 from app.logging_config import get_logger
 from app.scrapers.calculator_probes.api_adapters import FinancingCalculation
 from app.scrapers.calculator_probes.api_adapters import albaraka as albaraka_api
+from app.scrapers.calculator_probes.api_adapters import dunya as dunya_api
 from app.scrapers.calculator_probes.api_adapters import emlak as emlak_api
 from app.scrapers.calculator_probes.api_adapters import hayat as hayat_api
 from app.scrapers.calculator_probes.api_adapters import kuveyt as kuveyt_api
@@ -26,6 +27,7 @@ logger = get_logger(__name__)
 
 _ADAPTERS = {
     "albaraka": albaraka_api.probe_all,
+    "dunya_katilim": dunya_api.probe_all,
     "vakif_katilim": vakif_api.probe_all,
     "hayat_finans": hayat_api.probe_all,
     "emlak_katilim": emlak_api.probe_all,

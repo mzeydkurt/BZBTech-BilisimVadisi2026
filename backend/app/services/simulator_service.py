@@ -15,6 +15,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.financing_taxes import financing_tax_rates
 from app.core.stopaj import STOPAJ_DAYANAK, stopaj_orani
 from app.db.models.bank import Bank
 from app.db.models.product import Product, ProductRate
@@ -48,7 +49,7 @@ def _annuite_taksit(anapara: Decimal, aylik_oran: Decimal, vade: int) -> Decimal
 
     Args:
         anapara: Finansman tutarı.
-        aylik_oran: Aylık kâr payı oranı, ONDALIK olarak (%3,05 → 0.0305).
+        aylik_oran: Aylık efektif oran (vergiler dahil), ONDALIK olarak (%4,407 → 0.04407).
         vade: Vade (ay).
 
     Returns:
@@ -63,32 +64,48 @@ def _annuite_taksit(anapara: Decimal, aylik_oran: Decimal, vade: int) -> Decimal
 
 
 def _odeme_plani(
-    anapara: Decimal, aylik_oran: Decimal, vade: int, taksit: Decimal
+    anapara: Decimal,
+    aylik_oran: Decimal,
+    bsmv_orani: Decimal,
+    kkdf_orani: Decimal,
+    vade: int,
+    taksit: Decimal,
 ) -> list[InstallmentRow]:
-    """Eşit taksitli amortisman tablosunu üretir.
+    """Eşit taksitli amortisman tablosunu BSMV ve KKDF vergileriyle üretir.
 
-    Her ay: kâr payı = kalan × r; anapara = taksit − kâr payı.
+    Her ay:
+    - kâr payı = kalan × r
+    - bsmv = kâr payı × bsmv_orani
+    - kkdf = kâr payı × kkdf_orani
+    - anapara = taksit − (kâr payı + bsmv + kkdf)
     Son ayda yuvarlama farkı anaparaya yedirilerek bakiye sıfırlanır.
     """
     kalan = anapara
     satirlar: list[InstallmentRow] = []
     for ay in range(1, vade + 1):
         kar = _kurusla(kalan * aylik_oran) if aylik_oran > 0 else Decimal("0.00")
+        bsmv = _kurusla(kar * bsmv_orani) if bsmv_orani > 0 else Decimal("0.00")
+        kkdf = _kurusla(kar * kkdf_orani) if kkdf_orani > 0 else Decimal("0.00")
+        faiz_ve_vergi = kar + bsmv + kkdf
+
         if ay == vade:
             anapara_payi = kalan
-            odeme = _kurusla(anapara_payi + kar)
+            odeme = _kurusla(anapara_payi + faiz_ve_vergi)
             kalan = Decimal("0.00")
         else:
-            anapara_payi = _kurusla(taksit - kar)
+            anapara_payi = _kurusla(taksit - faiz_ve_vergi)
             if anapara_payi > kalan:
                 anapara_payi = kalan
             odeme = taksit
             kalan = _kurusla(kalan - anapara_payi)
+
         satirlar.append(
             InstallmentRow(
                 month=ay,
                 installment=odeme,
                 profit_share=kar,
+                bsmv=bsmv,
+                kkdf=kkdf,
                 principal=anapara_payi,
                 remaining_balance=kalan,
             )
@@ -240,16 +257,29 @@ def calculate_financing_simulation(
             continue
 
         urun = session.get(Product, oran.product_id)
+        tax_cfg = financing_tax_rates(req.product_type)
         aylik_oran = oran.profit_rate_pct / _YUZDE
-        aylik = _annuite_taksit(req.amount_try, aylik_oran, req.term_months)
-        plan = _odeme_plani(req.amount_try, aylik_oran, req.term_months, aylik)
-        toplam = _kurusla(sum((s.installment for s in plan), Decimal(0)))
+        efektif_aylik_oran = aylik_oran * tax_cfg.total_tax_multiplier
+
+        aylik = _annuite_taksit(req.amount_try, efektif_aylik_oran, req.term_months)
+        plan = _odeme_plani(
+            req.amount_try,
+            aylik_oran,
+            tax_cfg.bsmv_rate,
+            tax_cfg.kkdf_rate,
+            req.term_months,
+            aylik,
+        )
+        toplam_odeme = _kurusla(sum((s.installment for s in plan), Decimal(0)))
+        toplam_kar = _kurusla(sum((s.profit_share for s in plan), Decimal(0)))
+        toplam_bsmv = _kurusla(sum((s.bsmv for s in plan), Decimal(0)))
+        toplam_kkdf = _kurusla(sum((s.kkdf for s in plan), Decimal(0)))
 
         tahsis: Decimal | None = None
         if oran.allocation_fee_pct is not None:
             tahsis = _kurusla(req.amount_try * oran.allocation_fee_pct / _YUZDE)
             tahsis_dahil = True
-        toplam_maliyet = _kurusla(toplam + (tahsis or Decimal(0)))
+        toplam_maliyet = _kurusla(toplam_odeme + (tahsis or Decimal(0)))
 
         teklifler.append(
             BankFinancingOffer(
@@ -260,9 +290,13 @@ def calculate_financing_simulation(
                 profit_rate_pct=oran.profit_rate_pct,
                 rate_term_months=oran.term_months,
                 is_exact_term_match=tam_eslesme,
+                bsmv_rate_pct=tax_cfg.bsmv_pct,
+                kkdf_rate_pct=tax_cfg.kkdf_pct,
                 monthly_payment_try=aylik,
-                total_profit_try=_kurusla(toplam - req.amount_try),
-                total_payment_try=toplam,
+                total_profit_try=toplam_kar,
+                total_bsmv_try=toplam_bsmv,
+                total_kkdf_try=toplam_kkdf,
+                total_payment_try=toplam_odeme,
                 allocation_fee_try=tahsis,
                 total_cost_try=toplam_maliyet,
                 annual_cost_pct=oran.annual_cost_pct,
@@ -279,9 +313,16 @@ def calculate_financing_simulation(
         en_iyi = kazanan.bank_code
         teklifler.sort(key=lambda t: t.total_cost_try)
 
+    tax_info = financing_tax_rates(req.product_type)
+    tax_desc = (
+        "Vergisiz (Konut mevzuatı gereği BSMV ve KKDF'den muaftır)."
+        if tax_info.is_tax_exempt
+        else f"Vergiler dahil: %{tax_info.bsmv_pct:g} BSMV + %{tax_info.kkdf_pct:g} KKDF kâr payı üzerine eklenmiştir."
+    )
+
     if tahsis_dahil:
         method = (
-            "Eşit taksitli (annüite) plan; taksit = P·r·(1+r)^n/((1+r)^n−1). "
+            f"Eşit taksitli (annüite) plan; {tax_desc} "
             "Aylık oran, bankanın yayımladığı aylık kâr payı oranıdır. "
             "Tahsis ücreti (allocation_fee_pct × tutar) toplam maliyete "
             "dahil edilmiştir; annual_cost_pct bankanın yayımladığı yıllık "
@@ -290,7 +331,7 @@ def calculate_financing_simulation(
         )
     else:
         method = (
-            "Eşit taksitli (annüite) plan; taksit = P·r·(1+r)^n/((1+r)^n−1). "
+            f"Eşit taksitli (annüite) plan; {tax_desc} "
             "Aylık oran, bankanın yayımladığı aylık kâr payı oranıdır. "
             "Tahsis ücreti bu tekliflerde yayımlanmadığı için toplam maliyete "
             "eklenemedi; sigorta gibi ek maliyetler de dahil değildir."
