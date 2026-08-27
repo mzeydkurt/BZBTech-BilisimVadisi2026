@@ -203,6 +203,16 @@ class EvrenProvider(LLMProvider):
             "messages": mesajlar,
             "temperature": temperature,
             "max_tokens": max_tokens,
+            # DÜŞÜNME KAPATILIR. Qwen3 ayrıştırıcısı düşünme izini `content`
+            # alanına koymaz ama üretilen tokenlar `max_tokens` bütçesinden
+            # DÜŞER: yanıt hata vermeden yarıda kesilir ve geçersiz JSON olur.
+            #
+            # Bu, README'de Ollama için zaten belgelenmiş hatanın aynısıdır
+            # ("düşünen modellerde content boş geliyor, `think: false` ile
+            # taşındı"); aynı önlem EVREN yoluna uygulanmamıştı.
+            #
+            # `reasoning_effort="none"` bu serviste ETKİSİZDİR.
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         if schema is not None:
             govde["response_format"] = {"type": "json_object"}

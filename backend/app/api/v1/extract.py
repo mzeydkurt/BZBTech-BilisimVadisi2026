@@ -30,6 +30,7 @@ from app.ai.validation import guard_fields, merge_extractions
 from app.ai.validation.terminology import load_forbidden_terms
 from app.api.deps import DbSession
 from app.config import get_settings
+from app.processing.categorizer import categorize
 from app.schemas.extract import (
     ExtractedFieldOut,
     ExtractRequest,
@@ -144,13 +145,26 @@ async def extract_from_text(session: DbSession, payload: ExtractRequest) -> Extr
         for alan, gerekce in guard.rejected
     ]
 
-    # Sınıflandırma eksenleri, çıkarılan enum alanlarından türetilir:
-    # tek metinlik bir istekte `campaign_categories` kaydı yoktur.
+    # Sınıflandırma DÖRT eksende metinden yapılır; `categorize` veritabanı
+    # gerektirmez, tek metinlik istekte de çalışır.
+    #
+    # ⚠️ Yalnızca çıkarılan enum alanlarına bakmak, `audience` ve `benefit`
+    # eksenlerini tamamen dışarıda bırakıyordu: "Emeklilere" ve "Yeni
+    # müşterilerimize" geçen bir metinde `labels` BOŞ dönüyordu. Şartname
+    # "hedef müşteri" alanını adıyla sayıyor.
     etiketler: dict[str, list[str]] = {}
+    for etiket in categorize(title=metin.split("\n", 1)[0], body_text=metin):
+        etiketler.setdefault(etiket.axis, []).append(etiket.value)
+
+    # Çıkarım katmanı bir eksende değer bulduysa o da eklenir (tekrar etmeden).
     for alan_adi, eksen in (("product_type", "product_type"), ("sector", "sector")):
         bulgu = alanlar.get(alan_adi)
-        if bulgu and bulgu.value in AXIS_VOCAB[eksen]:
-            etiketler[eksen] = [bulgu.value]
+        if (
+            bulgu
+            and bulgu.value in AXIS_VOCAB[eksen]
+            and bulgu.value not in etiketler.get(eksen, [])
+        ):
+            etiketler.setdefault(eksen, []).append(bulgu.value)
 
     model_bilgisi = saglayici.model_info
     return ExtractResponse(
