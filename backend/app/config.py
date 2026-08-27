@@ -9,6 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/app/config.py -> backend/
@@ -68,7 +69,8 @@ class Settings(BaseSettings):
     min_campaign_year: int = 2025
 
     # ── On-premise ────────────────────────────────────────
-    # true iken sistem hiçbir dış HTTP çağrısı yapmaz (scraping dahil devre dışı).
+    # true iken dış servise bağlı yapılandırma AÇILIŞTA reddedilir
+    # (bkz. `_airgap_dis_servisi_reddeder`) ve kazıma devre dışı kalır.
     airgap_mode: bool = False
 
     # Derlenmiş frontend dosyalarının dizini. Üretimde FastAPI bu dizini "/"
@@ -197,6 +199,31 @@ class Settings(BaseSettings):
         if not path.is_absolute():
             path = BACKEND_DIR / path
         return path.resolve()
+
+    @model_validator(mode="after")
+    def _airgap_dis_servisi_reddeder(self) -> Settings:
+        """AIRGAP_MODE açıkken dış servise bağlı yapılandırmayı reddeder.
+
+        ⚠️ Çalışma anında engellemek YETMEZ; sistem yanlış yapılandırmayla
+        ayağa KALKMAMALIDIR. Ölçüldü: kilit yalnızca kazıma katmanındayken
+        (`Fetcher._guard_airgap`, `scrapers/browser.py`) `AIRGAP_MODE=true`
+        ile açılan sunucu EVREN'e ve Qdrant'a çıkmaya devam ediyordu —
+        sağlayıcı ve vektör deposu o kapıdan geçmiyor.
+
+        Kapalı ağ iddiası tek komutla yanlışlanabilir olduğu sürece iddia
+        değildir; bu yüzden denetim açılışa taşındı.
+        """
+        if not self.airgap_mode:
+            return self
+        hatalar = []
+        if self.llm_provider not in {"local", "mock"}:
+            hatalar.append(f"LLM_PROVIDER={self.llm_provider} dış servistir; 'local' ya da 'mock'")
+        if self.vector_backend != "local":
+            hatalar.append(f"VECTOR_BACKEND={self.vector_backend} dış servistir; 'local'")
+        if hatalar:
+            # ⚠️ Nedeni yazmayan bir ret, kullanıcıyı ayar dosyasında kör bırakır.
+            raise ValueError("AIRGAP_MODE=true iken " + " · ".join(hatalar) + " olmalıdır.")
+        return self
 
 
 @lru_cache
