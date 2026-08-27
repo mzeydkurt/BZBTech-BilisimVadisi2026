@@ -23,7 +23,11 @@ from app.scrapers.calculator_probes.api_adapters import (
     parse_tr_money,
     parse_tr_rate,
 )
-from app.scrapers.calculator_probes.common import bddk_ornek_vade, urun_tipi_ipucu
+from app.scrapers.calculator_probes.common import (
+    bddk_ornek_noktalar,
+    bddk_ornek_vade,
+    urun_tipi_ipucu,
+)
 
 logger = get_logger(__name__)
 
@@ -58,33 +62,150 @@ def _param(product: dict[str, Any], key: str) -> str | None:
     return None
 
 
-def _ornek_tutar_vade(title: str, product: dict[str, Any]) -> tuple[Decimal, int]:
+def _param_entry(product: dict[str, Any], key: str) -> dict[str, Any] | None:
+    for p in product.get("Parameters") or []:
+        if isinstance(p, dict) and p.get("Key") == key:
+            return p
+    return None
+
+
+def _as_decimal(ham: Any) -> Decimal | None:
+    if ham is None or ham == "":
+        return None
+    try:
+        return Decimal(str(ham))
+    except Exception:
+        return None
+
+
+def _as_int(ham: Any) -> int | None:
+    if ham is None or ham == "":
+        return None
+    try:
+        return int(float(ham))
+    except Exception:
+        return None
+
+
+def _katalog_tutar_sinirlari(product: dict[str, Any]) -> tuple[Decimal, Decimal]:
+    lo = _as_decimal(_param(product, "DefaultAmountMin")) or Decimal("1000")
+    hi = _as_decimal(_param(product, "DefaultAmountMax")) or Decimal("5000000")
+    if hi < lo:
+        hi = lo
+    return lo, hi
+
+
+def _katalog_vade_adimlari(product: dict[str, Any]) -> list[tuple[Decimal, int, int]]:
+    """Katalogdaki tutar eşiği → (vade_min, vade_max). Description = eşik TL."""
+    adimlar: list[tuple[Decimal, int, int]] = []
+    for sonek in ("", "2", "3", "4"):
+        emax = _param_entry(product, f"MaturityTermMax{sonek}")
+        if emax is None:
+            continue
+        vmax = _as_int(emax.get("Value"))
+        if vmax is None or vmax < 1:
+            continue
+        emin = _param_entry(product, f"MaturityTermMin{sonek}")
+        vmin = _as_int(emin.get("Value")) if emin else None
+        if vmin is None or vmin < 1:
+            vmin = 1
+        desc = emax.get("Description")
+        if desc in (None, ""):
+            desc = emin.get("Description") if emin else None
+        esik = _as_decimal(desc) or Decimal("0")
+        adimlar.append((esik, vmin, vmax))
+    adimlar.sort(key=lambda a: a[0])
+    return adimlar
+
+
+def _katalog_vade_araligi(product: dict[str, Any], amount: Decimal) -> tuple[int, int]:
+    adimlar = _katalog_vade_adimlari(product)
+    if not adimlar:
+        return 1, 120
+    secilen = adimlar[0]
+    for esik, vmin, vmax in adimlar:
+        if amount >= esik:
+            secilen = (esik, vmin, vmax)
+        else:
+            break
+    return secilen[1], secilen[2]
+
+
+def _noktayi_kirp(
+    product: dict[str, Any],
+    *,
+    title: str,
+    amount: Decimal,
+    term_months: int,
+) -> tuple[Decimal, int] | None:
     ipucu = urun_tipi_ipucu(title)
-    max_amt = _param(product, "DefaultAmountMax")
-    max_term = _param(product, "MaturityTermMax")
-    try:
-        ust_tutar = Decimal(max_amt) if max_amt else Decimal("500000")
-    except Exception:
-        ust_tutar = Decimal("500000")
-    try:
-        ust_vade = int(float(max_term)) if max_term else 36
-    except Exception:
-        ust_vade = 36
-    if ust_vade < 1:
-        ust_vade = 1
-
-    if ipucu == "konut_finansmani":
-        tutar = min(ust_tutar, Decimal("1000000"))
-    elif ipucu == "tasit_finansmani":
-        tutar = min(ust_tutar, Decimal("500000"))
-    else:
-        tutar = min(ust_tutar, Decimal("100000"))
-    if tutar < 1000:
-        tutar = min(ust_tutar, Decimal("1000"))
-
-    vade = min(ust_vade, bddk_ornek_vade(ipucu, tutar))
-    vade = max(1, min(vade, ust_vade))
+    lo, hi = _katalog_tutar_sinirlari(product)
+    tutar = min(max(amount, lo), hi)
+    kat_min, kat_max = _katalog_vade_araligi(product, tutar)
+    vade = min(term_months, kat_max, bddk_ornek_vade(ipucu, tutar))
+    vade = max(vade, kat_min, 1)
+    if tutar < lo or tutar > hi or vade < 1:
+        return None
     return tutar, vade
+
+
+def probe_noktalari(title: str, product: dict[str, Any]) -> list[tuple[Decimal, int]]:
+    """BDDK bantları + katalog vade basamaklarından (tutar, vade) listesi.
+
+    Kâr payı sayfada yok; her nokta için `p2`/`p3` POST'u `Meta.ProfitRate` döner.
+    Taşıtta 500.000 TL örnek BDDK 400.000/48 bandını kaçırır — o yüzden bant
+    tavanlarında sorgulanır.
+    """
+    ipucu = urun_tipi_ipucu(title)
+    adaylar: list[tuple[Decimal, int]] = list(bddk_ornek_noktalar(ipucu))
+    noktalar: list[tuple[Decimal, int]] = []
+    gorulen: set[tuple[int, int]] = set()
+    terimler: set[int] = set()
+    for tutar, vade in adaylar:
+        kirpilmis = _noktayi_kirp(product, title=title, amount=tutar, term_months=vade)
+        if kirpilmis is None:
+            continue
+        anahtar = (int(kirpilmis[0]), kirpilmis[1])
+        if anahtar in gorulen:
+            continue
+        gorulen.add(anahtar)
+        terimler.add(kirpilmis[1])
+        noktalar.append(kirpilmis)
+
+    lo, hi = _katalog_tutar_sinirlari(product)
+    adimlar = _katalog_vade_adimlari(product)
+    for i, (esik, _vmin, vmax) in enumerate(adimlar):
+        sonraki = adimlar[i + 1][0] if i + 1 < len(adimlar) else hi + Decimal("1")
+        tutar = max(esik, lo)
+        if tutar < Decimal("10000") and Decimal("10000") < sonraki:
+            tutar = Decimal("10000")
+        if tutar >= sonraki:
+            tutar = max(esik, lo)
+        kirpilmis = _noktayi_kirp(product, title=title, amount=tutar, term_months=vmax)
+        if kirpilmis is None:
+            continue
+        if kirpilmis[1] in terimler:
+            continue
+        anahtar = (int(kirpilmis[0]), kirpilmis[1])
+        if anahtar in gorulen:
+            continue
+        gorulen.add(anahtar)
+        terimler.add(kirpilmis[1])
+        noktalar.append(kirpilmis)
+
+    if noktalar:
+        return noktalar
+    yedek = _noktayi_kirp(
+        product, title=title, amount=Decimal("100000"), term_months=36
+    )
+    return [yedek] if yedek else []
+
+
+def _ornek_tutar_vade(title: str, product: dict[str, Any]) -> tuple[Decimal, int]:
+    noktalar = probe_noktalari(title, product)
+    if noktalar:
+        return noktalar[0]
+    return Decimal("100000"), 36
 
 
 def bootstrap(client: httpx.Client) -> None:
@@ -125,9 +246,16 @@ def calculate(
             bootstrap(client)
         title = str(product.get("Title") or "finansman")
         code = _param(product, "ProductCode") or "ECOMMERCE"
-        ornek_tutar, ornek_vade = _ornek_tutar_vade(title, product)
-        tutar = amount if amount is not None else ornek_tutar
-        vade = term_months if term_months is not None else ornek_vade
+        if amount is None or term_months is None:
+            ornek_tutar, ornek_vade = _ornek_tutar_vade(title, product)
+            tutar = amount if amount is not None else ornek_tutar
+            vade = term_months if term_months is not None else ornek_vade
+        else:
+            tutar, vade = amount, term_months
+        kirpilmis = _noktayi_kirp(product, title=title, amount=tutar, term_months=vade)
+        if kirpilmis is None:
+            return None
+        tutar, vade = kirpilmis
         body = {
             "i": True,
             "p1": "1",
@@ -164,7 +292,10 @@ def calculate(
             annual_cost_pct=parse_tr_rate(meta.get("YearlyCost")),
             monthly_installment=parse_tr_money(meta.get("InstallmentPayment")),
             total_payment=parse_tr_money(meta.get("TotalAmount")),
-            allocation_fee=parse_tr_money(meta.get("AllocationAmount")),
+            # AllocationAmount hesaplayıcı tahminidir; Kuveyt tablosu
+            # "bağlayıcı değildir" der ve tahsis peşin/ayrı tahsil edilir.
+            # Kesin ücret tablosu yoksa simülatöre yazılmaz.
+            allocation_fee=None,
             source_url=CALC_URL,
             source_endpoint=f"https://www.kuveytturk.com.tr/ck0d84?{CALC_HASH}",
             raw_response=veri,
@@ -183,12 +314,16 @@ def probe_all(*, client: httpx.Client | None = None) -> list[FinancingCalculatio
     try:
         urunler = list_products(client)
         sonuclar: list[FinancingCalculation] = []
-        for i, urun in enumerate(urunler):
-            if i:
-                time.sleep(0.6)
-            calc = calculate(urun, client=client)
-            if calc and calc.profit_rate_pct is not None:
-                sonuclar.append(calc)
+        ilk = True
+        for urun in urunler:
+            title = str(urun.get("Title") or "finansman")
+            for tutar, vade in probe_noktalari(title, urun):
+                if not ilk:
+                    time.sleep(0.6)
+                ilk = False
+                calc = calculate(urun, amount=tutar, term_months=vade, client=client)
+                if calc and calc.profit_rate_pct is not None:
+                    sonuclar.append(calc)
         return sonuclar
     finally:
         if kendi:

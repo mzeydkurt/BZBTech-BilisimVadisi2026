@@ -642,6 +642,52 @@ class TestOdemePlaniVeTahsis:
         assert "tahsis" in sonuc.method_note.lower()
         assert "sigorta" in sonuc.method_note.lower()
 
+    def test_kuveyt_hesaplayici_tahsisi_kullanilmaz(self, seeded_session: Session) -> None:
+        """Kuveyt AllocationAmount bağlayıcı ücret tablosu değil."""
+        _oran_ekle(
+            seeded_session,
+            "kuveyt_turk",
+            "Taşıt",
+            profit_rate_pct=Decimal("3.39"),
+            allocation_fee_pct=Decimal("0.50"),
+            term_months=12,
+            rate_source="calculator_api",
+            is_binding=False,
+        )
+
+        sonuc = calculate_financing_simulation(
+            seeded_session,
+            FinancingSimulationRequest(amount_try=Decimal("100000"), term_months=12),
+        )
+
+        teklif = sonuc.offers[0]
+        assert teklif.bank_code == "kuveyt_turk"
+        assert teklif.allocation_fee_try is None
+        assert teklif.total_cost_try == teklif.total_payment_try
+        assert teklif.rate_context_note is None
+        assert teklif.binding_note is None
+
+    def test_kuveyt_yayimlanmis_tahsis_kullanilir(self, seeded_session: Session) -> None:
+        _oran_ekle(
+            seeded_session,
+            "kuveyt_turk",
+            "Taşıt (ücret tablosu)",
+            profit_rate_pct=Decimal("3.39"),
+            allocation_fee_pct=Decimal("0.50"),
+            term_months=12,
+            rate_source="html_table",
+            is_binding=True,
+        )
+
+        sonuc = calculate_financing_simulation(
+            seeded_session,
+            FinancingSimulationRequest(amount_try=Decimal("100000"), term_months=12),
+        )
+
+        teklif = sonuc.offers[0]
+        assert teklif.allocation_fee_try == Decimal("500.00")
+        assert teklif.total_cost_try == teklif.total_payment_try + Decimal("500.00")
+
     def test_banka_alt_kumesi_suzulur(self, seeded_session: Session) -> None:
         _oran_ekle(seeded_session, "albaraka", "A", profit_rate_pct=Decimal("3.05"), term_months=36)
         _oran_ekle(

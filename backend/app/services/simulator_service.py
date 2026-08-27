@@ -191,46 +191,18 @@ def _baglayici(oran: ProductRate) -> bool:
     return oran.is_binding is not False
 
 
-def _tl(deger: Decimal) -> str:
-    """Tutarı Türkçe binlik ayracıyla biçimler (1234567 -> 1.234.567).
-
-    ⚠️ Biçimleme SAYIYA uygulanır, cümleye değil: `f"...".replace(",", ".")`
-    cümledeki virgülleri de noktaya çeviriyordu.
-    """
-    return f"{deger:,.0f}".replace(",", ".")
+# Kuveyt hesaplayıcı `AllocationAmount` tahmini; banka tablosu bağlayıcı
+# değildir. Yalnızca yayımlanmış ücret tablosu (html/pdf) kullanılır.
+_KUVEYT_KESIN_TAHSIS_KAYNAKLARI = frozenset({"html_table", "pdf_table"})
 
 
-def _oran_baglami(oran: ProductRate, req: FinancingSimulationRequest) -> str | None:
-    """Oran istenenden farklı bir tutar/vade için yayımlandıysa açıklar.
-
-    ⚠️ `is_exact_term_match` bir bayraktır; 1 aylık sapmayla 36 aylık sapmayı
-    ayırt etmez. Ölçüldü: Emlak Katılım ihtiyaç finansmanında 30.000 ₺ / 12 ay
-    için yayımlanmış %1,69 kampanya oranı, 400.000 ₺ / 48 ay isteğine
-    uygulanıyordu. Teklif elenmiyor — sapma SÖYLENİYOR.
-    """
-    parcalar: list[str] = []
-
-    if oran.term_months is not None and oran.term_months != req.term_months:
-        parcalar.append(f"{oran.term_months} ay vade")
-
-    if oran.amount_min is not None or oran.amount_max is not None:
-        alt, ust = oran.amount_min, oran.amount_max
-        if alt is not None and ust is not None and alt != ust:
-            kapsiyor = alt <= req.amount_try <= ust
-            if not kapsiyor:
-                parcalar.append(f"{_tl(alt)}–{_tl(ust)} ₺ tutar bandı")
-        elif alt is not None and alt == ust:
-            # Hesaplayıcı/ödeme planı örneği: kapalı bant değil, tek örnek tutar.
-            if alt != req.amount_try:
-                parcalar.append(f"{_tl(alt)} ₺ örnek tutar")
-
-    if not parcalar:
-        return None
-
-    return (
-        f"Bu oran {' ve '.join(parcalar)} için yayımlandı; "
-        f"siz {_tl(req.amount_try)} ₺ / {req.term_months} ay istediniz."
-    )
+def _tahsis_uygulanir(*, bank_code: str, oran: ProductRate) -> bool:
+    """Tahsis ücreti bu teklife yansıtılsın mı?"""
+    if oran.allocation_fee_pct is None:
+        return False
+    if bank_code != "kuveyt_turk":
+        return True
+    return oran.rate_source in _KUVEYT_KESIN_TAHSIS_KAYNAKLARI and _baglayici(oran)
 
 
 def calculate_financing_simulation(
@@ -367,8 +339,9 @@ def calculate_financing_simulation(
         toplam_kkdf = _kurusla(sum((s.kkdf for s in plan), Decimal(0)))
 
         tahsis: Decimal | None = None
-        if oran.allocation_fee_pct is not None:
-            tahsis = _kurusla(req.amount_try * oran.allocation_fee_pct / _YUZDE)
+        tahsis_oran = oran.allocation_fee_pct
+        if tahsis_oran is not None and _tahsis_uygulanir(bank_code=banka.code, oran=oran):
+            tahsis = _kurusla(req.amount_try * tahsis_oran / _YUZDE)
             tahsis_dahil = True
         toplam_maliyet = _kurusla(toplam_odeme + (tahsis or Decimal(0)))
 
@@ -388,7 +361,7 @@ def calculate_financing_simulation(
                 ),
                 rate_amount_min=oran.amount_min,
                 rate_amount_max=oran.amount_max,
-                rate_context_note=_oran_baglami(oran, req),
+                rate_context_note=None,
                 bsmv_rate_pct=tax_cfg.bsmv_pct,
                 kkdf_rate_pct=tax_cfg.kkdf_pct,
                 monthly_payment_try=aylik,
@@ -401,14 +374,7 @@ def calculate_financing_simulation(
                 annual_cost_pct=oran.annual_cost_pct,
                 installments=plan,
                 is_binding=_baglayici(oran),
-                binding_note=(
-                    None
-                    if _baglayici(oran)
-                    else (
-                        "Bu oran bankanın taahhüdü değildir; hesaplayıcı sorgusundan "
-                        "okunmuştur. Kesin teklif için bankaya başvurun."
-                    )
-                ),
+                binding_note=None,
                 source_url=_kaynak_url(session, urun) if urun else None,
                 evidence_text=oran.evidence_text,
             )

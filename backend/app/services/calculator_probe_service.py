@@ -175,24 +175,6 @@ def probe_orani_guvenilir_mi(
     return True, None
 
 
-# Ürün ailesine göre örnek tutar × vade çiftleri (BDDK bantlarıyla hizalı).
-_PROBE_SAMPLES: Final[dict[str, tuple[tuple[Decimal, int], ...]]] = {
-    "ihtiyac": (
-        (Decimal("10000"), 36),
-        (Decimal("200000"), 24),
-        (Decimal("1000000"), 12),
-    ),
-    "konut": ((Decimal("1000000"), 120),),
-    "tasit": (
-        (Decimal("400000"), 48),
-        (Decimal("800000"), 36),
-        (Decimal("1200000"), 24),
-    ),
-}
-
-_DEFAULT_SAMPLES: Final[tuple[tuple[Decimal, int], ...]] = ((Decimal("1000000"), 36),)
-
-
 @dataclass(frozen=True)
 class ProbeSample:
     """Tek bir hesaplayıcı sorgu noktası."""
@@ -203,9 +185,11 @@ class ProbeSample:
 
 def probe_samples_for_product(product_type: str | None) -> list[ProbeSample]:
     """Ürün türüne / BDDK ailesine göre örnek tutar-vade listesi."""
-    aile = family_for_product_type(product_type)
-    ciftler = _PROBE_SAMPLES.get(aile or "", _DEFAULT_SAMPLES)
-    return [ProbeSample(amount=a, term_months=v) for a, v in ciftler]
+    from app.scrapers.calculator_probes.common import bddk_ornek_noktalar
+
+    return [
+        ProbeSample(amount=a, term_months=v) for a, v in bddk_ornek_noktalar(product_type)
+    ]
 
 
 def products_needing_probe(session: Session, *, bank_code: str | None = None) -> list[Product]:

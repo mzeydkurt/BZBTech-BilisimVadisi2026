@@ -146,6 +146,6 @@ def run_api_probes(
                 "toplam": str(c.total_payment) if c.total_payment else None,
                 "endpoint": c.source_endpoint[:120],
             }
-            for c in tum[:40]
+            for c in tum[:80]
         ],
     }

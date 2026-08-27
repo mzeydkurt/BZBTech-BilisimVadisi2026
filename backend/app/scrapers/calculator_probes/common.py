@@ -109,6 +109,31 @@ def bddk_ornek_vade(product_type_hint: str | None, amount: Decimal) -> int:
     return 36
 
 
+# Ürün ailesine göre örnek tutar × vade (BDDK bantlarıyla hizalı).
+_BDDK_PROBE_NOKTALARI: dict[str, tuple[tuple[Decimal, int], ...]] = {
+    "ihtiyac": (
+        (Decimal("10000"), 36),
+        (Decimal("200000"), 24),
+        (Decimal("1000000"), 12),
+    ),
+    "konut": ((Decimal("1000000"), 120),),
+    "tasit": (
+        (Decimal("400000"), 48),
+        (Decimal("800000"), 36),
+        (Decimal("1200000"), 24),
+    ),
+}
+_DEFAULT_PROBE_NOKTALARI: tuple[tuple[Decimal, int], ...] = ((Decimal("1000000"), 36),)
+
+
+def bddk_ornek_noktalar(product_type_hint: str | None) -> list[tuple[Decimal, int]]:
+    """Aileye göre BDDK hizalı (finansman tutarı, vade) örnekleri."""
+    from app.services.bddk_limits_service import family_for_product_type
+
+    aile = family_for_product_type(product_type_hint)
+    return list(_BDDK_PROBE_NOKTALARI.get(aile or "", _DEFAULT_PROBE_NOKTALARI))
+
+
 def oran_gecerli(oran: Decimal | None) -> bool:
     """Aylık kâr payı makul aralıkta mı?"""
     if oran is None:
@@ -117,16 +142,35 @@ def oran_gecerli(oran: Decimal | None) -> bool:
 
 
 def urun_tipi_ipucu(etiket: str) -> str | None:
-    d = etiket.casefold()
-    if any(k in d for k in ("konut", "toki", "gayrimenkul", "kira finans")):
-        return "konut_finansmani"
-    if any(k in d for k in ("taşıt", "tasit", "araç", "arac", "motosiklet", "binek", "otomobil")):
-        return "tasit_finansmani"
-    if any(k in d for k in ("arsa", "işyeri", "is yeri", "iş yeri", "ticari gayrimenkul")):
+    from app.core.normalization.text import ascii_fold_tr, lower_tr
+
+    d = ascii_fold_tr(lower_tr(etiket))
+    if any(
+        ascii_fold_tr(k) in d for k in ("konut", "toki", "gayrimenkul", "kira finans")
+    ):
         return "konut_finansmani"
     if any(
-        k in d
-        for k in ("ihtiyaç", "ihtiyac", "alışveriş", "alisveris", "eğitim", "egitim", "hac", "umre")
+        ascii_fold_tr(k) in d
+        for k in ("taşıt", "tasit", "araç", "arac", "motosiklet", "binek", "otomobil")
+    ):
+        return "tasit_finansmani"
+    if any(
+        ascii_fold_tr(k) in d
+        for k in ("arsa", "işyeri", "is yeri", "iş yeri", "ticari gayrimenkul")
+    ):
+        return "konut_finansmani"
+    if any(
+        ascii_fold_tr(k) in d
+        for k in (
+            "ihtiyaç",
+            "ihtiyac",
+            "alışveriş",
+            "alisveris",
+            "eğitim",
+            "egitim",
+            "hac",
+            "umre",
+        )
     ):
         return "ihtiyac_finansmani"
     return None

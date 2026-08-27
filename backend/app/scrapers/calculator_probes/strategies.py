@@ -12,6 +12,7 @@ from app.core.normalization.rate import parse_rate
 from app.core.normalization.text import lower_tr
 from app.scrapers.calculator_probes.common import (
     ProbeReading,
+    bddk_ornek_noktalar,
     bddk_ornek_vade,
     bekle,
     cerez_kapat,
@@ -110,7 +111,8 @@ def probe_kuveyt_product_dropdown(page: Any, hedef: ProbeTarget) -> list[ProbeRe
         etiket = opt["t"]
         sel.select_option(value=opt["v"])
         page.wait_for_timeout(1200)
-        amount = Decimal("500000")
+        ipucu = urun_tipi_ipucu(etiket)
+        amount, _bddk_vade = bddk_ornek_noktalar(ipucu)[0]
         # tutar
         for s in ('input[type="number"]', 'input[name*="amount" i]'):
             try:
@@ -120,6 +122,7 @@ def probe_kuveyt_product_dropdown(page: Any, hedef: ProbeTarget) -> list[ProbeRe
                     break
             except Exception:
                 pass
+        page.wait_for_timeout(800)
         # vade — son seçenek
         vade_sel = page.locator("select").nth(1)
         try:
@@ -138,7 +141,6 @@ def probe_kuveyt_product_dropdown(page: Any, hedef: ProbeTarget) -> list[ProbeRe
         metin = page.inner_text("body")
         oran = _kuveyt_oran(metin)
         taksit, toplam = metinden_taksit_toplam(metin)
-        ipucu = urun_tipi_ipucu(etiket)
         term = min(term, bddk_ornek_vade(ipucu, amount))
         notice = None
         nm = re.search(r"(125\.000 TL.+?aşamaz\.)", metin.replace("\u00a0", " "))
