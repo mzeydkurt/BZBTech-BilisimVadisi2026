@@ -27,7 +27,7 @@ from app.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# ── 11 KATILIM BANKASI ────────────────────────────────────
+# ── 10 KATILIM BANKASI ────────────────────────────────────
 # Alan adları ve domainler 8 Ağustos 2026'da doğrudan siteden doğrulanmıştır.
 # `legacy_domains`: 302 ile kanonik adrese yönlenen eski alan adları. Scraper
 # cross-host yönlendirmeyi takip eder; bu liste belgeleme amaçlı tutulur.

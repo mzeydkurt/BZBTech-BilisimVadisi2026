@@ -117,9 +117,13 @@ def compute(
         olan = tuple(sorted(ad for ad, n in dokum.items() if n > 0))
         olmayan = tuple(sorted(ad for ad in tum_bankalar if dokum.get(ad, 0) == 0))
 
+        # BANKA sorularında üç sayı da BANKA sayar. `total` kayıt sayısını
+        # bildirirse aynı yapıda iki farklı birim olur ve ölçüldüğü gibi
+        # tutarsız görünür: with=7, without=3 iken total=6.
+        banka_sorusu = spec.kind in {"count_banks", "absence", "bank_roster"}
         return AggregateAnswer(
             kind=spec.kind,
-            total=len(docs),
+            total=len(olan) + len(olmayan) if banka_sorusu else len(docs),
             with_value=len(olan),
             without_value=len(olmayan),
             by_bank=dict(sorted(dokum.items(), key=lambda ikili: (-ikili[1], ikili[0]))),

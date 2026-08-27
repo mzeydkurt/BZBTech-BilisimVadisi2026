@@ -133,7 +133,7 @@ INSTALLMENT: Final[re.Pattern[str]] = re.compile(
 # ── Vade ──────────────────────────────────────────────────
 # "120 ay" · "120 aya kadar" · "3-36 ay" · "10 yıl"
 TERM: Final[re.Pattern[str]] = re.compile(
-    r"\d{1,3}\s*[-–]\s*\d{1,3}\s*ay\b|\d{1,3}\s*ay(?:a\s*kadar)?\b|\d{1,2}\s*y[ıi]l\b",
+    r"\d{1,3}\s*[-–]\s*\d{1,3}\s*ay\b|\d{1,3}\s*ay(?:a\s*(?:kadar|varan))?\b|\d{1,2}\s*y[ıi]l\b",
     re.IGNORECASE,
 )
 
@@ -249,7 +249,7 @@ NO_FEE: Final[re.Pattern[str]] = re.compile(
 
 # ── Finansman tutarı ──────────────────────────────────────
 FINANCING_AMOUNT: Final[re.Pattern[str]] = re.compile(
-    r"[\d.,]+\s*(?:TL|₺)\s*(?:'?[yn]?[ae]\s*kadar\s*)?finansman"
+    r"[\d.,]+\s*(?:TL|₺)\s*(?:'?[yn]?[ae]\s*(?:kadar|varan)\s*)?(?:\w+\s+)?finansman"
     r"|finansman\s*(?:tutar[ıi])?\s*[:\-]?\s*[\d.,]+\s*(?:TL|₺)",
     re.IGNORECASE,
 )

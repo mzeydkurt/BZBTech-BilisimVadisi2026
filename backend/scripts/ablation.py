@@ -176,7 +176,10 @@ def main(argv: list[str] | None = None) -> int:
 
     ayarlar = get_settings()
     saglayici = get_provider(ayarlar)
-    mock = not saglayici.model_info.name.startswith("local")
+    # Koşul SAĞLAYICIYA bakar, model ADINA değil. EVREN'in model adı
+    # "local" ile başlamadığı için gerçek ölçümler "(mock)" damgalanıyor
+    # ve rapor jüriye kendi sayılarının anlamsız olduğunu söylüyordu.
+    mock = ayarlar.llm_provider == "mock"
 
     with SessionLocal() as session:
         if argumanlar.cikarim:
