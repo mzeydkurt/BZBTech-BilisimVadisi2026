@@ -4,6 +4,7 @@
     2  Kanıt zorunluluğu    `evidence` boşsa alan reddedilir
     3  Alt dize doğrulama   kanıt kaynakta FİİLEN geçiyor mu?          ⭐
     4  Sayısal doğrulama    üretilen rakam varyantlarıyla kaynakta var mı?
+    4b Birim uyumu         rakam DOĞRU BÜYÜKLÜĞÜ mü ölçüyor?           
     5  Mantık kuralları     alanlar birbiriyle tutarlı mı?
     6  Terminoloji          ürettiğimiz metinde konvansiyonel terim var mı?
 
@@ -20,8 +21,11 @@ ise HER kaynağa uygulanır: kuralın bulduğu iki değer de birbiriyle
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Final
+
+from app.core.normalization.text import lower_tr
 
 from app.ai.extraction.rule_based import ExtractedField
 from app.ai.validation.evidence import validate_evidence
@@ -38,6 +42,7 @@ from app.ai.validation.terminology import (
 REASON_NO_EVIDENCE: Final[str] = "evidence_missing"
 REASON_EVIDENCE_NOT_FOUND: Final[str] = "evidence_not_found"
 REASON_NUMBER_NOT_IN_SOURCE: Final[str] = "number_not_in_source"
+REASON_TERM_IS_INSTALLMENT: Final[str] = "taksit_vade_karismasi"
 
 # Guard'ın denetlediği kaynaklar. Tablo ve kural katmanı kanıtını kaynaktan
 # dilimleyerek ürettiği için katman 3-4'ten muaftır (bkz. modül açıklaması).
@@ -61,6 +66,23 @@ class GuardResult:
         """Üretilen kayıtların ne kadarı reddedildi?"""
         toplam = len(self.accepted) + len(self.rejected)
         return len(self.rejected) / toplam if toplam else 0.0
+
+
+def _taksit_vade_karismasi(alan_adi: str, kanit: str | None) -> bool:
+    """Vade alanının kanıtı taksitten söz edip aydan söz etmiyor mu?
+
+    Katman 4 bu hatayı YAKALAYAMAZ: rakam kaynakta gerçekten geçiyor,
+    ama BAŞKA BİR BÜYÜKLÜĞÜ ölçüyor. "Vade farksız 5 taksit" ifadesindeki 5,
+    taksit SAYISIDIR; vade DEĞİLDİR (bkz. `patterns.py::INSTALLMENT`).
+
+    Kural katmanı bu ayrımı zaten yapıyor, LLM yapmıyordu. Ölçüldü (canlı
+    veritabanı): LLM kaynaklı 229 vade değerinin **221'inin** kanıtı "taksit"
+    diyor ve "ay" demiyor.
+    """
+    if not alan_adi.startswith("term_months"):
+        return False
+    metin = lower_tr(kanit or "")
+    return "taksit" in metin and not re.search(r"\d\s*(?:ay|yıl|yil)\b", metin)
 
 
 def _reject(sonuc: GuardResult, alan: ExtractedField, gerekce: str) -> None:
@@ -102,6 +124,11 @@ def guard_fields(fields: list[ExtractedField], clean_text: str) -> GuardResult:
             _reject(sonuc, alan, REASON_NUMBER_NOT_IN_SOURCE)
             continue
 
+        # Katman 4b — birim uyumu: taksit sayısı vade alanına yazılamaz.
+        if _taksit_vade_karismasi(alan.field_name, alan.evidence_text):
+            _reject(sonuc, alan, REASON_TERM_IS_INSTALLMENT)
+            continue
+
         sonuc.accepted.append(alan)
 
     # Katman 5 — mantık kuralları KABUL EDİLENLER üzerinde, her kaynağa.
@@ -126,6 +153,7 @@ __all__ = [
     "REASON_EVIDENCE_NOT_FOUND",
     "REASON_NO_EVIDENCE",
     "REASON_NUMBER_NOT_IN_SOURCE",
+    "REASON_TERM_IS_INSTALLMENT",
     "Conflict",
     "GuardResult",
     "MergeResult",
