@@ -20,6 +20,36 @@ const RATE_TYPE_OPTIONS: { value: ComparableRateType; label: string }[] = [
 
 const CURRENCIES = ["TRY", "USD", "EUR", "XAU", "XAG"] as const;
 
+const TUMU = "__tumu__";
+
+/**
+ * Oran türüne göre seçilebilir ürün türleri.
+ *
+ * Serbest metin yerine liste: kullanıcının yazdığı `tasit finansmani` gibi bir
+ * değer sessizce sıfır sonuç döndürüyordu — API hata vermiyor, yalnızca boş
+ * liste dönüyor. Slug kümesi `product_rates` içinde FİİLEN bulunan türlerdir;
+ * olmayan bir tür sunmak da aynı boş sonucu üretirdi.
+ */
+const URUN_TIPLERI: Record<ComparableRateType, string[]> = {
+  financing_rate: [
+    "ihtiyac_finansmani",
+    "konut_finansmani",
+    "tasit_finansmani",
+    "isyeri_finansmani",
+    "arsa_finansmani",
+    "alisveris_finansmani",
+    "marka_ozel_finansman",
+    "finansman",
+  ],
+  participation_yield: ["birikim_katilma_hesabi", "ara_donem_kar_odemeli", "finansman"],
+  profit_sharing_ratio: [
+    "birikim_katilma_hesabi",
+    "ara_donem_kar_odemeli",
+    "yatirim_urunu",
+    "finansman",
+  ],
+};
+
 export interface CompareFormState {
   rate_type: ComparableRateType;
   criterion: ProductRankingRequest["criterion"];
@@ -56,6 +86,11 @@ export function CompareForm({ value, onChange, onSubmit, banks, isPending }: Com
       criterion: nextCriteria.includes(value.criterion)
         ? value.criterion
         : (nextCriteria[0] ?? value.criterion),
+      // Ürün türü oran türüne bağlıdır: `konut_finansmani` seçiliyken katılma
+      // getirisine geçilirse o tür listede yoktur ve sorgu sessizce boş döner.
+      product_type: (URUN_TIPLERI[rateType] ?? []).includes(value.product_type)
+        ? value.product_type
+        : "",
       term_months: rateType === "financing_rate" ? value.term_months : "",
       term_days:
         rateType === "participation_yield" || rateType === "profit_sharing_ratio"
@@ -128,15 +163,24 @@ export function CompareForm({ value, onChange, onSubmit, banks, isPending }: Com
           <label htmlFor="compare-product-type" className="mb-1 block text-sm text-text-500">
             Ürün Türü (opsiyonel)
           </label>
-          <Input
-            id="compare-product-type"
-            value={value.product_type}
-            onChange={(event) => onChange({ ...value, product_type: event.target.value })}
-            placeholder="ör. tasit_finansmani"
-          />
-          {value.product_type && (
-            <p className="mt-1 text-xs text-text-500">{taxonomyLabel(value.product_type)}</p>
-          )}
+          <Select
+            value={value.product_type || TUMU}
+            onValueChange={(next) =>
+              onChange({ ...value, product_type: next === TUMU ? "" : next })
+            }
+          >
+            <SelectTrigger id="compare-product-type">
+              <SelectValue placeholder="Tüm ürün türleri" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TUMU}>Tüm ürün türleri</SelectItem>
+              {(URUN_TIPLERI[value.rate_type] ?? []).map((type) => (
+                <SelectItem key={type} value={type}>
+                  {taxonomyLabel(type)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

@@ -577,10 +577,14 @@ class TestOdemePlaniVeTahsis:
         assert anapara_toplam == Decimal("120000.00")
 
     def test_tahsis_ucreti_toplam_maliyete_eklenir(self, seeded_session: Session) -> None:
+        # ⚠️ Ürün adı "vade farksız" TAŞIR: %0 kâr payı ancak meşru bir sıfır
+        # kampanyasıysa sıralamaya girer (`is_zero_rate_promotional`). Adsız bir
+        # %0 satırı kazıma boşluğu sayılıp elenir; bu testin konusu tahsis
+        # ücreti aritmetiğidir, oranın sıfır olması yalnızca hesabı sadeleştirir.
         _oran_ekle(
             seeded_session,
             "albaraka",
-            "Taşıt",
+            "Taşıt (Vade Farksız)",
             profit_rate_pct=Decimal("0"),
             allocation_fee_pct=Decimal("0.50"),
             annual_cost_pct=Decimal("12.00"),
@@ -621,7 +625,7 @@ class TestOdemePlaniVeTahsis:
     def test_dunya_katilim_tasit_finansmani_bsmv_kkdf_ile_tam_uyusur(
         self, seeded_session: Session
     ) -> None:
-        """400.000 TL, 48 ay, %3.39 oranında taksit 20.173,41 TL ve toplam geri ödeme 968.323,48 TL çıkmalı."""
+        """400.000 TL / 48 ay / %3.39 → taksit 20.173,41 TL, toplam 968.323,48 TL."""
         _oran_ekle(
             seeded_session,
             "dunya_katilim",
@@ -659,9 +663,7 @@ class TestOdemePlaniVeTahsis:
         assert ay1.principal == Decimal("2545.41")
         assert ay1.remaining_balance == Decimal("397454.59")
 
-    def test_konut_finansmani_vergisiz_muaf_hesaplanir(
-        self, seeded_session: Session
-    ) -> None:
+    def test_konut_finansmani_vergisiz_muaf_hesaplanir(self, seeded_session: Session) -> None:
         """Konut finansmanında BSMV ve KKDF %0 olmalı."""
         _oran_ekle(
             seeded_session,

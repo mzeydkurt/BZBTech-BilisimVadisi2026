@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -7,6 +6,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { taxonomyLabel } from "@/lib/taxonomy";
 import { cn } from "@/lib/utils";
 import type { Bank, CampaignCompareRequest, CampaignRankingCriterion } from "@/types/api";
 
@@ -17,6 +17,34 @@ const CAMPAIGN_CRITERIA: { value: CampaignRankingCriterion; label: string }[] = 
   { value: "en_yuksek_taksit", label: "En yüksek taksit" },
   { value: "en_yuksek_iade_orani", label: "En yüksek iade oranı" },
   { value: "en_yuksek_indirim", label: "En yüksek indirim" },
+];
+
+const TUMU = "__tumu__";
+
+/**
+ * Kampanyalarda FİİLEN etiketlenmiş ürün türleri, kampanya sayısına göre sıralı.
+ *
+ * Serbest metin yerine liste: kullanıcının yazdığı `taşıt finansmanı` gibi bir
+ * değer sessizce sıfır sonuç döndürüyordu — API hata vermiyor, boş liste dönüyor.
+ * Etiketlenmemiş bir tür sunmak da aynı boş sonucu üretirdi; bu yüzden liste
+ * `campaign_categories` içindeki gerçek dağılımdan alındı.
+ */
+const KAMPANYA_URUN_TIPLERI = [
+  "kart",
+  "alisveris_puani",
+  "finansman",
+  "yeni_musteri",
+  "dijital_bankacilik",
+  "alisveris_finansmani",
+  "kobi_ticari",
+  "ihtiyac_finansmani",
+  "birikim_katilma_hesabi",
+  "odeme_fatura",
+  "tasit_finansmani",
+  "sigorta",
+  "yatirim_urunu",
+  "pos_uye_isyeri",
+  "konut_finansmani",
 ];
 
 export interface CampaignCompareFormState {
@@ -95,12 +123,24 @@ export function CampaignCompareForm({
           <label htmlFor="camp-product-type" className="mb-1 block text-sm text-text-500">
             Ürün / kampanya türü
           </label>
-          <Input
-            id="camp-product-type"
-            value={value.product_type}
-            onChange={(event) => onChange({ ...value, product_type: event.target.value })}
-            placeholder="opsiyonel"
-          />
+          <Select
+            value={value.product_type || TUMU}
+            onValueChange={(next) =>
+              onChange({ ...value, product_type: next === TUMU ? "" : next })
+            }
+          >
+            <SelectTrigger id="camp-product-type">
+              <SelectValue placeholder="Tüm türler" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TUMU}>Tüm türler</SelectItem>
+              {KAMPANYA_URUN_TIPLERI.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {taxonomyLabel(type)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <label className="flex items-end gap-2 pb-2 text-sm text-text-700">
           <input

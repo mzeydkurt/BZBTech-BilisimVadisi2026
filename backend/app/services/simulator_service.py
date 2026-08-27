@@ -23,6 +23,8 @@ from app.db.models.source_document import SourceDocument
 from app.schemas.simulator import (
     BankFinancingOffer,
     BankYieldOffer,
+    BDDKLimitCheckRequest,
+    BDDKLimitCheckResponse,
     FinancingSimulationRequest,
     FinancingSimulationResponse,
     InstallmentRow,
@@ -30,7 +32,7 @@ from app.schemas.simulator import (
     ParticipationYieldRequest,
     ParticipationYieldResponse,
 )
-from app.services.bddk_limits_service import check_bddk_limits
+from app.services.bddk_limits_service import check_bddk_limits, family_for_product_type
 
 _KURUS = Decimal("0.01")
 _YUZDE = Decimal("100")
@@ -161,7 +163,7 @@ def _en_yakin_vade(
     # ürün kombinasyonunu (Kuveyt Türk konut dahil) listeden tamamen
     # düşürürdü; tercih sırası hem doğruyu seçer hem kapsamı korur.
     def _sec(aday: list[ProductRate]) -> ProductRate:
-        baglayici = [o for o in aday if o.is_binding]
+        baglayici = [o for o in aday if _baglayici(o)]
         return _lehte(baglayici or aday)
 
     tam = [o for o in oranlar if o.term_months == istenen_ay]
@@ -174,10 +176,63 @@ def _en_yakin_vade(
 
     # Bağlayıcı satırların vadesi varsa en yakınlık onlar üzerinden ölçülür:
     # aksi hâlde bağlayıcı olmayan bir satır sırf vadesi yakın diye seçilir.
-    havuz = [o for o in vadeli if o.is_binding] or vadeli
+    havuz = [o for o in vadeli if _baglayici(o)] or vadeli
     en_yakin_fark = min(abs((o.term_months or 0) - istenen_ay) for o in havuz)
     adaylar = [o for o in havuz if abs((o.term_months or 0) - istenen_ay) == en_yakin_fark]
     return _lehte(adaylar), False
+
+
+def _baglayici(oran: ProductRate) -> bool:
+    """Oran bankanın taahhüdü mü?
+
+    ⚠️ `None` BAĞLAYICI SAYILIR. Kolon `nullable=False, default=True`; kalıcı
+    satırda asla None olmaz, ama henüz yazılmamış nesnede Python tarafı
+    varsayılanı uygulanmadığı için None görünür. `bool(None)` demek, kaydedilmemiş
+    her oranı bağlayıcı değil saymak olurdu.
+    """
+    return oran.is_binding is not False
+
+
+def _tl(deger: Decimal) -> str:
+    """Tutarı Türkçe binlik ayracıyla biçimler (1234567 -> 1.234.567).
+
+    ⚠️ Biçimleme SAYIYA uygulanır, cümleye değil: `f"...".replace(",", ".")`
+    cümledeki virgülleri de noktaya çeviriyordu.
+    """
+    return f"{deger:,.0f}".replace(",", ".")
+
+
+def _oran_baglami(oran: ProductRate, req: FinancingSimulationRequest) -> str | None:
+    """Oran istenenden farklı bir tutar/vade için yayımlandıysa açıklar.
+
+    ⚠️ `is_exact_term_match` bir bayraktır; 1 aylık sapmayla 36 aylık sapmayı
+    ayırt etmez. Ölçüldü: Emlak Katılım ihtiyaç finansmanında 30.000 ₺ / 12 ay
+    için yayımlanmış %1,69 kampanya oranı, 400.000 ₺ / 48 ay isteğine
+    uygulanıyordu. Teklif elenmiyor — sapma SÖYLENİYOR.
+    """
+    parcalar: list[str] = []
+
+    if oran.term_months is not None and oran.term_months != req.term_months:
+        parcalar.append(f"{oran.term_months} ay vade")
+
+    if oran.amount_min is not None or oran.amount_max is not None:
+        alt, ust = oran.amount_min, oran.amount_max
+        if alt is not None and ust is not None and alt != ust:
+            kapsiyor = alt <= req.amount_try <= ust
+            if not kapsiyor:
+                parcalar.append(f"{_tl(alt)}–{_tl(ust)} ₺ tutar bandı")
+        elif alt is not None and alt == ust:
+            # Hesaplayıcı/ödeme planı örneği: kapalı bant değil, tek örnek tutar.
+            if alt != req.amount_try:
+                parcalar.append(f"{_tl(alt)} ₺ örnek tutar")
+
+    if not parcalar:
+        return None
+
+    return (
+        f"Bu oran {' ve '.join(parcalar)} için yayımlandı; "
+        f"siz {_tl(req.amount_try)} ₺ / {req.term_months} ay istediniz."
+    )
 
 
 def calculate_financing_simulation(
@@ -328,6 +383,14 @@ def calculate_financing_simulation(
                 profit_rate_pct=oran.profit_rate_pct,
                 rate_term_months=oran.term_months,
                 is_exact_term_match=tam_eslesme,
+                term_gap_months=(
+                    None
+                    if tam_eslesme or oran.term_months is None
+                    else abs(oran.term_months - req.term_months)
+                ),
+                rate_amount_min=oran.amount_min,
+                rate_amount_max=oran.amount_max,
+                rate_context_note=_oran_baglami(oran, req),
                 bsmv_rate_pct=tax_cfg.bsmv_pct,
                 kkdf_rate_pct=tax_cfg.kkdf_pct,
                 monthly_payment_try=aylik,
@@ -339,10 +402,10 @@ def calculate_financing_simulation(
                 total_cost_try=toplam_maliyet,
                 annual_cost_pct=oran.annual_cost_pct,
                 installments=plan,
-                is_binding=oran.is_binding,
+                is_binding=_baglayici(oran),
                 binding_note=(
                     None
-                    if oran.is_binding
+                    if _baglayici(oran)
                     else (
                         "Bu oran bankanın taahhüdü değildir; hesaplayıcı sorgusundan "
                         "okunmuştur. Kesin teklif için bankaya başvurun."
@@ -394,6 +457,8 @@ def calculate_financing_simulation(
     if bddk_vade_notu:
         method = f"{method} {bddk_vade_notu}"
 
+    bddk_sonuc, bddk_uyari = _bddk_denetimi(req)
+
     return FinancingSimulationResponse(
         amount_try=req.amount_try,
         term_months=req.term_months,
@@ -402,7 +467,55 @@ def calculate_financing_simulation(
         offers=teklifler,
         banks_without_data=eksikler,
         method_note=method,
+        bddk_check=bddk_sonuc,
+        bddk_warning=bddk_uyari,
     )
+
+
+def _bddk_denetimi(
+    req: FinancingSimulationRequest,
+) -> tuple[BDDKLimitCheckResponse | None, str | None]:
+    """`asset_value_try` verildiyse BDDK azami finansman oranını denetler.
+
+    ⚠️ SINIR AŞIMI TEKLİFLERİ ELEMEZ. Bankanın oranı, kullanıcının istediği
+    tutarın mevzuata uygun olup olmamasından bağımsızdır; elenirse kullanıcı
+    "bu bankada ürün yok" sanır. Aşım UYARI olarak bildirilir.
+
+    ⚠️ Denetim yalnızca varlık değeri bilinen ürün ailelerinde yapılır.
+    İhtiyaç finansmanının vade tavanı zaten çağrının başında denetlenir.
+    """
+    if req.asset_value_try is None:
+        return None, None
+
+    aile = family_for_product_type(req.product_type)
+    if aile not in {"tasit", "konut"}:
+        return None, None
+
+    sonuc = check_bddk_limits(
+        BDDKLimitCheckRequest(
+            asset_type=aile,
+            asset_value_try=req.asset_value_try,
+            energy_class=req.energy_class,
+            first_home=req.first_home,
+        )
+    )
+
+    if not sonuc.is_financing_allowed:
+        return sonuc, (
+            f"BDDK mevzuatına göre {_tl(req.asset_value_try)} ₺ değerindeki bu varlık için "
+            f"finansman kullandırılamaz. Dayanak: {sonuc.legal_reference}"
+        )
+
+    if req.amount_try > sonuc.max_financing_amount_try:
+        return sonuc, (
+            f"İstenen {_tl(req.amount_try)} ₺, BDDK azami sınırını aşıyor: "
+            f"{_tl(req.asset_value_try)} ₺ değerindeki varlık için en fazla "
+            f"{_tl(sonuc.max_financing_amount_try)} ₺ "
+            f"(%{sonuc.max_financing_ratio_pct:g}) kullandırılabilir. "
+            f"Dayanak: {sonuc.legal_reference}"
+        )
+
+    return sonuc, None
 
 
 def calculate_participation_yield(

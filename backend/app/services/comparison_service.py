@@ -267,15 +267,15 @@ def rank_products(
             oran.rate_type == "financing_rate"
             and oran.profit_rate_pct is not None
             and oran.profit_rate_pct <= Decimal("0.05")
-        ):
-            if not is_zero_rate_promotional(
+            and not is_zero_rate_promotional(
                 product_name=urun.name,
                 description=urun.description,
                 evidence_text=oran.evidence_text,
                 product_type=urun.product_type,
                 rate_type=oran.rate_type,
-            ):
-                continue
+            )
+        ):
+            continue
         if amount_try is not None and not rate_covers_amount(
             amount_try,
             rate_min=oran.amount_min,

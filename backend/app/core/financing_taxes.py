@@ -69,7 +69,10 @@ def financing_tax_rates(product_type: str | None, segment: str = "bireysel") -> 
             bsmv_rate=_SIFIR,
             kkdf_rate=_SIFIR,
             total_tax_multiplier=_BIR,
-            basis_note="Konut finansmanı: 6802 s.K. ve KKDF mevzuatı gereği vergiden muaftır (%0 BSMV, %0 KKDF).",
+            basis_note=(
+                "Konut finansmanı: 6802 s.K. ve KKDF mevzuatı gereği vergiden "
+                "muaftır (%0 BSMV, %0 KKDF)."
+            ),
         )
 
     if ptype in ("tasit_finansmani", "tasit", "arac") or "tasit" in ptype or "arac" in ptype:
@@ -77,7 +80,10 @@ def financing_tax_rates(product_type: str | None, segment: str = "bireysel") -> 
             bsmv_rate=_ON_BES,
             kkdf_rate=_ON_BES,
             total_tax_multiplier=Decimal("1.30"),
-            basis_note="Bireysel taşıt finansmanı: Kâr payı üzerinden %15 BSMV ve %15 KKDF (toplam +%30 vergi) uygulanır.",
+            basis_note=(
+                "Bireysel taşıt finansmanı: Kâr payı üzerinden %15 BSMV ve %15 KKDF "
+                "(toplam +%30 vergi) uygulanır."
+            ),
         )
 
     if ptype in ("ihtiyac_finansmani", "ihtiyac") or "ihtiyac" in ptype:
@@ -85,7 +91,10 @@ def financing_tax_rates(product_type: str | None, segment: str = "bireysel") -> 
             bsmv_rate=_ON_BES,
             kkdf_rate=_ON_BES,
             total_tax_multiplier=Decimal("1.30"),
-            basis_note="Bireysel ihtiyaç finansmanı: Kâr payı üzerinden %15 BSMV ve %15 KKDF (toplam +%30 vergi) uygulanır.",
+            basis_note=(
+                "Bireysel ihtiyaç finansmanı: Kâr payı üzerinden %15 BSMV ve %15 KKDF "
+                "(toplam +%30 vergi) uygulanır."
+            ),
         )
 
     # Varsayılan bireysel tüketici finansmanı vergisi (%15 BSMV + %15 KKDF)
@@ -93,5 +102,8 @@ def financing_tax_rates(product_type: str | None, segment: str = "bireysel") -> 
         bsmv_rate=_ON_BES,
         kkdf_rate=_ON_BES,
         total_tax_multiplier=Decimal("1.30"),
-        basis_note="Bireysel finansman: Kâr payı üzerinden %15 BSMV ve %15 KKDF (toplam +%30 vergi) uygulanır.",
+        basis_note=(
+            "Bireysel finansman: Kâr payı üzerinden %15 BSMV ve %15 KKDF "
+            "(toplam +%30 vergi) uygulanır."
+        ),
     )

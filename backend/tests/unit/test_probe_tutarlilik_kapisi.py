@@ -95,7 +95,7 @@ def test_guvenilir_kaynaklarin_araligi_korunur(oran) -> None:
 
 
 def test_sifir_oran_yalnizca_promosyon_ile_gecerli() -> None:
-    """Sıfır kâr payı yalnızca promosyon / faizsiz finansman niteliği açık olan ürünlerde geçerlidir."""
+    """Sıfır kâr payı yalnızca promosyon / faizsiz nitelikli ürünlerde geçerlidir."""
     tamam_standart, neden_standart = probe_orani_guvenilir_mi(
         profit_rate_pct=Decimal("0"),
         term_months=36,

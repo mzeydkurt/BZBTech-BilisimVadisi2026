@@ -3,9 +3,7 @@
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from app.scrapers.banks.dunya_katilim import DUNYA_PRODUCT_LIMITS, DunyaKatilimScraper
+from app.scrapers.banks.dunya_katilim import DunyaKatilimScraper
 from app.scrapers.calculator_probes.api_adapters import dunya as dunya_adapter
 from app.scrapers.models import DiscoveredUrl, RawProduct
 from app.services.calculator_probe_service import (

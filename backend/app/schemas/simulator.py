@@ -41,6 +41,21 @@ class FinancingSimulationRequest(BaseModel):
     bank_codes: list[str] | None = Field(
         default=None, description="Yalnızca bu bankalar; boşsa tüm bankalar"
     )
+    asset_value_try: Decimal | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Taşıtın kasko/fatura değeri ya da konutun ekspertiz değeri. "
+            "Verilirse BDDK azami finansman oranı denetlenir ve sonuç yanıta eklenir."
+        ),
+    )
+    energy_class: str | None = Field(
+        default=None, description="Konut enerji sınıfı (A, B, C veya diğer); BDDK denetimi için"
+    )
+    first_home: bool | None = Field(
+        default=None,
+        description="Konut için ilk ev mi? BDDK denetiminde LTV oranını değiştirir.",
+    )
 
 
 class InstallmentRow(BaseModel):
@@ -70,6 +85,27 @@ class BankFinancingOffer(BaseModel):
     profit_rate_pct: Decimal = Field(description="Aylık kâr payı oranı (%)")
     rate_term_months: int | None = Field(default=None, description="Oranın yayımlandığı vade")
     is_exact_term_match: bool = Field(description="Oran tam istenen vadeye mi ait?")
+    term_gap_months: int | None = Field(
+        default=None,
+        description=(
+            "Oranın vadesi ile istenen vade arasındaki fark (ay). Tam eşleşmede None. "
+            "⚠️ `is_exact_term_match=False` tek başına 1 aylık sapma ile 36 aylık "
+            "sapmayı ayırt etmez; büyüklük bu alandadır."
+        ),
+    )
+    rate_amount_min: Decimal | None = Field(
+        default=None, description="Oranın yayımlandığı tutar bandının alt sınırı"
+    )
+    rate_amount_max: Decimal | None = Field(
+        default=None, description="Oranın yayımlandığı tutar bandının üst sınırı"
+    )
+    rate_context_note: str | None = Field(
+        default=None,
+        description=(
+            "Oran istenen tutar/vadeden farklı bir bağlamda yayımlandıysa açıklaması. "
+            "Teklif yine gösterilir; kullanıcı sapmayı bilerek karar verir."
+        ),
+    )
     bsmv_rate_pct: Decimal = Field(default=Decimal("0.00"), description="Uygulanan BSMV oranı (%)")
     kkdf_rate_pct: Decimal = Field(default=Decimal("0.00"), description="Uygulanan KKDF oranı (%)")
     monthly_payment_try: Decimal
@@ -112,6 +148,18 @@ class FinancingSimulationResponse(BaseModel):
     offers: list[BankFinancingOffer]
     banks_without_data: list[MissingDataBank] = Field(default_factory=list)
     method_note: str = Field(description="Hesabın nasıl yapıldığı")
+    bddk_check: BDDKLimitCheckResponse | None = Field(
+        default=None,
+        description="`asset_value_try` verildiyse BDDK azami finansman denetimi sonucu",
+    )
+    bddk_warning: str | None = Field(
+        default=None,
+        description=(
+            "İstenen tutar BDDK üst sınırını aşıyorsa uyarı. ⚠️ Teklifler yine "
+            "gösterilir: sınır aşımı bankanın oranını değiştirmez, kullanılabilecek "
+            "azami tutarı değiştirir."
+        ),
+    )
 
 
 # ── Katılma hesabı getirisi ───────────────────────────────

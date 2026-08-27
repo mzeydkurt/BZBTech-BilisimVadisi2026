@@ -159,18 +159,18 @@ def probe_orani_guvenilir_mi(
 
     # G3 — Sıfır kâr payı: üründe açıkça sıfır kâr payı / vade farksız kampanya
     # belirtilmemişse 0 veya 0.05 altı oranlar geçersizdir (API hatası veya limit aşımı).
-    if profit_rate_pct <= Decimal("0.05"):
-        if not is_zero_rate_promotional(
-            product_name=product_name,
-            description=description,
-            evidence_text=evidence_text,
-            product_type=product_type,
-            rate_type=rate_type,
-        ):
-            return (
-                False,
-                f"sıfır/geçersiz kâr payı: %{profit_rate_pct} (üründe sıfır kâr payı koşulu belirtilmemiş)",
-            )
+    if profit_rate_pct <= Decimal("0.05") and not is_zero_rate_promotional(
+        product_name=product_name,
+        description=description,
+        evidence_text=evidence_text,
+        product_type=product_type,
+        rate_type=rate_type,
+    ):
+        return (
+            False,
+            f"sıfır/geçersiz kâr payı: %{profit_rate_pct} "
+            "(üründe sıfır kâr payı koşulu belirtilmemiş)",
+        )
 
     return True, None
 

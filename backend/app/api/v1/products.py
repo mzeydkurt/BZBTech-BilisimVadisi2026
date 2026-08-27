@@ -23,6 +23,7 @@ router = APIRouter(prefix="/products", tags=["products"])
 def _guncel_oranlar(urun: Product, rate_type: str | None = None) -> list[ProductRateOut]:
     """Yalnızca her bandın en yeni tarihli oranını döner (eski kazımalar gizlenir)."""
     from decimal import Decimal
+
     from app.services.calculator_probe_service import is_zero_rate_promotional
 
     ham = select_current_rates(list(urun.rates))

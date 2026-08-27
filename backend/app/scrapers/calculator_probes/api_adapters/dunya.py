@@ -9,9 +9,9 @@ Sıfır kâr payı veya RATEERROR dönen sorgular kabul edilmez.
 from __future__ import annotations
 
 import re
+import time
 from decimal import Decimal
 from typing import Any
-from urllib.parse import urlencode
 
 import httpx
 from bs4 import BeautifulSoup
@@ -24,8 +24,6 @@ from app.scrapers.calculator_probes.api_adapters import (
     parse_tr_rate,
 )
 from app.scrapers.calculator_probes.common import urun_tipi_ipucu
-
-import time
 
 logger = get_logger(__name__)
 

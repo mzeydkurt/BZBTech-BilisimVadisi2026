@@ -159,7 +159,9 @@ DUNYA_PRODUCT_LIMITS: Final[dict[str, dict[str, Any]]] = {
         "term_months_min": 1,
         "term_months_max": 48,
         "allowed_terms": [12, 24, 36, 48],
-        "evidence_text": "Dünya Katılım araç finansmanı azami üst limiti 400.000 TL, azami vade 48 aydır.",
+        "evidence_text": (
+            "Dünya Katılım araç finansmanı azami üst limiti 400.000 TL, azami vade 48 aydır."
+        ),
     },
     "ihtiyac_finansmani": {
         "amount_min": None,
@@ -167,7 +169,9 @@ DUNYA_PRODUCT_LIMITS: Final[dict[str, dict[str, Any]]] = {
         "term_months_min": 1,
         "term_months_max": 36,
         "allowed_terms": [12, 24, 36],
-        "evidence_text": "Dünya Katılım ihtiyaç finansmanı azami üst limiti 2.000.000 TL, azami vade 36 aydır.",
+        "evidence_text": (
+            "Dünya Katılım ihtiyaç finansmanı azami üst limiti 2.000.000 TL, azami vade 36 aydır."
+        ),
     },
     "konut_finansmani": {
         "amount_min": None,
@@ -175,7 +179,10 @@ DUNYA_PRODUCT_LIMITS: Final[dict[str, dict[str, Any]]] = {
         "term_months_min": 1,
         "term_months_max": 84,
         "allowed_terms": [12, 24, 36, 48, 60, 72, 84],
-        "evidence_text": "Dünya Katılım yeni konut finansmanı azami üst limiti 12.000.000 TL (2. el konut için 3.000.000 TL), azami vade 84 aydır.",
+        "evidence_text": (
+            "Dünya Katılım yeni konut finansmanı azami üst limiti 12.000.000 TL "
+            "(2. el konut için 3.000.000 TL), azami vade 84 aydır."
+        ),
     },
 }
 
@@ -400,7 +407,7 @@ class DunyaKatilimScraper(BaseScraper):
                 urun.limits_evidence = cfg["evidence_text"]
 
                 # RawProductLimit ekle (zaten yoksa)
-                if not any(l.amount_max == cfg["amount_max"] for l in urun.limits):
+                if not any(limit.amount_max == cfg["amount_max"] for limit in urun.limits):
                     urun.limits.append(
                         RawProductLimit(
                             amount_max=cfg["amount_max"],

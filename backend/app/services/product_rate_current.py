@@ -88,14 +88,10 @@ def rate_covers_amount(
     if product_max is not None and amount > product_max:
         return False
     if rate_min is not None and rate_max is not None and rate_min == rate_max:
-        if product_max is not None and rate_min > product_max:
-            return False
-        return True
+        return product_max is None or rate_min <= product_max
     if rate_min is not None and amount < rate_min:
         return False
-    if rate_max is not None and amount > rate_max:
-        return False
-    return True
+    return rate_max is None or amount <= rate_max
 
 
-__all__ = ["select_current_rates", "rate_covers_amount"]
+__all__ = ["rate_covers_amount", "select_current_rates"]
