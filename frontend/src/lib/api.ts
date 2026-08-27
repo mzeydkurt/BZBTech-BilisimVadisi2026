@@ -7,6 +7,7 @@ import type {
   BankSummary,
   BDDKLimitCheckRequest,
   BDDKLimitCheckResponse,
+  BddkCanonicalLimitsOut,
   CampaignCompareRequest,
   CampaignDetail,
   CampaignListItem,
@@ -166,6 +167,8 @@ export const api = {
     post<ParticipationYieldResponse>("/simulator/yield", body),
   checkBddkLimit: (body: BDDKLimitCheckRequest) =>
     post<BDDKLimitCheckResponse>("/simulator/bddk-check", body),
+  bddkBands: () =>
+    get<Record<string, BddkCanonicalLimitsOut>>("/simulator/bddk-bands"),
 
   chat: (body: ChatRequest) => post<ChatResponse>("/chat", body),
   chatSessions: () => get<ChatSessionList>("/chat/sessions"),

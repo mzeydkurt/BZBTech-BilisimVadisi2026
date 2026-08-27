@@ -607,6 +607,12 @@ export interface BankFinancingOffer {
   product_name: string;
   profit_rate_pct: string;
   rate_term_months: number | null;
+  term_gap_months: number | null;
+  rate_amount_min: string | null;
+  rate_amount_max: string | null;
+  rate_context_note: string | null;
+  is_binding: boolean;
+  binding_note: string | null;
   is_exact_term_match: boolean;
   bsmv_rate_pct?: string;
   kkdf_rate_pct?: string;

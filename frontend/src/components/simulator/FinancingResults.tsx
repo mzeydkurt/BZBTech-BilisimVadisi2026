@@ -162,7 +162,7 @@ export function FinancingResults({ result }: { result: FinancingSimulationRespon
     const installmentSheets = result.offers
       .filter((o) => o.installments && o.installments.length > 0)
       .map((o) => {
-        let baseName = `${o.bank_name.replace(/[\[\]*?:/\\]/g, "").trim().slice(0, 24)} Plan`;
+        const baseName = `${o.bank_name.replace(/[[\]*?:/\\]/g, "").trim().slice(0, 24)} Plan`;
         let candidate = baseName;
         let counter = 1;
         while (usedSheetNames.has(candidate)) {
@@ -348,6 +348,22 @@ export function FinancingResults({ result }: { result: FinancingSimulationRespon
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
+                        {!offer.is_binding && (
+                          <span
+                            title={offer.binding_note ?? undefined}
+                            className="rounded-sm border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-900"
+                          >
+                            bağlayıcı değil
+                          </span>
+                        )}
+                        {offer.rate_context_note && (
+                          <span
+                            title={offer.rate_context_note}
+                            className="rounded-sm border border-border bg-neutral-50 px-1.5 py-0.5 text-[11px] text-text-600"
+                          >
+                            farklı bağlam
+                          </span>
+                        )}
                         {!offer.is_exact_term_match && (
                           <ExactTermMatchWarning
                             ratePublishedForMonths={offer.rate_term_months}

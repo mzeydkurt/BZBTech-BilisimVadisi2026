@@ -265,6 +265,44 @@ class TestOranSecimi:
 
         assert "albaraka" not in {t.bank_code for t in sonuc.offers}
 
+    def test_bin_tl_ayristirma_artigi_urun_tavani_sayilmaz(
+        self, seeded_session: Session
+    ) -> None:
+        banka = seeded_session.scalar(select(Bank).where(Bank.code == "emlak_katilim"))
+        assert banka is not None
+        urun = Product(
+            bank_id=banka.id,
+            external_key="emlak:tasit-400",
+            name="Taşıt Finansmanı",
+            product_type="tasit_finansmani",
+            amount_max=Decimal("400"),
+        )
+        seeded_session.add(urun)
+        seeded_session.flush()
+        seeded_session.add(
+            ProductRate(
+                product_id=urun.id,
+                band_key="emlak-tasit",
+                rate_type="financing_rate",
+                currency="TRY",
+                evidence_text="kanıt",
+                profit_rate_pct=Decimal("4.29"),
+                term_months=48,
+                amount_min=Decimal("400000"),
+                amount_max=Decimal("400000"),
+            )
+        )
+        seeded_session.flush()
+
+        sonuc = calculate_financing_simulation(
+            seeded_session,
+            FinancingSimulationRequest(
+                amount_try=Decimal("400000"), term_months=48, product_type="tasit_finansmani"
+            ),
+        )
+
+        assert [t.bank_code for t in sonuc.offers] == ["emlak_katilim"]
+
     def test_sahte_sifir_oran_vadesiz_satir_teklif_uretmez(self, seeded_session: Session) -> None:
         """Emlak 'text' %0 (vade yok) gerçek hesaplayıcı oranını gizlemesin."""
         _oran_ekle(

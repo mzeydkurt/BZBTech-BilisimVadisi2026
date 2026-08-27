@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -7,6 +6,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useBddkBands } from "@/hooks/useSimulator";
+import type { BddkBandOut } from "@/types/api";
+
+const ENERJI_SINIFLARI = [
+  { value: "A", label: "A veya B" },
+  { value: "C", label: "C" },
+  { value: "DIGER", label: "D ve altı" },
+];
+
+/**
+ * Bandın temsil ettiği değer: üst sınır, yoksa alt sınır.
+ *
+ * ⚠️ BDDK tavanı `değer × oran` ile hesaplanır; bant tek başına kesin tutarı
+ * vermez. Üst sınır seçilir — kullanıcı "bu bandın en üstündeysem ne olur"
+ * sorusunun yanıtını arar ve bandın en kötü hâli budur.
+ */
+function bandDegeri(band: BddkBandOut): string {
+  return band.value_max ?? band.value_min ?? band.amount_max ?? band.amount_min ?? "";
+}
 
 export interface BddkFormState {
   asset_type: "tasit" | "konut" | "ihtiyac";
@@ -23,12 +41,14 @@ interface BddkCheckFormProps {
 }
 
 export function BddkCheckForm({ value, onChange, onSubmit, isPending }: BddkCheckFormProps) {
+  const { data: bantlar } = useBddkBands();
+  const aileBantlari = bantlar?.[value.asset_type]?.bands ?? [];
   const valueLabel =
     value.asset_type === "ihtiyac"
-      ? "Finansman Tutarı (TL)"
+      ? "Finansman Tutarı"
       : value.asset_type === "konut"
-        ? "Ekspertiz Değeri (TL)"
-        : "Kasko / Fatura Değeri (TL)";
+        ? "Ekspertiz Değeri"
+        : "Kasko / Fatura Değeri";
 
   return (
     <form
@@ -45,7 +65,12 @@ export function BddkCheckForm({ value, onChange, onSubmit, isPending }: BddkChec
         <Select
           value={value.asset_type}
           onValueChange={(next) =>
-            onChange({ ...value, asset_type: next as BddkFormState["asset_type"] })
+            onChange({
+              ...value,
+              asset_type: next as BddkFormState["asset_type"],
+              // Bantlar varlık türüne özgüdür; taşıt bandı konutta anlamsızdır.
+              asset_value_try: "",
+            })
           }
         >
           <SelectTrigger id="bddk-asset-type">
@@ -63,12 +88,21 @@ export function BddkCheckForm({ value, onChange, onSubmit, isPending }: BddkChec
         <label htmlFor="bddk-value" className="mb-1 block text-sm text-text-500">
           {valueLabel}
         </label>
-        <Input
-          id="bddk-value"
-          inputMode="numeric"
-          value={value.asset_value_try}
-          onChange={(event) => onChange({ ...value, asset_value_try: event.target.value })}
-        />
+        <Select
+          value={value.asset_value_try || undefined}
+          onValueChange={(next) => onChange({ ...value, asset_value_try: next })}
+        >
+          <SelectTrigger id="bddk-value">
+            <SelectValue placeholder="Değer aralığı seçin" />
+          </SelectTrigger>
+          <SelectContent>
+            {aileBantlari.map((band) => (
+              <SelectItem key={band.label} value={bandDegeri(band)}>
+                {band.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {value.asset_type === "konut" && (
@@ -77,12 +111,21 @@ export function BddkCheckForm({ value, onChange, onSubmit, isPending }: BddkChec
             <label htmlFor="bddk-energy" className="mb-1 block text-sm text-text-500">
               Enerji Sınıfı
             </label>
-            <Input
-              id="bddk-energy"
-              value={value.energy_class}
-              onChange={(event) => onChange({ ...value, energy_class: event.target.value })}
-              placeholder="A, B, C…"
-            />
+            <Select
+              value={value.energy_class || "DIGER"}
+              onValueChange={(next) => onChange({ ...value, energy_class: next })}
+            >
+              <SelectTrigger id="bddk-energy">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ENERJI_SINIFLARI.map((sinif) => (
+                  <SelectItem key={sinif.value} value={sinif.value}>
+                    {sinif.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="w-44">
             <label htmlFor="bddk-first-home" className="mb-1 block text-sm text-text-500">
@@ -104,7 +147,7 @@ export function BddkCheckForm({ value, onChange, onSubmit, isPending }: BddkChec
         </>
       )}
 
-      <Button type="submit" disabled={isPending}>
+      <Button type="submit" disabled={isPending || !value.asset_value_try}>
         {isPending ? "Kontrol ediliyor…" : "Kontrol Et"}
       </Button>
     </form>

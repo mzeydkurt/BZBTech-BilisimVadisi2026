@@ -82,7 +82,14 @@ def rate_covers_amount(
     Gerçek aralık (`min < max`, ör. Ziraat ücret sayfası 0–400.000) hâlâ
     dışarıdaki tutarı eler. Ürün tavanı (Jet `amount_max`) aşıldıysa satır
     kullanılmaz; tavanı aşan örnek (800 bin probe, ürün max 400 bin) de elenir.
+
+    ⚠️ `product_max < 10.000` tavan sayılmaz: Emlak taşıt sayfasında `400`
+    (muhtemel "400 bin" / slider) yazılmıştı ve 400.000 TL talebini eziyordu.
     """
+    if product_max is not None and product_max < Decimal("10000"):
+        product_max = None
+    if product_min is not None and product_min < Decimal("0"):
+        product_min = None
     if product_min is not None and amount < product_min:
         return False
     if product_max is not None and amount > product_max:

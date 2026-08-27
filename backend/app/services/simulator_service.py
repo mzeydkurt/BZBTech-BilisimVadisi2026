@@ -23,8 +23,6 @@ from app.db.models.source_document import SourceDocument
 from app.schemas.simulator import (
     BankFinancingOffer,
     BankYieldOffer,
-    BDDKLimitCheckRequest,
-    BDDKLimitCheckResponse,
     FinancingSimulationRequest,
     FinancingSimulationResponse,
     InstallmentRow,
@@ -32,7 +30,7 @@ from app.schemas.simulator import (
     ParticipationYieldRequest,
     ParticipationYieldResponse,
 )
-from app.services.bddk_limits_service import check_bddk_limits, family_for_product_type
+from app.services.bddk_limits_service import check_bddk_limits
 
 _KURUS = Decimal("0.01")
 _YUZDE = Decimal("100")
@@ -457,8 +455,6 @@ def calculate_financing_simulation(
     if bddk_vade_notu:
         method = f"{method} {bddk_vade_notu}"
 
-    bddk_sonuc, bddk_uyari = _bddk_denetimi(req)
-
     return FinancingSimulationResponse(
         amount_try=req.amount_try,
         term_months=req.term_months,
@@ -467,55 +463,7 @@ def calculate_financing_simulation(
         offers=teklifler,
         banks_without_data=eksikler,
         method_note=method,
-        bddk_check=bddk_sonuc,
-        bddk_warning=bddk_uyari,
     )
-
-
-def _bddk_denetimi(
-    req: FinancingSimulationRequest,
-) -> tuple[BDDKLimitCheckResponse | None, str | None]:
-    """`asset_value_try` verildiyse BDDK azami finansman oranını denetler.
-
-    ⚠️ SINIR AŞIMI TEKLİFLERİ ELEMEZ. Bankanın oranı, kullanıcının istediği
-    tutarın mevzuata uygun olup olmamasından bağımsızdır; elenirse kullanıcı
-    "bu bankada ürün yok" sanır. Aşım UYARI olarak bildirilir.
-
-    ⚠️ Denetim yalnızca varlık değeri bilinen ürün ailelerinde yapılır.
-    İhtiyaç finansmanının vade tavanı zaten çağrının başında denetlenir.
-    """
-    if req.asset_value_try is None:
-        return None, None
-
-    aile = family_for_product_type(req.product_type)
-    if aile not in {"tasit", "konut"}:
-        return None, None
-
-    sonuc = check_bddk_limits(
-        BDDKLimitCheckRequest(
-            asset_type=aile,
-            asset_value_try=req.asset_value_try,
-            energy_class=req.energy_class,
-            first_home=req.first_home,
-        )
-    )
-
-    if not sonuc.is_financing_allowed:
-        return sonuc, (
-            f"BDDK mevzuatına göre {_tl(req.asset_value_try)} ₺ değerindeki bu varlık için "
-            f"finansman kullandırılamaz. Dayanak: {sonuc.legal_reference}"
-        )
-
-    if req.amount_try > sonuc.max_financing_amount_try:
-        return sonuc, (
-            f"İstenen {_tl(req.amount_try)} ₺, BDDK azami sınırını aşıyor: "
-            f"{_tl(req.asset_value_try)} ₺ değerindeki varlık için en fazla "
-            f"{_tl(sonuc.max_financing_amount_try)} ₺ "
-            f"(%{sonuc.max_financing_ratio_pct:g}) kullandırılabilir. "
-            f"Dayanak: {sonuc.legal_reference}"
-        )
-
-    return sonuc, None
 
 
 def calculate_participation_yield(
