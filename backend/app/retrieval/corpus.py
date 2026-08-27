@@ -94,6 +94,11 @@ class ProductRateDoc:
     investor_share_pct: Decimal | None
     term_months: int | None
     source_url: str | None
+    # Bağlayıcı olmayan oran (hesaplayıcı sorgusu ya da "bilgilendirme
+    # amaçlıdır" notlu) uç değer karşılaştırmasını KAZANAMAZ. Bayrak veri
+    # modelinde vardı ama erişim katmanında hiç okunmuyordu.
+    is_binding: bool = True
+    rate_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -378,6 +383,8 @@ def build_corpus(session: Session) -> Corpus:
             investor_share_pct=oran.investor_share_pct,
             term_months=oran.term_months,
             source_url=None,
+            is_binding=oran.is_binding,
+            rate_source=oran.rate_source,
         )
 
     # Glossary — tanım niyeti; kart yoksa tanım metni kullanılır.

@@ -944,28 +944,49 @@ def _hedef_urun_tipleri(plan: QueryPlan) -> set[str]:
     return tipler
 
 
+# Toplama alanı -> `ProductRateDoc` alanı. "En uzun vade" sorusu oran alanı
+# üzerinden sıralanamaz; sorulan ölçüt hangi alansa o okunur.
+_RATE_DOC_ALANI: Final[dict[str, str]] = {
+    "profit_rate_pct": "profit_rate_pct",
+    "profit_share_rate_pct": "investor_share_pct",
+    "term_months_min": "term_months",
+    "term_months_max": "term_months",
+}
+
+
 def _rate_docs_filtrele(corpus: Corpus, plan: QueryPlan) -> list[ProductRateDoc]:
+    """Plandaki süzgeçleri oran kartlarına uygular.
+
+    ⚠️ İKİ SESSİZ HATA DÜZELTİLDİ:
+
+    1. `"" in "konut_finansmani"` → `True`. Boş `product_type` taşıyan her ürün
+       (ölçüldü: 10 ürün) her süzgeçten geçiyordu.
+    2. `"finansman" in "konut_finansmani"` → `True`. Genel `finansman` ürünü
+       konut sorgusuna sızıyordu; bir ücret tablosu satırı kâr payı sanılıp
+       uç değeri kazanıyordu.
+
+    Gevşek eşleşme YEDEKTİR: tipi tam tutan kayıt varsa gevşek olanlar hiç
+    kullanılmaz.
+    """
     if not corpus.rate_docs:
         return []
-    sonuc: list[ProductRateDoc] = []
     urun_tipleri = _hedef_urun_tipleri(plan)
+    tam: list[ProductRateDoc] = []
+    gevsek: list[ProductRateDoc] = []
     for doc in corpus.rate_docs.values():
         if plan.bank_codes and doc.bank_code not in plan.bank_codes:
             continue
         if plan.rate_type and doc.rate_type != plan.rate_type:
             continue
-        # Taksonomi slug ↔ ürün tipi eşleşmesi gevşek: konut_finansmani ⊂ finansman.
-        if (
-            urun_tipleri
-            and doc.product_type not in urun_tipleri
-            and not any(
-                tip in (doc.product_type or "") or (doc.product_type or "") in tip
-                for tip in urun_tipleri
-            )
-        ):
+        if not urun_tipleri:
+            tam.append(doc)
             continue
-        sonuc.append(doc)
-    return sonuc
+        tip = doc.product_type or ""
+        if tip in urun_tipleri:
+            tam.append(doc)
+        elif tip and any(hedef in tip or tip in hedef for hedef in urun_tipleri):
+            gevsek.append(doc)
+    return tam or gevsek
 
 
 def _oran_ucdegeri(
@@ -982,20 +1003,35 @@ def _oran_ucdegeri(
     Returns:
         (kazanan, berabere_kalanlar, degeri_olmayan_sayisi).
     """
-    adaylar = [d for d in _rate_docs_filtrele(corpus, plan) if d.profit_rate_pct is not None]
-    degersiz = len(_rate_docs_filtrele(corpus, plan)) - len(adaylar)
+    # Sorulan ölçüt oran değilse (ör. "en uzun vade") o alan üzerinden sıralanır.
+    alan = _RATE_DOC_ALANI.get(spec.field or "", "profit_rate_pct")
+
+    tumu = _rate_docs_filtrele(corpus, plan)
+    degerli = [d for d in tumu if getattr(d, alan) is not None]
+    degersiz = len(tumu) - len(degerli)
+
+    # ⚠️ BAĞLAYICI OLMAYAN SATIR KAZANAN OLAMAZ. Ölçüldü: "en düşük konut
+    # finansmanı kâr payı" sorusu, kaynakta oranı yayımlanmamış bir `text`
+    # satırını %0 ile kazanan ilan ediyordu; doğru yanıt Ziraat Katılım %2,89.
+    adaylar = [d for d in degerli if d.is_binding]
     if not adaylar:
-        return None, [], degersiz
+        return None, [], degersiz + len(degerli)
+
+    # Aynı ürünün aynı değeri birden çok tutar bandında tekrar edebilir;
+    # beraberlik sayımı bunları ayrı kayıt sanmamalı.
+    benzersiz: dict[tuple[int, str, int | None], ProductRateDoc] = {}
+    for d in adaylar:
+        benzersiz.setdefault((d.product_id, str(getattr(d, alan)), d.term_months), d)
 
     ters = spec.direction == "max"
     sirali = sorted(
-        adaylar,
-        key=lambda d: (d.profit_rate_pct, -d.rate_id),
+        benzersiz.values(),
+        key=lambda d: (Decimal(str(getattr(d, alan))), -d.rate_id),
         reverse=ters,
     )
     kazanan = sirali[0]
     # ⚠️ BERABERLİK GİZLENMEZ (aggregate.compute ile aynı kural).
-    berabere = [d for d in sirali[1:] if d.profit_rate_pct == kazanan.profit_rate_pct]
+    berabere = [d for d in sirali[1:] if getattr(d, alan) == getattr(kazanan, alan)]
     return kazanan, berabere, degersiz
 
 
