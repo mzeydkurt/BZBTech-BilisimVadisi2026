@@ -20,6 +20,7 @@ from app.ai.validation import (
     REASON_EVIDENCE_NOT_FOUND,
     REASON_NO_EVIDENCE,
     REASON_NUMBER_NOT_IN_SOURCE,
+    REASON_TERM_IS_INSTALLMENT,
     check_logic,
     check_terminology,
     guard_fields,
@@ -210,6 +211,59 @@ class TestGuardOrkestrasyonu:
         """Model doğru cümleyi alıntılayıp içindeki sayıyı bozabilir."""
         sonuc = guard_fields([_alan(deger="7.77")], KAYNAK)
         assert sonuc.rejected[0][1] == REASON_NUMBER_NOT_IN_SOURCE
+
+    def test_taksit_sayisi_vade_alanina_yazilamaz(self) -> None:
+        """Katman 4b — ölçüldü: LLM kaynaklı 229 vade değerinin 221'inin kanıtı
+        "taksit" diyor, "ay" demiyor.
+
+        ⚠️ Katman 4 bunu yakalayamaz: rakam kaynakta gerçekten geçiyor, ama
+        BAŞKA BİR BÜYÜKLÜĞÜ ölçüyor.
+        """
+        sonuc = guard_fields(
+            [
+                _alan(
+                    ad="term_months_max", deger="3", kanit="peşin fiyatına 3 taksit", birim="month"
+                )
+            ],
+            KAYNAK,
+        )
+        assert sonuc.rejected[0][1] == REASON_TERM_IS_INSTALLMENT
+        assert sonuc.accepted == []
+
+    def test_ay_geciyorsa_vade_kabul_edilir(self) -> None:
+        """Kapı kör değil: gerçek vade ifadesi geçmeye devam eder."""
+        kaynak = KAYNAK + "36 aya varan vade imkânı sunulmaktadır.\n"
+        sonuc = guard_fields(
+            [_alan(ad="term_months_max", deger="36", kanit="36 aya varan vade", birim="month")],
+            kaynak,
+        )
+        assert sonuc.rejected == []
+        assert len(sonuc.accepted) == 1
+
+    def test_hem_ay_hem_taksit_geciyorsa_kabul(self) -> None:
+        """Kanıtta ay DA geçiyorsa değer vade olabilir; reddedilmez."""
+        kaynak = KAYNAK + "12 ay vade ile 6 taksit imkânı vardır.\n"
+        sonuc = guard_fields(
+            [
+                _alan(
+                    ad="term_months_max", deger="12", kanit="12 ay vade ile 6 taksit", birim="month"
+                )
+            ],
+            kaynak,
+        )
+        assert sonuc.rejected == []
+
+    def test_taksit_alani_etkilenmez(self) -> None:
+        """Kapı yalnızca `term_months*` alanlarına uygulanır."""
+        sonuc = guard_fields(
+            [
+                _alan(
+                    ad="installment_count", deger="3", kanit="peşin fiyatına 3 taksit", birim="adet"
+                )
+            ],
+            KAYNAK,
+        )
+        assert sonuc.rejected == []
 
     def test_gecerli_alan_kabul(self) -> None:
         sonuc = guard_fields([_alan()], KAYNAK)
