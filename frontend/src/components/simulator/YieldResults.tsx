@@ -1,9 +1,10 @@
 import { ExternalLink } from "lucide-react";
 
 import { ExactTermMatchWarning } from "@/components/simulator/ExactTermMatchWarning";
+import { EvidenceText } from "@/components/common/EvidenceText";
 import { Button } from "@/components/ui/button";
 import { downloadExcelWorkbook, downloadRichCsv } from "@/lib/csv";
-import { formatCurrencyTRY, formatPercent } from "@/lib/format";
+import { formatCurrencyTRY, formatPercent, parseDecimal } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ParticipationYieldResponse } from "@/types/api";
 
@@ -24,40 +25,53 @@ export function YieldResults({
   const ladder = [30, 90, 180, 360];
 
   const exportData = (format: "csv" | "xlsx") => {
-    const base = `getiri-simulasyon-${result.term_days}gun`;
+    const base = `katilma-getiri-simulasyon-${result.term_days}gun`;
+    const depositNum = parseDecimal(result.deposit_try) ?? 0;
     const headers = [
       "Banka",
-      "Ürün",
-      "Yıllık brüt getiri (%)",
-      "Brüt kâr (TL)",
-      "Stopaj (TL)",
-      "Net kâr (TL)",
-      "Katılımcı payı (%)",
-      "Vade etiketi",
+      "Ürün Adı",
+      "Yıllık Brüt Getiri (%)",
+      "Katılımcı Payı (%)",
+      "Yatırılan Tutar (TL)",
+      "Vade (Gün)",
+      "Brüt Kâr Payı (TL)",
+      "Stopaj Oranı (%)",
+      "Stopaj Tutarı (TL)",
+      "Net Kâr Payı (TL)",
+      "Vade Sonu Toplam Tutar (TL)",
       "Kaynak URL",
     ];
-    const rows = result.offers.map((o) => [
-      o.bank_name,
-      o.product_name,
-      o.annual_yield_gross_pct,
-      o.gross_profit_try,
-      o.withholding_try,
-      o.net_profit_try,
-      o.investor_share_pct,
-      o.rate_term_label,
-      o.source_url,
-    ]);
+    const rows = result.offers.map((o) => {
+      const netProfit = parseDecimal(o.net_profit_try) ?? 0;
+      const totalReturn = depositNum + netProfit;
+      return [
+        o.bank_name,
+        o.product_name,
+        parseDecimal(o.annual_yield_gross_pct) ?? o.annual_yield_gross_pct,
+        parseDecimal(o.investor_share_pct ?? "") ?? (o.investor_share_pct ?? ""),
+        depositNum,
+        result.term_days,
+        parseDecimal(o.gross_profit_try) ?? o.gross_profit_try,
+        parseDecimal(o.withholding_pct) ?? o.withholding_pct,
+        parseDecimal(o.withholding_try) ?? o.withholding_try,
+        netProfit,
+        totalReturn,
+        o.source_url ?? "",
+      ];
+    });
     const meta = {
-      Rapor: "Katılma hesabı getiri simülasyonu",
-      "Vade (gün)": result.term_days,
-      "Teklif sayısı": result.offers.length,
-      "Stopaj notu": result.withholding_note ?? "",
-      "Yöntem notu": result.method_note ?? "",
+      "Simülasyon Türü": "Katılma Hesabı Getiri Simülasyonu",
+      "Yatırılan Tutar": `${depositNum.toLocaleString("tr-TR")} TL`,
+      "Vade (Gün)": result.term_days,
+      "Para Birimi": result.currency,
+      "Teklif Sayısı": result.offers.length,
+      "Stopaj Açıklaması": result.withholding_note ?? "",
+      "Hesaplama Yöntemi": result.method_note ?? "",
     };
     const missingSheet =
       result.banks_without_data.length > 0
         ? {
-            name: "Veri yok",
+            name: "Veri Bulunamayan Bankalar",
             headers: ["Banka", "Neden"],
             rows: result.banks_without_data.map((b) => [b.bank_name, b.reason]),
           }
@@ -70,7 +84,7 @@ export function YieldResults({
         headers,
         rows,
         extraSections: missingSheet
-          ? [{ title: "Veri yok", headers: missingSheet.headers, rows: missingSheet.rows }]
+          ? [{ title: "Veri Bulunamayan Bankalar", headers: missingSheet.headers, rows: missingSheet.rows }]
           : [],
       });
       return;
@@ -80,7 +94,7 @@ export function YieldResults({
       filename: `${base}.xlsx`,
       meta,
       sheets: [
-        { name: "Getiriler", headers, rows },
+        { name: "Katılma Getiri Teklifleri", headers, rows },
         ...(missingSheet ? [missingSheet] : []),
       ],
     });
@@ -185,7 +199,7 @@ export function YieldResults({
               </a>
             )}
             {offer.evidence_text && (
-              <p className="text-text-500">Kanıt: “{offer.evidence_text}”</p>
+              <EvidenceText text={offer.evidence_text} className="text-text-500" />
             )}
           </div>
         </div>

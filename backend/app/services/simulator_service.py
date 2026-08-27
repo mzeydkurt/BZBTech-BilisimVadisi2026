@@ -436,6 +436,57 @@ def calculate_participation_yield(
         brut = _kurusla(req.deposit_try * oran.profit_rate_pct / _YUZDE * donem)
         kesinti = _kurusla(brut * stopaj_pct / _YUZDE)
 
+        katilimci_payi = oran.investor_share_pct
+        banka_payi = oran.bank_share_pct
+
+        if katilimci_payi is None:
+            paylasim_satirlari = list(
+                session.scalars(
+                    select(ProductRate)
+                    .join(Product, ProductRate.product_id == Product.id)
+                    .where(
+                        Product.bank_id == banka.id,
+                        Product.is_active.is_(True),
+                        ProductRate.rate_type == "profit_sharing_ratio",
+                        ProductRate.currency == req.currency,
+                        ProductRate.investor_share_pct.is_not(None),
+                    )
+                )
+            )
+            paylasim_satirlari = select_current_rates(paylasim_satirlari)
+            paylasim_satirlari = [
+                p
+                for p in paylasim_satirlari
+                if (p.amount_min is None or req.deposit_try >= p.amount_min)
+                and (p.amount_max is None or req.deposit_try <= p.amount_max)
+            ]
+            if paylasim_satirlari:
+                ayni_varyant = [p for p in paylasim_satirlari if p.variant == oran.variant]
+                adaylar = ayni_varyant if ayni_varyant else paylasim_satirlari
+
+                eslesen = None
+                if oran.term_months is not None:
+                    tam_vade = [p for p in adaylar if p.term_months == oran.term_months]
+                    if tam_vade:
+                        eslesen = tam_vade[0]
+                    else:
+                        vadeli = [p for p in adaylar if p.term_months is not None]
+                        if vadeli:
+                            eslesen = min(
+                                vadeli,
+                                key=lambda p: abs((p.term_months or 0) - (oran.term_months or 0)),
+                            )
+                if eslesen is None and adaylar:
+                    eslesen = adaylar[0]
+
+                if eslesen is not None:
+                    katilimci_payi = eslesen.investor_share_pct
+                    banka_payi = eslesen.bank_share_pct or (
+                        Decimal("100") - eslesen.investor_share_pct
+                        if eslesen.investor_share_pct is not None
+                        else None
+                    )
+
         teklifler.append(
             BankYieldOffer(
                 bank_code=banka.code,
@@ -445,8 +496,8 @@ def calculate_participation_yield(
                 annual_yield_gross_pct=oran.profit_rate_pct,
                 rate_term_label=oran.term_label,
                 is_exact_term_match=tam_eslesme,
-                investor_share_pct=oran.investor_share_pct,
-                bank_share_pct=oran.bank_share_pct,
+                investor_share_pct=katilimci_payi,
+                bank_share_pct=banka_payi,
                 gross_profit_try=brut,
                 withholding_pct=stopaj_pct,
                 withholding_try=kesinti,
