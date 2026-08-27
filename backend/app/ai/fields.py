@@ -39,6 +39,11 @@ EXTRACTABLE_FIELDS: Final[dict[str, str]] = {
     "allocation_fee_pct": "pct",
     "file_fee_try": "TRY",
     "has_no_fee": "bool",
+    # ⚠️ Şartname Örnek Temsili Senaryo-1'in B Bankası satırı: "Ekspertiz
+    # ücretsiz". Konut finansmanında ayırt edici maliyet kalemi; `has_no_fee`
+    # ile karıştırılmaz — o kampanyanın GENEL masrafsızlığını söyler, bu
+    # yalnızca değerleme ücretini.
+    "appraisal_fee_covered": "bool",
     # ── Vade ve taksit ────────────────────────────────────
     # ⚠️ "4 aya varan TAKSİT" taksit sayısıdır, vade değil. İkisi ayrı alan.
     "term_months_min": "month",
@@ -52,6 +57,12 @@ EXTRACTABLE_FIELDS: Final[dict[str, str]] = {
     # ── Ödül ──────────────────────────────────────────────
     "reward_amount_try": "TRY",
     "reward_type": "enum",
+    # ⚠️ KAMPANYANIN TAVANI, TEK ÖDÜLÜ DEĞİL. "3 ay boyunca her ay 500 TL,
+    # toplamda 1.500 TL" metninde `reward_amount_try`=500 ve
+    # `max_total_benefit_try`=1500; ikisi AYRI soruyu yanıtlıyor ve
+    # karşılaştırma motoru ikincisini `azami toplam fayda` olarak sunuyor
+    # (`app/retrieval/aggregate.py`).
+    "max_total_benefit_try": "TRY",
     "cashback_pct": "pct",
     "discount_pct": "pct",
     "loyalty_points": "count",
@@ -64,7 +75,45 @@ EXTRACTABLE_FIELDS: Final[dict[str, str]] = {
     "target_customer": "enum",
     "product_type": "enum",
     "sector": "enum",
+    # ── Kademeli ödül ─────────────────────────────────────
+    # ⚠️ TEK ALANA SIĞMAYAN YAPI. "5.000 TL ve üzeri 250 TL, 10.000 TL ve
+    # üzeri 500 TL" iki eşik iki ödül demek; `min_spend_try` +
+    # `reward_amount_try` çiftine sıkıştırılırsa alt kademe kaybolur ve
+    # kullanıcı yanlış eşiği görür. JSON olarak saklanır.
+    #
+    # ⚠️ BİRİMİ `json` ve bu BİLİNÇLİ: sayı doğrulaması (KAPI A7 katman 4)
+    # tek bir sayı bekler, JSON gövdesini sayıya çeviremez. `NUMERIC_UNITS`
+    # dışında kaldığı için o katmandan muaf; kanıt zorunluluğu (katman 2-3)
+    # yine geçerli.
+    "tier_structure": "json",
 }
+
+# ⚠️ LLM'E HİÇ SORULMAYAN ALANLAR. Bu dosyanın kardeşi
+# `extraction/llm_extractor.py` şu kuralı yazıyor: *"Aynı alanı bir de modele
+# sormak, kesin bir sonucu olasılıklı bir sonuçla değiştirme riski taşır."*
+# Üç alan için bu risk kesin:
+#
+#   `tier_structure`         JSON gövdesi + KARAKTER ARALIĞI istiyor. Guard
+#                            `clean_text[start:end] == evidence_text`
+#                            değişmezini uyguluyor; model bir JSON listesi
+#                            için bu ofseti üretemez, ürettiğini iddia ederse
+#                            guard reddeder. Kural katmanı `TIER` kalıbıyla
+#                            eşiği ve ödülü ham metinden dilimliyor.
+#   `max_total_benefit_try`  "toplamda 5 kişi için maksimum 25.000 TL" ile
+#                            "toplamda 2.000 TL" ayrımı SÖZDİZİMSEL; modele
+#                            sormak 12,5 kat hatalı değer riski demek.
+#   `appraisal_fee_covered`  Olumsuzluk çekimi kararı ("yansıtılmayacaktır"
+#                            olumsuz, "yansıtılmaktadır" OLUMLU). Kalıp bu
+#                            ayrımı sayarak yapıyor; model karıştırdığında
+#                            hata sessiz olur.
+#
+# ⚠️ YAN FAYDA: PROMPT DEĞİŞMEZ. Şema bu üç alanı içermediği için istem metni
+# eskisiyle birebir aynı kalıyor ve `llm_cache` GEÇERLİ kalıyor. Alanları
+# şemaya eklemek 482 kampanyanın tamamını yeniden modele sormak demekti.
+RULE_ONLY_FIELDS: Final[frozenset[str]] = frozenset(
+    {"tier_structure", "max_total_benefit_try", "appraisal_fee_covered"}
+)
+
 
 # 6000 karakterden uzun metinler bölünür (bkz. `app/ai/chunking.py`).
 # Küçük yerel modellerin bağlam penceresi 4096 token; Türkçe metinde

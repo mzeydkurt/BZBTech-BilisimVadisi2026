@@ -30,6 +30,7 @@ yarıda kesmenin her şeyi çöpe atması, denemeyi imkânsız kılardı.
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
@@ -427,7 +428,13 @@ def _coerce(value: str | None, unit: str | None) -> object | None:
             return int(Decimal(value))
         if unit == "bool":
             return value.strip().casefold() in {"true", "1", "evet"}
-    except (InvalidOperation, ValueError):
+        if unit == "json":
+            # ⚠️ KOLON `JSON` TİPİNDE; dize olarak yazılırsa SQLAlchemy onu
+            # bir kez daha kodlar ve okurken dize dönerdi ("[{...}]" yerine
+            # "\"[{...}]\""). Ayrıştırılamayan gövde YAZILMAZ.
+            cozulen: object = json.loads(value)
+            return cozulen
+    except (InvalidOperation, ValueError, json.JSONDecodeError):
         return None
     return value
 

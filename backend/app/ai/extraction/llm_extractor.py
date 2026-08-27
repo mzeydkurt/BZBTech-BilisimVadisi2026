@@ -32,7 +32,12 @@ from sqlalchemy.orm import Session
 from app.ai.cache import cached_generate
 from app.ai.chunking import chunk_for_llm
 from app.ai.extraction.rule_based import ExtractedField
-from app.ai.fields import EXTRACTABLE_FIELDS, build_extraction_schema, unit_of
+from app.ai.fields import (
+    EXTRACTABLE_FIELDS,
+    RULE_ONLY_FIELDS,
+    build_extraction_schema,
+    unit_of,
+)
 from app.ai.prompts import load_prompt
 from app.ai.providers.base import (
     LLMInvalidJSONError,
@@ -240,7 +245,14 @@ async def extract_llm(
         Çıkarım kayıtları ve sayaçlar. Model hatasında `skipped_reason` dolar
         ve `fields` boş kalır — kural sonuçları çağıranda korunur.
     """
-    istenen = [alan for alan in EXTRACTABLE_FIELDS if alan not in already_found]
+    # ⚠️ `RULE_ONLY_FIELDS` ŞEMAYA GİRMEZ (bkz. `app/ai/fields.py` gerekçesi):
+    # kural katmanının kesin çözdüğü üç alan modele sorulmaz. Bu aynı zamanda
+    # istem metnini değiştirmediği için `llm_cache`i geçerli tutar.
+    istenen = [
+        alan
+        for alan in EXTRACTABLE_FIELDS
+        if alan not in already_found and alan not in RULE_ONLY_FIELDS
+    ]
     if not istenen:
         # ⚠️ MODELE HİÇ ÇAĞRI YAPILMAZ.
         logger.debug("llm_atlandi_alan_kalmadi", kampanya_id=getattr(campaign, "id", None))

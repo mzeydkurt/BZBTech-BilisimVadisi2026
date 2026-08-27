@@ -426,7 +426,20 @@ AMBIGUOUS_MERCHANTS: Final[frozenset[str]] = frozenset(
 # En zayıf sinyal. Yalnızca daha güçlü bir kaynak bulunamadığında kullanılır.
 
 PRODUCT_TYPE_KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
-    "konut_finansmani": ("konut finansman", "ev finansman", "mortgage", "gayrimenkul finansman"),
+    # ⚠️ "KONUT VE TAŞIT FİNANSMANI" BİRLEŞİK BAŞLIK. Albaraka'nın "Dijitale
+    # Özel Konut ve Taşıt Finansmanı Kampanyası" başlığında "konut finansman"
+    # öbeği GEÇMİYOR (araya "ve taşıt" giriyor); kampanya yalnızca
+    # `tasit_finansmani` etiketi alıyordu. Ölçüldü — bu, kampanya tarafındaki
+    # TEK konut finansmanı kaydıydı ve "Konut finansmanı kampanyası" sorgusu
+    # sıfır sonuç dönüyordu (bkz. `docs/erisim_recall.md`, sorgu e04).
+    "konut_finansmani": (
+        "konut finansman",
+        "konut ve tasit finansman",
+        "konut ve taşıt finansman",
+        "ev finansman",
+        "mortgage",
+        "gayrimenkul finansman",
+    ),
     "tasit_finansmani": (
         "taşıt finansman",
         "araç finansman",

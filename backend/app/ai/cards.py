@@ -22,6 +22,7 @@ pahalıdır; değişmeyen metni yeniden gömmek boşa maliyettir.
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 from typing import Final
 
@@ -63,6 +64,20 @@ FIELD_PHRASES: Final[dict[str, str]] = {
     "financing_amount_max": "{deger} TL'ye kadar finansman",
     "allocation_fee_pct": "tahsis ücreti %{deger}",
     "file_fee_try": "dosya masrafı {deger} TL",
+    "max_total_benefit_try": "toplamda {deger} TL'ye kadar fayda",
+}
+
+# ⚠️ BOOL ALANLAR AYRI SÖZLÜKTE. `FIELD_PHRASES` değeri `_sayi_metni`ne
+# veriyor; `"true"` dizesi sayıya çevrilemediği için ham hâliyle karta
+# yazılırdı ("masrafsız true"). Bool alanın kartta karşılığı bir SAYI değil
+# bir CÜMLEdir.
+#
+# ⚠️ `has_no_fee` BURAYA KADAR HİÇ KARTA GİRMİYORDU ve bu bir arama kaybıydı:
+# kart metni arama gövdesidir, `has_no_fee=true` satırı aranamaz ama
+# "masrafsız" aranabilir. 7 kampanya bu özelliğiyle bulunamıyordu.
+BOOL_PHRASES: Final[dict[str, str]] = {
+    "has_no_fee": "masrafsız",
+    "appraisal_fee_covered": "ekspertiz ücreti alınmaz",
 }
 
 # Ay adları — tarih aralığını doğal dile çevirmek için.
@@ -108,6 +123,41 @@ def _sayi_metni(deger: str) -> str:
         return f"{int(sayi):,}".replace(",", ".")
     # Ondalıkta Türkçe virgül; anlamsız sıfırlar atılır.
     return format(sayi.normalize(), "f").rstrip("0").rstrip(".").replace(".", ",")
+
+
+def _kademe_metni(deger: str) -> str | None:
+    """Kademeli ödül yapısını okunur bir cümleye çevirir.
+
+    ⚠️ JSON GÖVDESİ KARTA HAM YAZILAMAZ. Kart metni hem insanın okuduğu hem
+    BM25'in simgelediği metin; `[{"threshold": "5000", ...}]` dizesi ikisi
+    için de gürültüdür. Eşik→ödül çiftleri Türkçe bir cümleye çevrilir ki
+    "kademeli ödül" araması bu kampanyaları bulabilsin.
+
+    Args:
+        deger: `tier_structure` alanının JSON dizesi.
+
+    Returns:
+        "kademeli ödül: 5.000 TL'ye 250 TL, 10.000 TL'ye 500 TL" biçiminde
+        cümle; ayrıştırılamazsa None.
+    """
+    try:
+        kademeler = json.loads(deger)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(kademeler, list) or not kademeler:
+        return None
+
+    parcalar: list[str] = []
+    for kademe in kademeler:
+        if not isinstance(kademe, dict):
+            continue
+        esik, odul = kademe.get("threshold"), kademe.get("reward")
+        if esik is None or odul is None:
+            continue
+        parcalar.append(f"{_sayi_metni(str(esik))} TL'ye {_sayi_metni(str(odul))} TL")
+    if not parcalar:
+        return None
+    return f"kademeli ödül: {', '.join(parcalar)}"
 
 
 def _tarih_metni(deger: object) -> str | None:
@@ -199,6 +249,17 @@ def build_campaign_card(session: Session, campaign: Campaign) -> str:
         for ad, kalip in FIELD_PHRASES.items()
         if ad in alanlar
     ]
+    # ⚠️ Bool alanlar YALNIZCA doğruysa yazılır. "masrafsız değil" gibi bir
+    # olumsuz cümle karta girerse BM25 "masrafsız" terimini o kartta bulur ve
+    # masraflı kampanya masrafsız aramasında çıkar.
+    olcum_parcalari += [
+        cumle
+        for ad, cumle in BOOL_PHRASES.items()
+        if alanlar.get(ad, "").strip().casefold() in {"true", "1"}
+    ]
+    kademe = _kademe_metni(alanlar["tier_structure"]) if "tier_structure" in alanlar else None
+    if kademe:
+        olcum_parcalari.append(kademe)
     if olcum_parcalari:
         satirlar.append(_bas_harf_buyut(", ".join(olcum_parcalari)) + ".")
 

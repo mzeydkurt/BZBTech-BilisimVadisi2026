@@ -39,6 +39,15 @@ _KESME = r"['’‘ʼ´`]"
 # kısaltma arandığında "500 Türk Lirası" sessizce kaçıyordu.
 _TL = r"(?:TL|TL\.|₺|[Tt][üuÜU]rk\s*[Ll]iras[ıiİI])"
 
+# ⚠️ TUTAR ÇARPAN SÖZCÜĞÜYLE YAZILIYOR: "3 milyon TL'ye kadar",
+# "200 Bin TL'ye kadar", "1 Milyon TL ye kadar". Gövdede 262 geçiş ölçüldü.
+# `parse_money` çarpanı ZATEN çözüyor (`_MULTIPLIERS`); eksik olan kalıbın
+# çarpanı eşleşmeye DAHİL ETMESİYDİ — "3 milyon TL" ifadesinde yalnızca "3"
+# görülüyor ve tutar 3 TL sanılıyordu. Sayı ile birim arasına en fazla BİR
+# çarpan sözcüğü girebilir; serbest bırakılırsa araya cümle sızar.
+_CARPAN = r"(?:\s*(?:bin|milyon|milyar))?"
+_TUTAR = rf"[\d.,]+{_CARPAN}"
+
 # ⚠️ SADAKAT BİRİMİ ÖDÜL ADINDAN AYRI YAZILIYOR. "750 TL Bankkart Lira"
 # ifadesinde tutar ile ödül adı arasında MARKA KELİMESİ var; ödül adını
 # tutara bitişik arayan kalıp 6 kampanyayı kaçırıyordu. Program adları
@@ -53,10 +62,32 @@ _SADAKAT = r"(?:Bankkart\s*Lira|Paraf\s*?Para|World\s*?Puan|Mil|Puan)"
 # metindeki herhangi bir tutar herhangi bir ödüle bağlanır.
 _VARAN = rf"(?:{_KESME}?\s*[yn]?[ae]\s*(?:varan|kadar)\s*)?"
 
+# Aynı ek, tutar–birim çiftinden SONRA gelen ve ZORUNLU olan biçimi.
+# ⚠️ Kesme işareti yerine BOŞLUK da yazılıyor ("1 Milyon TL ye kadar",
+# gövdede 12 geçiş): `{_KESME}?` isteğe bağlı olduğu için bu biçim de
+# eşleşir, ama araya giren boşluk `\s*` ile açıkça karşılanmak zorunda.
+#
+# ⚠️ "VARAN" BURADA YOK ve olmaması ÖLÇÜLDÜ. `MAX_SPEND` kalıbına "varan"
+# eklenince "500 TL'ye varan nakit iade" ifadesi harcama TAVANI sayıldı:
+# 30 kampanyada uydurma `max_spend_try` doğdu ve alanın F1'i 0,67 → 0,57
+# düştü. "kadar" ve "ulaşan" bir SINIRI anlatır, "varan" bir ÖDÜLÜ.
+# Finansman tutarında ("1.000.000 TL'ye varan finansman") ikisi de sınır
+# anlatır; oraya ayrı ek yazılır.
+_UST_SINIR_EKI = rf"{_KESME}?\s*[yn]?[ae]\s*(?:kadar|ula[şs]an)"
+
+# Finansman tavanında "varan" da sınır anlatır ("1.000.000 TL'ye varan
+# finansman" bir üst limittir, ödül değil).
+_FINANSMAN_SINIR_EKI = rf"{_KESME}?\s*[yn]?[ae]\s*(?:kadar|varan|ula[şs]an)"
+
 # ⚠️ Şartname §5.6: "%2,05, % 2.05 ve 2.05 % aynı değer olarak
 # yorumlanmalıdır." Yüzde işareti sayının SONUNA da yazılabiliyor; yalnızca
 # önde arandığında "2.05 %" hiç okunmuyordu.
-_YUZDE_SAYI = r"(?:%\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*%)"
+#
+# ⚠️ "YÜZDE" SÖZCÜK OLARAK DA YAZILIYOR. `normalization/rate.py` bu biçimi
+# ilk günden çözüyordu ama çıkarım kalıbı yalnızca `%` işaretini arıyordu:
+# "kâr payı oranı yüzde 2,05" cümlesi ayrıştırıcıya hiç ULAŞMIYORDU.
+# Gövdede 104 geçiş ölçüldü (paraf değişmezlik kümesi, E2).
+_YUZDE_SAYI = r"(?:%\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*%|y[üu]zde\s*\d+(?:[.,]\d+)?)"
 
 # ⚠️ Şartname §5.2 farklı ifade biçimlerini örnekliyor: "özel oranlı
 # finansman", "avantajlı kâr payı fırsatı", "düşük maliyetli finansman".
@@ -89,8 +120,11 @@ PROFIT_RATE: Final[re.Pattern[str]] = re.compile(
 # ⚠️ "vade farksız" ve "peşin fiyatına" ORAN SIFIR demektir — bilinmeyen
 # değil. İkisi karıştırılırsa "en düşük kâr payı" karşılaştırması bu
 # kampanyaları hiç görmez.
+# ⚠️ "vade farkı yok" biçimi `normalization/rate.py`de çözülüyordu ama
+# çıkarım kalıbında yoktu; aynı olgunun iki yazımından biri sessizce
+# kaçıyordu (paraf değişmezlik kümesi, E2).
 ZERO_RATE: Final[re.Pattern[str]] = re.compile(
-    r"(vade\s*farks[ıi]z|pe[şs]in\s*fiyat[ıi]na)", re.IGNORECASE
+    r"(vade\s*farks[ıi]z|vade\s*fark[ıi]\s*yok|pe[şs]in\s*fiyat[ıi]na)", re.IGNORECASE
 )
 
 # ── Katılma hesabı paylaşım oranı ─────────────────────────
@@ -139,9 +173,14 @@ TERM: Final[re.Pattern[str]] = re.compile(
 
 # ── Tutar eşiği ve ödül ───────────────────────────────────
 # "5.000 TL ve üzeri" · "asgari 5.000 TL" · "en az 1.000 TL"
+# ⚠️ Birim `_TL` ile aranır (şartname §5.6: "500 TL, 500₺ ve 500 Türk
+# Lirası aynı değer"), tutar `_TUTAR` ile (çarpan sözcüğü dahil).
+# "5.000 TL'den başlayan" alt sınır işaretçisi `normalization/money.py`de
+# `_LOWER_BOUND_RE` içinde vardı ama çıkarım kalıbında YOKTU.
 MIN_SPEND: Final[re.Pattern[str]] = re.compile(
-    r"(?:asgari|en\s*az|minimum)\s*[\d.,]+\s*(?:TL|₺)"
-    r"|[\d.,]+\s*(?:TL|₺)\s*(?:ve\s*)?[üu]zeri",
+    rf"(?:asgari|en\s*az|minimum)\s*{_TUTAR}\s*{_TL}"
+    rf"|{_TUTAR}\s*{_TL}\s*(?:ve\s*)?[üu]zeri"
+    rf"|{_TUTAR}\s*{_TL}\s*{_KESME}?\s*[dt]en\s*(?:ba[şs]layan|itibaren)",
     re.IGNORECASE,
 )
 
@@ -155,8 +194,8 @@ SPEND_RANGE: Final[re.Pattern[str]] = re.compile(
 
 # "100.000 TL’ye kadar" · "150.000 TL'ye ulaşan" · "75 TL ve altı"
 MAX_SPEND: Final[re.Pattern[str]] = re.compile(
-    rf"([\d.,]+)\s*{_TL}\s*{_KESME}?\s*[yn]?[ae]\s*(?:kadar|ula[şs]an)"
-    rf"|([\d.,]+)\s*{_TL}\s*ve\s*alt[ıi]",
+    rf"({_TUTAR})\s*{_TL}\s*{_UST_SINIR_EKI}"
+    rf"|({_TUTAR})\s*{_TL}\s*ve\s*alt[ıi]",
     re.IGNORECASE,
 )
 
@@ -180,7 +219,7 @@ _ODUL_ADI = (
 
 # "250 TL nakit iade" · "500 TL Bankkart Lira" · "2.000 TL nakit ödül"
 REWARD_AMOUNT: Final[re.Pattern[str]] = re.compile(
-    rf"[\d.,]+\s*{_TL}\s*{_VARAN}(?:{_SADAKAT}\b|{_ODUL_ADI})",
+    rf"{_TUTAR}\s*{_TL}\s*{_VARAN}(?:{_SADAKAT}\b|{_ODUL_ADI})",
     re.IGNORECASE,
 )
 
@@ -190,7 +229,7 @@ REWARD_AMOUNT: Final[re.Pattern[str]] = re.compile(
 # set'te yalnızca `loyalty_points` doluyor, `reward_amount_try` boş kalıyor.
 # `reward_amount_try` kalıbı `TL` zorunlu tutarak bu ayrımı korur.
 LOYALTY_POINTS: Final[re.Pattern[str]] = re.compile(
-    rf"[\d.,]+\s*(?:{_TL}\s*)?{_VARAN}{_SADAKAT}\b",
+    rf"{_TUTAR}\s*(?:{_TL}\s*)?{_VARAN}{_SADAKAT}\b",
     re.IGNORECASE,
 )
 
@@ -200,6 +239,38 @@ LOYALTY_POINTS: Final[re.Pattern[str]] = re.compile(
 # tavanıdır. Bu önek görülen eşleşme ödül adayı sayılmaz.
 AGGREGATE_CAP: Final[re.Pattern[str]] = re.compile(
     r"toplamda?\s*\d+\s*ki[şs]i|ki[şs]i\s*i[çc]in", re.IGNORECASE
+)
+
+# ── Kademeli ödül yapısı ──────────────────────────────────
+# "5.000 TL ve üzeri harcamaya 250 TL, 10.000 TL ve üzeri harcamaya 500 TL"
+#
+# ⚠️ KALIP HAM `clean_text` ÜZERİNDE ÇALIŞIR, `parse_tier_structure` İLE
+# DEĞİL. `normalization/money.py` içindeki `parse_tier_structure` aynı işi
+# yapıyor ama NORMALİZE EDİLMİŞ metin üzerinde: `normalize_text` metnin
+# uzunluğunu değiştirdiği için oradan dönen eşleşmenin konumu `clean_text`e
+# UYMAZ ve `clean_text[start:end] == evidence_text` değişmezi (KAPI A4)
+# sessizce bozulur. Kanıt gösterimi metnin yanlış yerini işaret eder.
+#
+# ⚠️ EŞİK İLE ÖDÜL ARASI EN FAZLA 60 KARAKTER. Sınır gevşetilirse cümledeki
+# herhangi bir eşik cümledeki herhangi bir tutara bağlanır.
+TIER: Final[re.Pattern[str]] = re.compile(
+    rf"({_TUTAR})\s*{_TL}\s*(?:ve\s*)?[üu]zeri(?:nde|ndeki|ne)?"
+    rf"\D{{0,60}}?({_TUTAR})\s*{_TL}",
+    re.IGNORECASE,
+)
+
+# ── Azami toplam fayda ────────────────────────────────────
+# "Toplamda 2.000 TL Worldpuan" · "toplam 750 TL" · "toplamda 5.000 TL"
+#
+# ⚠️ TOPLU KİŞİ TAVANI BURAYA GİRMEZ. "toplamda 5 kişi için maksimum
+# 25.000 TL" ifadesi BİR MÜŞTERİNİN alabileceği azami fayda değil, bütün
+# davetlerin toplam tavanıdır; `AGGREGATE_CAP` ile ayıklanır (bkz.
+# `_total_benefit`). İkisi karıştırılırsa alan bir kampanyada 12,5 kat
+# fazla gösterir.
+TOTAL_BENEFIT: Final[re.Pattern[str]] = re.compile(
+    rf"toplam(?:da|[ıi]nda)?\s*(?:(?:en\s*fazla|maksimum|azami)\s*)?"
+    rf"({_TUTAR})\s*{_TL}",
+    re.IGNORECASE,
 )
 
 # ── Yüzde ödüller ─────────────────────────────────────────
@@ -214,9 +285,12 @@ CASHBACK_PCT: Final[re.Pattern[str]] = re.compile(
     re.IGNORECASE,
 )
 
+# ⚠️ `oran[ıi]nda` köprüsü CASHBACK_PCT'de vardı, burada yoktu: aynı
+# ifade biçimi iade tarafında okunuyor, indirim tarafında kaçıyordu.
 DISCOUNT_PCT: Final[re.Pattern[str]] = re.compile(
-    r"%\s*\d+(?:[.,]\d+)?\s*(?:'?[yn]?[ae]\s*varan\s*)?indirim"
-    r"|indirim\s*[:\-]?\s*%\s*\d+(?:[.,]\d+)?",
+    rf"%\s*\d+(?:[.,]\d+)?\s*{_KESME}?\s*[a-zçğıöşü]{{0,4}}\s*"
+    rf"(?:kadar\s*|varan\s*|oran[ıi]nda\s*)?indirim"
+    rf"|indirim\s*[:\-]?\s*%\s*\d+(?:[.,]\d+)?",
     re.IGNORECASE,
 )
 
@@ -228,29 +302,90 @@ ALLOCATION_FEE: Final[re.Pattern[str]] = re.compile(
 )
 
 FILE_FEE: Final[re.Pattern[str]] = re.compile(
-    r"dosya\s*masraf[ıi]\s*[:\-]?\s*[\d.,]+\s*(?:TL|₺)", re.IGNORECASE
+    rf"dosya\s*masraf[ıi]\s*[:\-]?\s*{_TUTAR}\s*{_TL}", re.IGNORECASE
 )
 
-# Olumsuz çekim: "alınmaktadır" (ücret VAR) eşleşmesin.
-_ALINMAZ = r"(?:al[ıi]nmaz|al[ıi]nmamakta|al[ıi]nmayacak)"
+# ⚠️ OLUMSUZ ÇEKİM TEK BİR FİİLLE YAZILMIYOR. Gövdede ölçülen biçimler:
+# "alınmaz", "alınmamaktadır", "alınmayacaktır", "yansıtılmayacaktır" (85),
+# "talep edilmemektedir" (15), "yok" / "yoktur" (19). Her biri için ayrı
+# alternatif yazmak yerine olumsuzluk TEK yerde toplanır.
+#
+# ⚠️ OLUMLU ÇEKİM KESİNLİKLE DIŞARIDA KALMAK ZORUNDA ve bu gövdede
+# GERÇEK BİR RİSK: "yansıtılmaktadır" 111 kez geçiyor (ParafPara ödülü
+# karta yansıtılır — ücret muafiyeti DEĞİL, tersi). Türkçe olumsuzluk eki
+# `-ma/-me` gövdeden sonra gelir:
+#
+#     al-ın-ma-z          olumsuz  ✓
+#     al-ın-ma-makta-dır  olumsuz  ✓
+#     al-ın-makta-dır     OLUMLU   ✗  ← eşleşmemeli
+#
+# Bu yüzden çekim ekleri `(?:az|amakta|ayacak)` olarak SAYILARAK yazılır;
+# `al[ıi]nm\w*` gibi gevşek bir kalıp olumlu biçimi de yutar ve "ücret
+# alınmaktadır" cümlesi "masrafsız" sayılır.
+_OLUMSUZ = (
+    r"(?:al[ıi]nm(?:az|amakta|ayacak)\w*"
+    r"|yans[ıi]t[ıi]lm(?:az|amakta|ayacak)\w*"
+    r"|talep\s*edilm(?:ez|emekte|eyecek)\w*"
+    r"|tahsil\s*edilm(?:ez|emekte|eyecek)\w*"
+    r"|bulunm(?:az|amakta)\w*"
+    r"|yok(?:tur)?\b)"
+)
+
+# ⚠️ ÇIPLAK "ÜCRET" KABUL EDİLMEZ ve bunun sebebi ölçüldü. `[üu]cret`
+# alternatifi konunca "Sonradan taksitlendirmeden İŞLEM ÜCRETİ
+# alınmamaktadır" gibi KÜÇÜK PUNTOLU dipnotlar da eşleşiyor; kampanya
+# masrafsız sayılıp `has_no_fee=true` ve `file_fee_try=0` yazılıyordu —
+# gold set'te iki alan birden yanlış pozitif oluyor.
+#
+# Ayrım ÜCRETİN KAPSAMINDA: ürün düzeyindeki bir ücretin kaldırılması
+# kampanyanın vaadidir ("ömür boyu KART ÜCRETİ yok" — gövdede 15 geçiş),
+# işlem düzeyindeki bir ücret ise sözleşme dipnotudur ("işlem ücreti",
+# "para çekme ücreti", "hesap işletim ücreti"). Bu yüzden kabul edilen
+# ücret adları SAYILARAK yazılır; genel `[üu]cret` alternatifi YOKTUR.
+_UCRET_ADI = (
+    r"(?:dosya\s*masraf"
+    r"|tahsis\s*[üu]cret"
+    r"|(?:kart|[üu]yelik|y[ıi]ll[ıi]k|aidat|kullan[ıi]m|ekspertiz|de[ğg]erleme)"
+    r"\s*[üu]cret"
+    r"|masraf"
+    r"|komisyon)"
+)
 
 # "masrafsız" · "dosya masrafı alınmamaktadır" · "ücret alınmaz"
-# · "tahsis ücreti yok" · "masraf alınmamaktadır"
+# · "tahsis ücreti yansıtılmayacaktır" · "kart ücreti yok"
+# · "ücret veya komisyon talep edilmemektedir" · "sıfır dosya masrafı"
+#
+# ⚠️ Ücret adı ile olumsuz fiil arasına EN FAZLA İKİ SÖZCÜK girebilir
+# ("ücret veya komisyon talep edilmemektedir", "masraf veya komisyon
+# alınmaz"). Sınır gevşetilirse cümlenin başındaki "ücret" ile sonundaki
+# bir olumsuzluk birbirine bağlanır ve ücretli bir kampanya masrafsız
+# görünür.
 NO_FEE: Final[re.Pattern[str]] = re.compile(
     rf"masrafs[ıi]z"
-    rf"|dosya\s*masraf[ıi]\s*(?:{_ALINMAZ}|yok|talep\s*edilmez)"
-    rf"|tahsis\s*[üu]creti\s*(?:{_ALINMAZ}|yok)"
-    rf"|[üu]cret\s*{_ALINMAZ}"
-    rf"|masraf\s*(?:{_ALINMAZ}|yok)"
-    rf"|komisyon\s*(?:yok|{_ALINMAZ})"
-    rf"|s[ıi]f[ıi]r\s*(?:komisyon|masraf|[üu]cret)",
+    rf"|{_UCRET_ADI}\w*\s*(?:(?:ve|veya|ya\s*da|ile)\s+\w+\s+){{0,1}}{_OLUMSUZ}"
+    rf"|s[ıi]f[ıi]r\s*(?:\w+\s+){{0,1}}(?:komisyon|masraf|[üu]cret)\w*",
+    re.IGNORECASE,
+)
+
+# ── Ekspertiz / değerleme ücreti bankada mı ───────────────
+# ⚠️ ŞARTNAMENİN KENDİ ÖRNEĞİNDE GEÇİYOR. Örnek Temsili Senaryo-1'in
+# B Bankası satırı "Ekspertiz ücretsiz" diyor; alan konut finansmanının
+# ayırt edici maliyet kalemlerinden biri.
+#
+# ⚠️ "Ekspertiz Ücreti: 1.500 TL" EŞLEŞMEZ. Olumsuzluk ZORUNLU: ücret adının
+# geçmesi ücretin KALDIRILDIĞI anlamına gelmez, tersi de olabilir. Gövdede
+# ölçüldü — ekspertiz geçen tek kayıt bir ücret TABLOSU satırı ve bankanın
+# ücret aldığını söylüyor.
+APPRAISAL_FEE_COVERED: Final[re.Pattern[str]] = re.compile(
+    rf"(?:ekspertiz|de[ğg]erleme)\s*(?:[üu]creti?|masraf[ıi]?)?\s*"
+    rf"(?:{_OLUMSUZ}|[üu]cretsiz|bedelsiz|masrafs[ıi]z|bizden|bankam[ıi]zdan)",
     re.IGNORECASE,
 )
 
 # ── Finansman tutarı ──────────────────────────────────────
 FINANCING_AMOUNT: Final[re.Pattern[str]] = re.compile(
-    r"[\d.,]+\s*(?:TL|₺)\s*(?:'?[yn]?[ae]\s*(?:kadar|varan)\s*)?(?:\w+\s+)?finansman"
-    r"|finansman\s*(?:tutar[ıi])?\s*[:\-]?\s*[\d.,]+\s*(?:TL|₺)",
+    rf"{_TUTAR}\s*{_TL}\s*(?:{_FINANSMAN_SINIR_EKI}\s*)?(?:\w+\s+)?finansman"
+    rf"|finansman\s*(?:tutar[ıi])?\s*[:\-]?\s*{_TUTAR}\s*{_TL}",
     re.IGNORECASE,
 )
 

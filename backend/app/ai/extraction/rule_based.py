@@ -19,6 +19,7 @@ Türkçe sayı biçimi (`5.000` = beş bin, `5,000` = beş) orada çözülmüş 
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from decimal import Decimal
@@ -251,12 +252,14 @@ def _ilk_odul(metin: str, kalip: re.Pattern[str]) -> tuple[Decimal, int, int] | 
 def _amounts(metin: str) -> list[ExtractedField]:
     """Harcama eşiği, ödül tutarı ve finansman tutarını çıkarır."""
     bulunan: list[ExtractedField] = []
+    kademe = _kademe_sinirlari(metin)
 
     acik_asgari: Decimal | None = None
     esik = p.MIN_SPEND.search(metin)
     if esik is not None:
         tutar, _ = parse_money(esik.group())
-        if tutar is not None:
+        # ⚠️ Kademe sınırı asgari eşik DEĞİLDİR (bkz. `_kademe_sinirlari`).
+        if tutar is not None and tutar not in kademe:
             acik_asgari = tutar
             bulunan.append(_field("min_spend_try", tutar, metin, esik.start(), esik.end()))
 
@@ -272,11 +275,39 @@ def _amounts(metin: str) -> list[ExtractedField]:
                 _field("financing_amount_max", tutar, metin, finansman.start(), finansman.end())
             )
 
-    bulunan.extend(_limits(metin, acik_asgari=acik_asgari))
+    bulunan.extend(_limits(metin, acik_asgari=acik_asgari, kademe=kademe))
     return bulunan
 
 
-def _limits(metin: str, *, acik_asgari: Decimal | None) -> list[ExtractedField]:
+def _kademe_sinirlari(metin: str) -> frozenset[Decimal]:
+    """Hem "…'ye kadar" hem "…üzeri" biçiminde geçen tutarları döndürür.
+
+    Bir tutar aynı metinde İKİ YÖNDE de işaretlenmişse o tutar bir sınır
+    değil, iki kademeyi ayıran ÇİZGİDİR. Kampanyanın tavanı ya da tabanı
+    olarak yazılamaz.
+
+    Args:
+        metin: Kampanyanın temizlenmiş metni.
+
+    Returns:
+        Kademe sınırı olan tutarlar; yoksa boş küme.
+    """
+
+    def _tutarlar(kalip: re.Pattern[str]) -> set[Decimal]:
+        bulunan: set[Decimal] = set()
+        for eslesme in kalip.finditer(metin):
+            ham = next((g for g in eslesme.groups() if g), None) or eslesme.group()
+            tutar, _ = parse_money(ham)
+            if tutar is not None:
+                bulunan.add(tutar)
+        return bulunan
+
+    return frozenset(_tutarlar(p.MAX_SPEND) & _tutarlar(p.MIN_SPEND))
+
+
+def _limits(
+    metin: str, *, acik_asgari: Decimal | None, kademe: frozenset[Decimal]
+) -> list[ExtractedField]:
     """Harcama/finansman alt ve üst sınırlarını çıkarır.
 
     İki kaynak var: `2.000 TL - 300.000 TL arası` biçimindeki ARALIK ve
@@ -301,14 +332,24 @@ def _limits(metin: str, *, acik_asgari: Decimal | None) -> list[ExtractedField]:
     imzasıdır ve yazılmaz — 16 kampanyada ölçüldü. Üst sınır uydurmak
     yerine alan boş bırakılır; en üst kademe zaten açık uçlu.
 
+    ⚠️ AYNI TUTARIN İKİ YÖNDE GEÇMESİ KADEME SINIRIDIR. "20 bin TL'ye kadar
+    harcamalara 12 taksit, 20 bin TL üzerindeki harcamalara 3 taksit"
+    cümlesinde 20.000 ne kampanyanın tavanı ne tabanı — iki taksit
+    kademesini AYIRAN çizgi. Bu imza (`_kademe_sinirlari`) yakalanmazsa
+    aynı sayı hem `min_spend_try` hem `max_spend_try` olarak yazılıyor ve
+    ikisi de yanlış oluyor; gold set'te iki kampanyada ölçüldü.
+
     Args:
         metin: Kampanyanın temizlenmiş metni.
         acik_asgari: `MIN_SPEND` açık işaretçisinin değeri; yoksa None.
+        kademe: Kademe sınırı olan tutarlar (`_kademe_sinirlari`).
     """
     bulunan: list[ExtractedField] = []
     finansman_baglami = p.FINANCING_CONTEXT.search(metin) is not None
 
     def tutarli(ust: Decimal) -> bool:
+        if ust in kademe:
+            return False
         return acik_asgari is None or ust > acik_asgari
 
     aralik = p.SPEND_RANGE.search(metin)
@@ -345,6 +386,89 @@ def _limits(metin: str, *, acik_asgari: Decimal | None) -> list[ExtractedField]:
             )
 
     return bulunan
+
+
+def _tiers(metin: str) -> list[ExtractedField]:
+    """Kademeli ödül yapısını çıkarır (eşik → ödül).
+
+    ⚠️ TEK KADEME KADEME DEĞİLDİR. Bir eşik ve bir ödül `min_spend_try` +
+    `reward_amount_try` ile zaten temsil ediliyor; bu alan ancak İKİ ya da
+    daha fazla FARKLI eşik varsa doldurulur. Aksi hâlde aynı bilgi iki
+    yerde durur ve hangisinin doğru olduğu belirsizleşir.
+
+    ⚠️ AYNI EŞİĞE İKİ FARKLI ÖDÜL ÇIKARSA ALAN BOŞ BIRAKILIR. Kalıbın
+    60 karakterlik penceresi iç içe geçmiş cümlelerde çapraz eşleşme
+    üretebiliyor (ölçüldü: bir kampanyada 5.000 → 350 ve 5.000 → 200 aynı
+    metinden çıktı). Hangisinin doğru olduğuna karar vermek yerine
+    SUSULUR — belirsiz bir kademe tablosu, tablo olmamasından kötüdür.
+
+    Args:
+        metin: Kampanyanın temizlenmiş metni.
+
+    Returns:
+        En fazla bir `tier_structure` kaydı; kademe yoksa boş liste.
+    """
+    kademeler: dict[Decimal, set[Decimal]] = {}
+    bas: int | None = None
+    son = 0
+
+    for eslesme in p.TIER.finditer(metin):
+        esik, _ = parse_money(eslesme.group(1))
+        odul, _ = parse_money(eslesme.group(2))
+        if esik is None or odul is None or esik == odul:
+            continue
+        kademeler.setdefault(esik, set()).add(odul)
+        bas = eslesme.start() if bas is None else bas
+        son = max(son, eslesme.end())
+
+    if len(kademeler) < 2 or bas is None:
+        return []
+    if any(len(oduller) > 1 for oduller in kademeler.values()):
+        return []
+
+    yapi = [
+        {"threshold": str(esik), "reward": str(next(iter(oduller)))}
+        for esik, oduller in sorted(kademeler.items())
+    ]
+    return [
+        _field(
+            "tier_structure",
+            json.dumps(yapi, ensure_ascii=False),
+            metin,
+            bas,
+            son,
+            note=f"{len(yapi)} kademe",
+        )
+    ]
+
+
+def _total_benefit(metin: str) -> list[ExtractedField]:
+    """Kampanyanın azami toplam faydasını çıkarır.
+
+    ⚠️ TOPLU KİŞİ TAVANI ALINMAZ. "toplamda 5 kişi için maksimum 25.000 TL"
+    bir müşterinin alabileceği azami fayda DEĞİL, bütün davetlerin toplam
+    tavanıdır. `AGGREGATE_CAP` bu öneki tanıyor ve eşleşme atlanıyor;
+    ayrım yapılmazsa alan bir kampanyada 12,5 kat fazla gösteriyordu.
+
+    ⚠️ TEK ÖDÜLDEN KÜÇÜK BİR TOPLAM YAZILMAZ. Toplam, tek seferlik ödüle
+    eşit ya da ondan büyük olmak zorunda; küçükse eşleşme kampanyanın
+    tavanını değil başka bir tutarı anlatıyor.
+
+    Args:
+        metin: Kampanyanın temizlenmiş metni.
+
+    Returns:
+        En fazla bir `max_total_benefit_try` kaydı.
+    """
+    for eslesme in p.TOTAL_BENEFIT.finditer(metin):
+        pencere = metin[eslesme.start() : eslesme.end() + p.PROXIMITY_CHARS]
+        if p.AGGREGATE_CAP.search(pencere):
+            continue
+        tutar, _ = parse_money(eslesme.group(1))
+        if tutar is None or tutar <= 0:
+            continue
+        return [_field("max_total_benefit_try", tutar, metin, eslesme.start(), eslesme.end())]
+    return []
 
 
 def _loyalty(metin: str) -> list[ExtractedField]:
@@ -416,6 +540,16 @@ def _fees(metin: str) -> list[ExtractedField]:
         tutar, _ = parse_money(masraf.group())
         if tutar is not None:
             bulunan.append(_field("file_fee_try", tutar, metin, masraf.start(), masraf.end()))
+
+    # ⚠️ EKSPERTİZ AYRI ALAN, `has_no_fee` DEĞİL. "Ekspertiz ücretsiz" bir
+    # kampanyanın TÜM masraflarını kaldırdığı anlamına gelmez; yalnızca
+    # değerleme ücretini söyler. İkisi tek alana toplanırsa "dosya masrafı
+    # var, ekspertiz yok" durumundaki kampanya masrafsız görünür.
+    ekspertiz = p.APPRAISAL_FEE_COVERED.search(metin)
+    if ekspertiz is not None:
+        bulunan.append(
+            _field("appraisal_fee_covered", "true", metin, ekspertiz.start(), ekspertiz.end())
+        )
 
     # ⚠️ "masrafsız" hem `has_no_fee=true` hem `file_fee_try=0` demektir
     # (etiketleme kılavuzu kuralı); ikisi ayrı ayrı çıkarılır.
@@ -504,6 +638,8 @@ def extract_rule_based(clean_text: str | None) -> list[ExtractedField]:
         _installment,
         _term,
         _amounts,
+        _tiers,
+        _total_benefit,
         _loyalty,
         _percent_rewards,
         _fees,
