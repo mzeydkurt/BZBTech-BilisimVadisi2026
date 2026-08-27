@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from datetime import date
 from urllib.parse import urljoin, urlsplit
 
 from sqlalchemy import select
@@ -84,6 +85,7 @@ class BaseScraper(ABC):
         settings: Settings | None = None,
         categories: Sequence[str] | None = None,
         limit: int | None = None,
+        bugun: date | None = None,
     ) -> None:
         """
         Args:
@@ -95,12 +97,36 @@ class BaseScraper(ABC):
             limit: Çekilecek en fazla adres sayısı. Pilot doğrulamada tek bir
                 bankaya birkaç istekle bakabilmek içindir; canlı çalıştırmada
                 verilmez.
+            bugun: Dönem geçerliliğinin ölçüleceği gün. Verilmezse Türkiye
+                saatine göre bugün.
+
+                ⚠️ TESTTE ENJEKTE EDİLEBİLİR OLMAK ZORUNDA. Kayıtlı HTML
+                fixture'larındaki kampanya tarihleri SABİT (ör. Dünya
+                Katılım fixture'ı 15.06.2026 - 15.07.2026); "bugün" satır
+                içinde hesaplandığı sürece o tarih geçtiği gün 10 entegrasyon
+                testi kendiliğinden kırılıyor ve kırılma kodla ilgili
+                olmadığı hâlde her koşuda kırmızı duruyor. Fixture'ın
+                tarihini ileriye çekmek yalnızca bombayı ertelerdi.
         """
         self.settings = settings or get_settings()
         self._fetcher = fetcher
         self._owns_fetcher = fetcher is None
         self.categories = tuple(categories) if categories else None
         self.limit = limit
+        self._bugun = bugun
+
+    @property
+    def bugun(self) -> date:
+        """Dönem geçerliliğinin ölçüldüğü gün.
+
+        ⚠️ TEK KAYNAK. Önceden iki ayrı yerde iki AYRI "bugün" vardı:
+        liste kartı denetiminde `today_tr()` (Türkiye saati), detay dönem
+        denetiminde `utc_now().date()` (UTC). Türkiye UTC+3 olduğu için gün
+        dönümünde bu ikisi FARKLI gün verebiliyor ve aynı kampanya bir
+        denetimden geçip diğerinden düşebiliyordu. Kampanya tarihleri
+        Türkiye saatiyle yayımlandığı için doğru olan `today_tr()`.
+        """
+        return self._bugun or today_tr()
 
     @property
     def fetcher(self) -> Fetcher:
@@ -471,7 +497,7 @@ class BaseScraper(ABC):
     ) -> None:
         """Tek bir adresi çeker, kaydeder ve kampanyaya dönüştürür."""
         # Liste kartında bitiş tarihi geçmişse detay HTTP'si atlanır.
-        if hint.end_date_hint is not None and hint.end_date_hint < today_tr():
+        if hint.end_date_hint is not None and hint.end_date_hint < self.bugun:
             result.campaigns_skipped += 1
             slug = slug_from_url_path(hint.url)
             logger.info(
@@ -522,7 +548,7 @@ class BaseScraper(ABC):
             logger.info("kampanya_cikarilamadi", url=hint.url, banka=self.bank_code)
             return
 
-        bugun = utc_now().date()
+        bugun = self.bugun
         kabul_edilen: list[RawCampaign] = []
         for raw in raws:
             period = self._apply_period(raw, fetch.html, clean_text)

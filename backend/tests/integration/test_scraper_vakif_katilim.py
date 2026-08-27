@@ -143,14 +143,23 @@ class TestKesif:
             scraper.close()
 
         assert KURUMSAL_LISTE in cekilen
-        assert BIREYSEL_ARSIV in cekilen
+        # ⚠️ ARŞİV GEZİLMEZ — `LISTING_PAGES` içinde `gecmis-kampanyalar`
+        # bilerek yok. Eski test arşivin de çekildiğini bekliyordu; beklenti
+        # kod kararıyla birlikte güncellenmemişti.
+        assert BIREYSEL_ARSIV not in cekilen
 
-    def test_arsiv_isaretlenir(
+    def test_arsiv_sayfasi_gezilmez(
         self,
         tmp_path: Path,
         fixtures: dict[str, str],
         make_transport: Callable[..., httpx.MockTransport],
     ) -> None:
+        """⚠️ Yalnızca arşiv servis edilirse keşif BOŞ döner.
+
+        `LISTING_PAGES` içinde `gecmis-kampanyalar` bilerek yok: süresi
+        dolmuş kampanyalar yeniden çekilmesin. Eski test arşivden gelenlerin
+        `archive` işaretlendiğini bekliyordu.
+        """
         scraper = _scraper(
             tmp_path,
             make_transport({BIREYSEL_ARSIV: (200, fixtures["liste"])}),
@@ -158,11 +167,12 @@ class TestKesif:
         )
         try:
             bulunan = scraper.discover()
+            cekilen = {f.url for f in scraper.fetcher.history}
         finally:
             scraper.close()
 
-        assert bulunan
-        assert all(d.discovery_method == "archive" for d in bulunan)
+        assert bulunan == []
+        assert BIREYSEL_ARSIV not in cekilen
 
     def test_gercek_404_cop_kayit_uretmez(
         self, tmp_path: Path, make_transport: Callable[..., httpx.MockTransport]

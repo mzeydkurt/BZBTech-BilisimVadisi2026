@@ -9,6 +9,7 @@ from __future__ import annotations
 import gzip
 from datetime import date
 from pathlib import Path
+from typing import Final
 
 import httpx
 import pytest
@@ -64,9 +65,19 @@ def _transport(
     return httpx.MockTransport(handler)
 
 
+# ⚠️ FIXTURE TARİHİ SABİT, "BUGÜN" DEĞİL. Kayıtlı detay HTML'i
+# 15.06.2026 - 15.07.2026 dönemini taşıyor. `bugun` enjekte edilmezse o tarih
+# geçtiği gün `donem_gecerli_mi` üç kampanyayı da "bitiş_geçmiş" diye atlıyor
+# ve test KODLA İLGİSİ OLMAYAN bir sebeple kırılıyor. Fixture'ın tarihini
+# ileriye çekmek bombayı yalnızca ertelerdi; doğru çözüm günü dışarıdan
+# vermek.
+FIXTURE_ICI_GUN: Final[date] = date(2026, 6, 20)
+
+
 def _scraper(
     tmp_path: Path, transport: httpx.MockTransport, **kwargs: object
 ) -> DunyaKatilimScraper:
+    kwargs.setdefault("bugun", FIXTURE_ICI_GUN)
     settings = Settings(
         raw_html_dir=str(tmp_path / "raw_html"),
         scraper_request_delay_seconds=0.0,

@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
+from typing import Final
 
 import httpx
 import pytest
@@ -48,10 +49,20 @@ def fixtures(read_fixture) -> dict[str, str]:  # type: ignore[no-untyped-def]
     }
 
 
+# ⚠️ FIXTURE TARİHİ SABİT, "BUGÜN" DEĞİL. Kayıtlı sayfalardaki en erken
+# bitiş 7 Ağustos 2026 (`kampanya_aralik.html`: "10 Temmuz – 7 Ağustos 2026").
+# `bugun` enjekte edilmezse o tarih geçtiği gün `donem_gecerli_mi` o kampanyayı
+# atlıyor, `campaigns_new` 3 yerine 2 çıkıyor ve üç uçtan uca test KODLA
+# İLGİSİ OLMAYAN bir sebeple kırılıyor. Fixture tarihini ileriye çekmek
+# bombayı yalnızca ertelerdi; doğru çözüm günü dışarıdan vermek.
+FIXTURE_ICI_GUN: Final[date] = date(2026, 8, 1)
+
+
 def _scraper(
     tmp_path: Path, transport: httpx.MockTransport, **kwargs: object
 ) -> ZiraatKatilimScraper:
     """Sahte taşıyıcıya bağlı, hız sınırı kapalı scraper üretir."""
+    kwargs.setdefault("bugun", FIXTURE_ICI_GUN)
     settings = Settings(
         raw_html_dir=str(tmp_path / "raw_html"),
         scraper_request_delay_seconds=0.0,
@@ -81,13 +92,20 @@ def _tam_transport(
 class TestGirisNoktasi:
     """⚠️ Canlı sitede ölçüldü: tek çalışan giriş noktası `/kart-kampanyalari`."""
 
-    def test_yalnizca_iki_liste_istegi_yapilir(
+    def test_yalnizca_tek_liste_istegi_yapilir(
         self,
         tmp_path: Path,
         fixtures: dict[str, str],
         make_transport: Callable[..., httpx.MockTransport],
     ) -> None:
-        """Sektör kartta yazılı; 14 süzgeç sayfası GEZİLMEZ."""
+        """Sektör kartta yazılı; 14 süzgeç sayfası GEZİLMEZ.
+
+        ⚠️ ARŞİV DE GEZİLMEZ ve bu BİLİNÇLİ BİR KARAR (`discover()`
+        docstring'i): süresi dolmuş kampanyalar yeniden çekilmesin. Canlı
+        listede kalan bayat kartlar detay sonrası `donem_gecerli_mi` ile
+        atlanıyor. Test önceden `{LISTING_URL, ARCHIVE_URL}` bekliyordu;
+        beklenti kod kararıyla birlikte güncellenmemişti.
+        """
         scraper = _scraper(tmp_path, make_transport({LISTING_URL: (200, fixtures["liste"])}))
         try:
             scraper.discover()
@@ -97,7 +115,8 @@ class TestGirisNoktasi:
         finally:
             scraper.close()
 
-        assert set(liste_istekleri) == {LISTING_URL, ARCHIVE_URL}
+        assert set(liste_istekleri) == {LISTING_URL}
+        assert ARCHIVE_URL not in liste_istekleri
 
     def test_493_donduren_adrese_istek_atilmaz(
         self,
@@ -215,21 +234,28 @@ class TestKesif:
         assert not any("instagram.com" in url for url in adresler)
         assert LISTING_URL not in adresler
 
-    def test_arsiv_kaynagi_isaretlenir(
+    def test_arsiv_sayfasi_gezilmez(
         self,
         tmp_path: Path,
         fixtures: dict[str, str],
         make_transport: Callable[..., httpx.MockTransport],
     ) -> None:
-        """Yalnızca arşiv sayfasından gelenler arşiv sayılır."""
+        """⚠️ Arşiv sayfası HİÇ ÇEKİLMEZ; keşif yalnızca canlı listeden.
+
+        Yalnızca arşiv adresi servis edildiğinde keşif BOŞ dönmeli: canlı
+        liste alınamadı, arşive de düşülmüyor. Eski test bunun tersini
+        (arşivden gelenler `archive` işaretlenir) bekliyordu; o davranış
+        `discover()` içinde bilinçli olarak kaldırıldı.
+        """
         scraper = _scraper(tmp_path, make_transport({ARCHIVE_URL: (200, fixtures["liste"])}))
         try:
             bulunan = scraper.discover()
+            cekilen = {f.url for f in scraper.fetcher.history}
         finally:
             scraper.close()
 
-        assert bulunan
-        assert all(d.discovery_method == "archive" for d in bulunan)
+        assert bulunan == []
+        assert ARCHIVE_URL not in cekilen
 
     def test_liste_alinamazsa_cokmez(
         self, tmp_path: Path, make_transport: Callable[..., httpx.MockTransport]

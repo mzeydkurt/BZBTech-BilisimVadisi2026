@@ -198,8 +198,15 @@ def test_tanimsiz_alan_sessizce_yok_sayilmaz() -> None:
 
 
 def test_her_alanin_birimi_var() -> None:
-    """Birimsiz alan olmaz: `2.05` oran mı tutar mı belli olmalı."""
-    gecerli = {"pct", "TRY", "month", "count", "bool", "date", "enum"}
+    """Birimsiz alan olmaz: `2.05` oran mı tutar mı belli olmalı.
+
+    ⚠️ `json` DA GEÇERLİ BİR BİRİMDİR. `tier_structure` tek bir sayı değil
+    eşik→ödül çiftlerinin listesi; sayısal bir birim verilirse doğrulama
+    katmanı (KAPI A7 katman 4) gövdeyi sayıya çevirmeye çalışır ve alanı
+    her seferinde reddeder. Birimin adı, o katmanın alanı MUAF sayması için
+    `NUMERIC_UNITS` dışında olmak zorunda.
+    """
+    gecerli = {"pct", "TRY", "month", "count", "bool", "date", "enum", "json"}
 
     for alan in EXTRACTABLE_FIELDS:
         assert unit_of(alan) in gecerli, alan

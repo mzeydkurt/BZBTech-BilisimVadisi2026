@@ -80,6 +80,34 @@ QUERY_ONLY_KEYWORDS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
     },
 }
 
+# ── Sorguda eksen süzgeci ÜRETMEYECEK anahtar kelimeler ───
+# ⚠️ BİR SİMGENİN İKİ EKSENDE ROLÜ OLAMAZ — `_karsilastirma_maskele`
+# içindeki "altın/altında" vakasıyla AYNI hata sınıfı, farklı yüzü.
+#
+# `PRODUCT_TYPE_KEYWORDS["alisveris_puani"]` listesinde "nakit iade" var. O
+# sözlük uzun kampanya SAYFALARI için doğru: sayfasında nakit iade geçen bir
+# kampanya gerçekten bir alışveriş-puanı ürünüdür. Ama "nakit iade" AYNI
+# ZAMANDA bir FAYDA'dır (`BENEFIT_KEYWORDS["nakit_iade"]`) ve sorguda tek bir
+# sözcük iki ekseni birden dolduruyor. Eksenler VE ile bağlandığı için sonuç
+# çift kapı oluyor:
+#
+#     "Uçak bileti alımlarında nakit iade veren TOM Bank kampanyaları"
+#       → benefit=nakit_iade        (doğru)
+#       → product_type=alisveris_puani  (istenmeyen)
+#     İlgili 5 kampanyanın hepsi `product_type=kart` → süzgeç 0 sonuç.
+#
+# Ölçüldü: `docs/erisim_recall.md` sorgu e02, geri çağırma 0,00 → 1,00.
+#
+# ⚠️ `taxonomy.py` DEĞİŞTİRİLMEZ. Sınıflandırma tarafında "nakit iade" →
+# `alisveris_puani` çıkarımı DOĞRU kalır; yanlış olan aynı eşiği kısa bir
+# soruda kullanmaktı. Ayrım `QUERY_ONLY_KEYWORDS` ile aynı gerekçeye dayanır,
+# yalnızca yönü ters.
+QUERY_EXCLUDED_KEYWORDS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
+    "product_type": {
+        "alisveris_puani": ("nakit iade",),
+    },
+}
+
 # ── Niyet işaretçileri ────────────────────────────────────
 # Toplama niyeti erişime hiç girmez; SQL ile yanıtlanır (mimari §5).
 AGGREGATE_MARKERS: Final[dict[str, str]] = {
@@ -302,6 +330,23 @@ NUMERIC_FIELD_MARKERS: Final[dict[str, tuple[str, ...]]] = {
     "financing_amount_max": ("finansman tutari", "tutar", "limit"),
     "cashback_pct": ("nakit iade",),
     "discount_pct": ("indirim",),
+    # ⚠️ ÇOK SÖZCÜKLÜ İŞARETÇİ ZORUNLU. Çıplak "toplam" `reward_amount_try`nin
+    # "odul" işaretçisiyle sürekli yarışırdı ve seçim en yakın işaretçiye göre
+    # yapıldığı için sonuç cümledeki sözcük sırasına bağlı olurdu. Öbek hâlinde
+    # yazıldığında yalnızca kullanıcı gerçekten TOPLAM faydayı sorduğunda
+    # eşleşir.
+    #
+    # ⚠️ Bu alan çıkarılıyor (77 kampanya), `campaign_metrics`e yazılıyor,
+    # `corpus._METRIC_FIELDS` ve `aggregate.FIELD_LABELS` içinde var — ama
+    # buraya girmediği sürece HİÇBİR SORGUDAN ERİŞİLEMİYORDU. Dolu bir kolonun
+    # sorulamaması, boş bir kolondan farksızdır.
+    "max_total_benefit_try": (
+        "toplam fayda",
+        "toplam kazanc",
+        "toplam odul",
+        "azami toplam",
+        "toplamda kazan",
+    ),
 }
 
 # Yüzde taşıyan alanlar; bunlarda "%" işareti beklenir.
@@ -698,7 +743,12 @@ def _eksen_suzgecleri(katlanmis: str) -> list[QuerySignal]:
             # denetimli kelime listesi ıraksarsa sessiz süzgeç hatası olur.
             if deger not in AXIS_VALUES.get(eksen, ()):
                 continue
+            # Bu eksende sorguda süzgeç üretmemesi gereken kelimeler
+            # (bkz. `QUERY_EXCLUDED_KEYWORDS`).
+            haric = QUERY_EXCLUDED_KEYWORDS.get(eksen, {}).get(deger, ())
             for kelime in sorted(kelimeler, key=len, reverse=True):
+                if kelime in haric:
+                    continue
                 if _kelime_var(katlanmis, kelime):
                     sonuc.append(
                         QuerySignal(
@@ -1176,6 +1226,7 @@ _KISIT_ETIKETLERI: Final[dict[str, str]] = {
     "financing_amount_max": "Finansman tutarı",
     "cashback_pct": "Nakit iade",
     "discount_pct": "İndirim",
+    "max_total_benefit_try": "Azami toplam fayda",
 }
 
 

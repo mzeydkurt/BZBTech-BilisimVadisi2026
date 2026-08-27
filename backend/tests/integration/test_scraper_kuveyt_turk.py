@@ -163,9 +163,15 @@ class TestKesif:
         assert ESNAF_URL in adresler
         assert len(ESNAF_URL.rsplit("/", 1)[-1]) > 70
 
-    def test_arsiv_sayfasi_daima_taranir(
+    def test_arsiv_sayfasi_gezilmez(
         self, tmp_path: Path, make_transport: Callable[..., httpx.MockTransport]
     ) -> None:
+        """⚠️ Arşiv BİLEREK eklenmiyor (`_listing_pages` son satırı).
+
+        Süresi dolmuş kampanyalar yeniden çekilmesin. Eski test arşivin
+        "daima taranır" olduğunu bekliyordu; beklenti kod kararıyla birlikte
+        güncellenmemişti.
+        """
         scraper = _scraper(tmp_path, make_transport({}), categories=["kart-kampanyalari"])
         try:
             scraper.discover()
@@ -173,11 +179,12 @@ class TestKesif:
         finally:
             scraper.close()
 
-        assert ARSIV_URL in cekilen
+        assert ARSIV_URL not in cekilen
 
-    def test_kategori_verilmezse_sekiz_liste_ve_arsiv(
+    def test_kategori_verilmezse_sekiz_liste_taranir(
         self, tmp_path: Path, make_transport: Callable[..., httpx.MockTransport]
     ) -> None:
+        """2 segment × 4 kategori = 8 liste; arşiv YOK (bkz. üstteki test)."""
         scraper = _scraper(tmp_path, make_transport({}))
         try:
             scraper.discover()
@@ -185,8 +192,8 @@ class TestKesif:
         finally:
             scraper.close()
 
-        # 2 segment × 4 kategori + arşiv
-        assert len(cekilen) == 9
+        assert len(cekilen) == 8
+        assert ARSIV_URL not in cekilen
 
     def test_url_yardimcilari(self) -> None:
         assert KuveytTurkScraper.segment_from_url(BARCIN_URL) == "bireysel"
