@@ -4,7 +4,7 @@
     2  Kanıt zorunluluğu    `evidence` boşsa alan reddedilir
     3  Alt dize doğrulama   kanıt kaynakta FİİLEN geçiyor mu?          ⭐
     4  Sayısal doğrulama    üretilen rakam varyantlarıyla kaynakta var mı?
-    4b Birim uyumu         rakam DOĞRU BÜYÜKLÜĞÜ mü ölçüyor?           
+    4b Birim uyumu         rakam DOĞRU BÜYÜKLÜĞÜ mü ölçüyor?
     5  Mantık kuralları     alanlar birbiriyle tutarlı mı?
     6  Terminoloji          ürettiğimiz metinde konvansiyonel terim var mı?
 
@@ -25,8 +25,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Final
 
-from app.core.normalization.text import lower_tr
-
 from app.ai.extraction.rule_based import ExtractedField
 from app.ai.validation.evidence import validate_evidence
 from app.ai.validation.logic import check_logic
@@ -37,6 +35,7 @@ from app.ai.validation.terminology import (
     check_terminology,
     load_forbidden_terms,
 )
+from app.core.normalization.text import lower_tr
 
 # Red gerekçeleri — `campaign_extractions.rejected_reason` değerleri.
 REASON_NO_EVIDENCE: Final[str] = "evidence_missing"

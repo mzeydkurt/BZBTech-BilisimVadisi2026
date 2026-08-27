@@ -88,7 +88,7 @@ class TestEvrenModelKimligi:
         assert bilgi.is_local is False
 
     def test_kunyesi_olmayan_model_dogrulanmadi_der(self) -> None:
-        """ Bilinmeyeni izin verici saymak, doğrulanmamış bir iddiadır."""
+        """Bilinmeyeni izin verici saymak, doğrulanmamış bir iddiadır."""
         bilgi = EvrenProvider(_ayarlar(llm_provider="evren", evren_model="yeni-model")).model_info
         assert "doğrulanmadı" in bilgi.license
         assert "Apache" not in bilgi.license
