@@ -11,6 +11,7 @@ import {
 } from "recharts";
 
 import { ExactTermMatchWarning } from "@/components/simulator/ExactTermMatchWarning";
+import { EvidenceText } from "@/components/common/EvidenceText";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -101,75 +102,97 @@ export function FinancingResults({ result }: { result: FinancingSimulationRespon
   }));
 
   const exportData = (format: "csv" | "xlsx") => {
-    const base = `taksit-simulasyon-${result.term_months}ay`;
+    const base = `finansman-taksit-simulasyon-${result.term_months}ay`;
+    const amountNum = parseDecimal(result.amount_try) ?? 0;
     const headers = [
       "Banka",
-      "Ürün",
-      "Kâr payı (%)",
-      "BSMV (%)",
-      "KKDF (%)",
-      "Aylık taksit (TL)",
-      "Toplam kâr payı (TL)",
+      "Ürün Adı",
+      "Finansman Tutarı (TL)",
+      "Vade (Ay)",
+      "Aylık Kâr Payı Oranı (%)",
+      "BSMV Oranı (%)",
+      "KKDF Oranı (%)",
+      "Aylık Taksit Tutarı (TL)",
+      "Toplam Kâr Payı (TL)",
       "Toplam BSMV (TL)",
       "Toplam KKDF (TL)",
-      "Toplam ödeme (TL)",
-      "Tahsis ücreti (TL)",
-      "Toplam maliyet (TL)",
-      "Yıllık maliyet (%)",
+      "Toplam Geri Ödeme (TL)",
+      "Tahsis Ücreti (TL)",
+      "Toplam Maliyet (TL)",
+      "Yıllık Maliyet Oranı (%)",
       "Kaynak URL",
     ];
     const rows = result.offers.map((o) => [
       o.bank_name,
       o.product_name,
-      o.profit_rate_pct,
-      o.bsmv_rate_pct ?? "0",
-      o.kkdf_rate_pct ?? "0",
-      o.monthly_payment_try,
-      o.total_profit_try,
-      o.total_bsmv_try ?? "0",
-      o.total_kkdf_try ?? "0",
-      o.total_payment_try,
-      o.allocation_fee_try,
-      o.total_cost_try,
-      o.annual_cost_pct,
-      o.source_url,
+      amountNum,
+      result.term_months,
+      parseDecimal(o.profit_rate_pct) ?? o.profit_rate_pct,
+      parseDecimal(o.bsmv_rate_pct ?? "0") ?? 0,
+      parseDecimal(o.kkdf_rate_pct ?? "0") ?? 0,
+      parseDecimal(o.monthly_payment_try) ?? o.monthly_payment_try,
+      parseDecimal(o.total_profit_try) ?? o.total_profit_try,
+      parseDecimal(o.total_bsmv_try ?? "0") ?? 0,
+      parseDecimal(o.total_kkdf_try ?? "0") ?? 0,
+      parseDecimal(o.total_payment_try) ?? o.total_payment_try,
+      parseDecimal(o.allocation_fee_try ?? "") ?? (o.allocation_fee_try ? o.allocation_fee_try : 0),
+      parseDecimal(o.total_cost_try ?? o.total_payment_try) ?? o.total_cost_try,
+      parseDecimal(o.annual_cost_pct ?? "") ?? (o.annual_cost_pct ? o.annual_cost_pct : ""),
+      o.source_url ?? "",
     ]);
     const meta = {
-      Rapor: "Finansman taksit simülasyonu",
-      "Vade (ay)": result.term_months,
-      "Teklif sayısı": result.offers.length,
-      Not: result.method_note ?? "",
+      "Simülasyon Türü": "Finansman Taksit Simülasyonu",
+      "Finansman Tutarı": `${amountNum.toLocaleString("tr-TR")} TL`,
+      "Vade (Ay)": result.term_months,
+      "Ürün Türü": result.product_type,
+      "Teklif Sayısı": result.offers.length,
+      "Hesaplama Yöntemi": result.method_note ?? "",
     };
-    const best = result.offers.find((o) => o.is_best_offer);
-    const installments = best?.installments ?? [];
-    const installmentSheet =
-      installments.length > 0
-        ? {
-            name: "Taksit planı (en iyi)",
-            headers: [
-              "Ay",
-              "Taksit (TL)",
-              "Kâr payı (TL)",
-              "BSMV (TL)",
-              "KKDF (TL)",
-              "Anapara (TL)",
-              "Kalan (TL)",
-            ],
-            rows: installments.map((r) => [
-              r.month,
-              r.installment,
-              r.profit_share,
-              r.bsmv ?? "0",
-              r.kkdf ?? "0",
-              r.principal,
-              r.remaining_balance,
-            ]),
-          }
-        : null;
+    const installmentHeaders = [
+      "Taksit No (Ay)",
+      "Taksit Tutarı (TL)",
+      "Kâr Payı (TL)",
+      "BSMV (TL)",
+      "KKDF (TL)",
+      "Ödenen Anapara (TL)",
+      "Kalan Anapara Bakiyesi (TL)",
+    ];
+
+    const usedSheetNames = new Set<string>(["Finansman Teklifleri", "Veri Bulunamayan Bankalar", "Bilgilendirme"]);
+    const installmentSheets = result.offers
+      .filter((o) => o.installments && o.installments.length > 0)
+      .map((o) => {
+        let baseName = `${o.bank_name.replace(/[\[\]*?:/\\]/g, "").trim().slice(0, 24)} Plan`;
+        let candidate = baseName;
+        let counter = 1;
+        while (usedSheetNames.has(candidate)) {
+          counter++;
+          candidate = `${o.bank_name.slice(0, 20)} Plan (${counter})`.slice(0, 31);
+        }
+        usedSheetNames.add(candidate);
+
+        const sheetRows = (o.installments ?? []).map((r) => [
+          r.month,
+          parseDecimal(r.installment) ?? r.installment,
+          parseDecimal(r.profit_share) ?? r.profit_share,
+          parseDecimal(r.bsmv ?? "0") ?? 0,
+          parseDecimal(r.kkdf ?? "0") ?? 0,
+          parseDecimal(r.principal) ?? r.principal,
+          parseDecimal(r.remaining_balance) ?? r.remaining_balance,
+        ]);
+
+        return {
+          name: candidate,
+          title: `${o.bank_name} Taksit Planı (%${o.profit_rate_pct} - Aylık Taksit: ${o.monthly_payment_try} TL)`,
+          headers: installmentHeaders,
+          rows: sheetRows,
+        };
+      });
+
     const missingSheet =
       result.banks_without_data.length > 0
         ? {
-            name: "Veri yok",
+            name: "Veri Bulunamayan Bankalar",
             headers: ["Banka", "Neden"],
             rows: result.banks_without_data.map((b) => [b.bank_name, b.reason]),
           }
@@ -178,21 +201,17 @@ export function FinancingResults({ result }: { result: FinancingSimulationRespon
     if (format === "csv") {
       downloadRichCsv({
         filename: `${base}.csv`,
-        meta: { ...meta, "En iyi teklif": best?.bank_name ?? "" },
+        meta,
         headers,
         rows,
         extraSections: [
-          ...(installmentSheet
-            ? [
-                {
-                  title: "Taksit planı (en iyi teklif)",
-                  headers: installmentSheet.headers,
-                  rows: installmentSheet.rows,
-                },
-              ]
-            : []),
+          ...installmentSheets.map((s) => ({
+            title: s.title,
+            headers: s.headers,
+            rows: s.rows,
+          })),
           ...(missingSheet
-            ? [{ title: "Veri yok", headers: missingSheet.headers, rows: missingSheet.rows }]
+            ? [{ title: "Veri Bulunamayan Bankalar", headers: missingSheet.headers, rows: missingSheet.rows }]
             : []),
         ],
       });
@@ -201,10 +220,14 @@ export function FinancingResults({ result }: { result: FinancingSimulationRespon
 
     downloadExcelWorkbook({
       filename: `${base}.xlsx`,
-      meta: { ...meta, "En iyi teklif": best?.bank_name ?? "" },
+      meta,
       sheets: [
-        { name: "Teklifler", headers, rows },
-        ...(installmentSheet ? [installmentSheet] : []),
+        { name: "Finansman Teklifleri", headers, rows },
+        ...installmentSheets.map((s) => ({
+          name: s.name,
+          headers: s.headers,
+          rows: s.rows,
+        })),
         ...(missingSheet ? [missingSheet] : []),
       ],
     });
@@ -348,9 +371,9 @@ export function FinancingResults({ result }: { result: FinancingSimulationRespon
                     <TableRow className="hover:bg-transparent">
                       <TableCell colSpan={7} className="bg-neutral-50 p-0">
                         {offer.evidence_text && (
-                          <p className="border-t border-border px-4 py-2 text-xs text-text-500">
-                            Kanıt: “{offer.evidence_text}”
-                          </p>
+                          <div className="border-t border-border px-4 py-2">
+                            <EvidenceText text={offer.evidence_text} className="text-xs text-text-500" />
+                          </div>
                         )}
                         <InstallmentTable offer={offer} />
                       </TableCell>

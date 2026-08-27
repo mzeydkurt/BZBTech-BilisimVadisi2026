@@ -1,4 +1,4 @@
-/** Zengin CSV / Excel dışa aktarma — özet + sıralama + uyarı sayfaları. */
+/** Zengin CSV / Excel dışa aktarma — temiz tablolar + veri odaklı sayfalar. */
 
 import * as XLSX from "xlsx";
 
@@ -19,8 +19,8 @@ function escapeCsvCell(value: unknown): string {
 function metaRows(meta: ExportMeta): string[][] {
   const now = new Date().toLocaleString("tr-TR");
   const rows: string[][] = [
-    ["Alan", "Değer"],
-    ["Dışa aktarma zamanı", now],
+    ["Parametre", "Değer"],
+    ["Dışa Aktarma Zamanı", now],
   ];
   for (const [k, v] of Object.entries(meta)) {
     if (v === undefined || v === null || v === "") continue;
@@ -38,23 +38,23 @@ function triggerDownload(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** Türkçe başlıklı CSV: üstte meta bloğu, sonra boş satır, sonra tablo. */
+/** Doğrudan 1. satırdan başlayan, temiz ve her araçla açılabilir CSV. */
 export function downloadRichCsv(opts: {
   filename: string;
-  meta: ExportMeta;
+  meta?: ExportMeta;
   headers: string[];
   rows: unknown[][];
   extraSections?: { title: string; headers: string[]; rows: unknown[][] }[];
 }): void {
   const lines: string[] = [];
-  for (const row of metaRows(opts.meta)) {
-    lines.push(row.map(escapeCsvCell).join(","));
-  }
-  lines.push("");
+
+  // 1. Ana Veri Tablosu (1. satır başlıklar)
   lines.push(opts.headers.map(escapeCsvCell).join(","));
   for (const row of opts.rows) {
     lines.push(row.map(escapeCsvCell).join(","));
   }
+
+  // 2. Varsa Ek Tablolar (örn. Taksit Planı)
   for (const section of opts.extraSections ?? []) {
     lines.push("");
     lines.push(escapeCsvCell(section.title));
@@ -63,6 +63,16 @@ export function downloadRichCsv(opts: {
       lines.push(row.map(escapeCsvCell).join(","));
     }
   }
+
+  // 3. Bilgilendirme Notları (Sayfa altına eklenir)
+  if (opts.meta && Object.keys(opts.meta).length > 0) {
+    lines.push("");
+    lines.push("# BİLGİLENDİRME VE PARAMETRELER");
+    for (const row of metaRows(opts.meta).slice(1)) {
+      lines.push(row.map(escapeCsvCell).join(","));
+    }
+  }
+
   const blob = new Blob(["\uFEFF" + lines.join("\n")], {
     type: "text/csv;charset=utf-8",
   });
@@ -70,24 +80,43 @@ export function downloadRichCsv(opts: {
   triggerDownload(blob, name);
 }
 
-/** Çok sayfalı Excel: Özet + veri sayfaları. */
+/** Veri sayfalarını 1. sıraya koyan, sayıları formüllenebilir Excel dışa aktarımı. */
 export function downloadExcelWorkbook(opts: {
   filename: string;
-  meta: ExportMeta;
+  meta?: ExportMeta;
   sheets: SheetTable[];
 }): void {
   const wb = XLSX.utils.book_new();
-  const ozet = XLSX.utils.aoa_to_sheet(metaRows(opts.meta));
-  ozet["!cols"] = [{ wch: 28 }, { wch: 48 }];
-  XLSX.utils.book_append_sheet(wb, ozet, "Özet");
 
+  // 1. Veri Sayfaları (Kullanıcı dosyayı açtığında ilk sayfa doğrudan veri tablosudur)
   for (const sheet of opts.sheets) {
     if (sheet.rows.length === 0 && sheet.headers.length === 0) continue;
-    const aoa = [sheet.headers, ...sheet.rows.map((r) => r.map((c) => (c ?? "") as string | number))];
+    const aoa = [
+      sheet.headers,
+      ...sheet.rows.map((r) =>
+        r.map((c) => {
+          if (c === null || c === undefined) return "";
+          if (typeof c === "string" && /^-?\d+(\.\d+)?$/.test(c)) {
+            const num = Number(c);
+            if (!isNaN(num)) return num;
+          }
+          return c as string | number;
+        }),
+      ),
+    ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws["!cols"] = sheet.headers.map((h) => ({ wch: Math.min(Math.max(h.length + 2, 12), 36) }));
-    const safeName = sheet.name.slice(0, 31) || "Sayfa";
+    ws["!cols"] = sheet.headers.map((h) => ({
+      wch: Math.min(Math.max(h.length + 4, 14), 40),
+    }));
+    const safeName = sheet.name.slice(0, 31) || "Teklifler";
     XLSX.utils.book_append_sheet(wb, ws, safeName);
+  }
+
+  // 2. Bilgilendirme Sayfası (Sona eklenir)
+  if (opts.meta && Object.keys(opts.meta).length > 0) {
+    const ozet = XLSX.utils.aoa_to_sheet(metaRows(opts.meta));
+    ozet["!cols"] = [{ wch: 28 }, { wch: 60 }];
+    XLSX.utils.book_append_sheet(wb, ozet, "Bilgilendirme");
   }
 
   const data = XLSX.write(wb, { bookType: "xlsx", type: "array" });

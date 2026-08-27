@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 
+import { EvidenceText } from "@/components/common/EvidenceText";
 import { RateTypeBadge } from "@/components/products/RateTypeBadge";
 import {
   Table,
@@ -87,7 +88,10 @@ export function ProductRateTable({ rates }: { rates: ProductRateOut[] }) {
               {rate.evidence_text && (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={8} className="whitespace-pre-wrap pt-0 text-xs text-text-500">
-                    Kaynak metin (birebir): “{rate.evidence_text}”
+                    <EvidenceText
+                      text={rate.evidence_text}
+                      prefix="Kaynak metin (birebir): "
+                    />
                   </TableCell>
                 </TableRow>
               )}

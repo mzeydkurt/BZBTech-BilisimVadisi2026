@@ -336,7 +336,7 @@ def cekilen_veriyi_yukle(session: Any, yakalanan: dict[str, dict[str, Any]]) -> 
                 values=hucreler,
                 evidence_text=(
                     f"TKBB Veri Peteği — {tanim.aciklama}. "
-                    f"Kaynak: {TKBB_KAYNAK_SAYFASI} (veri: {veri['kaynak_url']})"
+                    f"Kaynak: {TKBB_KAYNAK_SAYFASI}"
                 ),
             )
 
