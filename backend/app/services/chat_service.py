@@ -1322,23 +1322,50 @@ async def _aggregate_response(
     # bulunmamaktadır" yanıtı dönüyordu; oran verisi `product_rates`'te.
     oran_urunleri: list[ChatProductItem] = []
     sifir_notu: str | None = None
+    oran_beraberlik: int | None = None
     if spec.kind == "extremum" and plan.source_domain in {"finansman", "katilma"}:
         kazanan_oran, berabere_oran, oransiz = _oran_ucdegeri(corpus, plan, spec)
         if kazanan_oran is not None:
             oran_urunleri = [_product_item(d) for d in [kazanan_oran, *berabere_oran][: req.limit]]
-            yon = "en yüksek" if spec.direction == "max" else "en düşük"
-            metin = (
-                f"{yon.capitalize()} {kazanan_oran.rate_type.replace('_', ' ')} "
-                f"%{kazanan_oran.profit_rate_pct} ile {kazanan_oran.bank_name} "
-                f"({kazanan_oran.product_name})."
+
+            # ⚠️ YAPISAL ALAN DA DOLDURULUR. Ölçüldü: metin kesin bir kazanan
+            # ilan ederken `aggregate` bloğu `total=0` dönüyordu ("hesap
+            # yapılmadı") ve arayüzdeki toplama paneli boş kalıyordu. Aynı
+            # yanıtın iki yüzü birbiriyle çelişemez.
+            oran_alani = _RATE_DOC_ALANI.get(spec.field or "", "profit_rate_pct")
+            kazanan_deger = getattr(kazanan_oran, oran_alani)
+            vade_mi = oran_alani == "term_months"
+            oran_beraberlik = len(berabere_oran)
+            hesap = replace(
+                hesap,
+                value=Decimal(str(kazanan_deger)),
+                with_value=1 + oran_beraberlik,
+                without_value=oransiz,
+                total=1 + oran_beraberlik + oransiz,
+                banks_with=tuple(sorted({d.bank_name for d in [kazanan_oran, *berabere_oran]})),
             )
+
+            if vade_mi:
+                # "En uzun vade" sorusuna oran cümlesi kurmak yanlış birim üretir.
+                yon = "en uzun" if spec.direction == "max" else "en kısa"
+                metin = (
+                    f"{yon.capitalize()} vade {kazanan_deger} ay ile "
+                    f"{kazanan_oran.bank_name} ({kazanan_oran.product_name})."
+                )
+            else:
+                yon = "en yüksek" if spec.direction == "max" else "en düşük"
+                metin = (
+                    f"{yon.capitalize()} {kazanan_oran.rate_type.replace('_', ' ')} "
+                    f"%{kazanan_deger} ile {kazanan_oran.bank_name} "
+                    f"({kazanan_oran.product_name})."
+                )
             if berabere_oran:
-                metin += f" Aynı oranı sunan {len(berabere_oran)} kayıt daha var."
+                metin += f" Aynı değeri sunan {len(berabere_oran)} kayıt daha var."
             if oransiz:
-                # ⚠️ KAPSAM YAZILIR: kaç kayıtta oran yok bilinmeden uç değer
+                # ⚠️ KAPSAM YAZILIR: kaç kayıtta değer yok bilinmeden uç değer
                 # yanıltıcıdır (aggregate.describe ile aynı kural).
-                metin += f" {oransiz} kayıtta oran bilgisi yok."
-            if kazanan_oran.profit_rate_pct == 0:
+                metin += f" {oransiz} kayıtta bu bilgi yok."
+            if not vade_mi and kazanan_deger == 0:
                 # ⚠️ %0 İKİ ANLAMA GELİR ve kuralla ayırt edilemez:
                 #   • gerçek bedelsiz kampanya (ölçüldü: Albaraka Togg,
                 #     10-12 ay %0, 36 ay %3,05 — kısa vade bedelsiz)
@@ -1410,7 +1437,7 @@ async def _aggregate_response(
             with_value=hesap.with_value,
             without_value=hesap.without_value,
             total=hesap.total,
-            tie_count=len(hesap.ties),
+            tie_count=oran_beraberlik if oran_beraberlik is not None else len(hesap.ties),
             by_bank=hesap.by_bank,
             banks_with=list(hesap.banks_with),
             banks_without=list(hesap.banks_without),
