@@ -89,4 +89,27 @@ kaynağını göstermek amacıyla kullanılmıştır.
 | `qwen2.5:7b` (sohbet) | Apache-2.0 (Qwen) | https://ollama.com/library/qwen2.5 | `LOCAL_LLM_MODEL` |
 | `nomic-embed-text` | Apache-2.0 | https://ollama.com/library/nomic-embed-text · https://huggingface.co/nomic-ai/nomic-embed-text-v1.5 | `EMBEDDING_MODEL` / `embeddings` tablosu |
 
+## EVREN modelleri (üretim sağlayıcısı)
+
+EVREN, TEKNOFEST 2026 kapsamında Savunma Sanayii Başkanlığı tarafından
+yarışmacı takımlara tahsis edilen çıkarım servisidir. Servisin sunduğu
+modellerin tamamı Hugging Face'te **açık ağırlıklı ve izin verici
+lisanslıdır**; kurum içi kurulumda aynı modeller yerel olarak çalıştırılabilir.
+
+| Alias | Depo | Lisans | Projede kullanım |
+|---|---|---|---|
+| `llm-fast` | [Qwen/Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) | Apache-2.0 | **üretim**: yanıt üretimi ve alan çıkarımı |
+| `bge-m3-embed` | [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) | MIT | **üretim**: gömme, 1024 boyut |
+| `llm-large` | [Qwen/Qwen3.5-122B-A10B](https://huggingface.co/Qwen/Qwen3.5-122B-A10B) | Apache-2.0 | istek başına seçenek |
+| `rerank` | [Qwen/Qwen3-Reranker-4B](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | Apache-2.0 | ölçüldü, devreye alınmadı |
+
+> **On-prem sonucu:** üretimde kullanılan `llm-fast` MoE mimarisiyle 35B toplam /
+> **3B aktif** parametre çalıştırır ve Apache-2.0'dır. Kurum içi kuruluma
+> geçildiğinde model değişmez; ölçülen üretim kalitesi doğrudan taşınır.
+
+⚠️ Bu tablo kodda tek kaynaktan tutulur:
+`app/ai/providers/evren.py::EVREN_MODEL_KUNYE`. Künyesi bulunmayan bir model
+seçilirse lisans alanı **"doğrulanmadı"** döner — bilinmeyeni izin verici
+saymak, buraya doğrulanmamış bir iddia taşımak olurdu.
+
 Tam pip denetimi: [`docs/dependency_licenses.md`](docs/dependency_licenses.md).
