@@ -27,11 +27,13 @@ const NAV_ITEMS = [
 export function Sidebar() {
   return (
     <aside className="flex h-full w-56 shrink-0 flex-col border-r border-border bg-brand-900">
-      <div className="border-b border-white/10 px-4 py-4">
-        <p className="text-sm font-semibold leading-tight text-white">
-          KATİP
-        </p>
-        <p className="text-xs text-white/70">Katılım Bankacılığı Kampanya Analiz Platformu</p>
+      <div className="border-b border-white/10 px-3 py-4">
+        <img
+          src="/katip_logo.png"
+          alt="KATİP Logo"
+          className="h-8 w-full object-contain"
+        />
+        <p className="mt-2 px-1 text-[11px] leading-tight text-white/60">Katılım Bankacılığı Kampanya Analiz Platformu</p>
       </div>
 
       <nav className="min-h-0 flex-1 overflow-y-auto p-2" aria-label="Ana gezinme">
