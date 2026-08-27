@@ -73,6 +73,35 @@ class RerankHit:
     score: float
 
 
+# EVREN alias -> (Hugging Face deposu, lisans). SSB model künyesinden alınmış,
+# lisanslar model kartlarından doğrulanmıştır.
+#
+# Künyesi bilinmeyen model için "doğrulanmadı" yazılır. Bilinmeyeni izin
+# verici saymak, `LICENSES.md`'ye doğrulanmamış bir iddia taşımak olur — bu
+# alanın daha önce "TEKNOFEST/SSB tahsisli" demesinin gerekçesi de buydu;
+# künye yayımlanınca gerekçe ortadan kalktı, kural kalktı DEĞİL.
+EVREN_MODEL_KUNYE: Final[dict[str, tuple[str, str]]] = {
+    "llm-fast": ("Qwen/Qwen3.6-35B-A3B", "Apache-2.0"),
+    "llm-large": ("Qwen/Qwen3.5-122B-A10B", "Apache-2.0"),
+    "vlm": ("Qwen/Qwen3-VL-32B-Instruct", "Apache-2.0"),
+    "router": ("Qwen/Qwen3-8B", "Apache-2.0"),
+    "guard": ("Qwen/Qwen3Guard-Gen-4B", "Apache-2.0"),
+    "bge-m3-embed": ("BAAI/bge-m3", "MIT"),
+    "bge-m3-sparse": ("BAAI/bge-m3", "MIT"),
+    "bge-m3-colbert": ("BAAI/bge-m3", "MIT"),
+    "embed": ("Qwen/Qwen3-Embedding-4B", "Apache-2.0"),
+    "rerank": ("Qwen/Qwen3-Reranker-4B", "Apache-2.0"),
+}
+
+
+def model_lisansi(model: str) -> str:
+    """Model künyesini `lisans — depo` biçiminde döndürür."""
+    depo, lisans = EVREN_MODEL_KUNYE.get(model, ("", ""))
+    if not depo:
+        return "doğrulanmadı (künye yok) — EVREN üzerinden sunuluyor"
+    return f"{lisans} — {depo} (EVREN üzerinden sunuluyor)"
+
+
 class EvrenProvider(LLMProvider):
     """EVREN'in OpenAI uyumlu uçlarını kullanır."""
 
@@ -94,15 +123,14 @@ class EvrenProvider(LLMProvider):
     def model_info(self) -> ModelInfo:
         """Kullanılan modelin kimliği.
 
-        ⚠️ `license` alanı "TEKNOFEST/SSB tahsisli" yazar, Apache-2.0 DEĞİL.
-        Servisin arkasındaki modellerin lisansı bize bildirilmedi; Apache-2.0
-        yazmak doğrulanmamış bir iddia olurdu ve `LICENSES.md`'ye yanlış bilgi
-        taşırdı.
+        Lisans `EVREN_MODEL_KUNYE`'den okunur; künyesi bilinmeyen model için
+        "doğrulanmadı" döner. Kural değişmedi — künye yayımlandığı için artık
+        doğrulanmış bir değer yazılabiliyor.
         """
         return ModelInfo(
             name=self._model or "(tanımlanmadı)",
             version=self._settings.prompt_version,
-            license="TEKNOFEST/SSB tahsisli çıkarım servisi",
+            license=model_lisansi(self._model),
             is_local=False,
             context_tokens=self._settings.local_llm_context,
         )
