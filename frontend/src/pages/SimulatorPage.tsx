@@ -19,8 +19,8 @@ import { useBanks } from "@/hooks/useBanks";
 import { useBddkCheck, useFinancingSimulation, useYieldSimulation } from "@/hooks/useSimulator";
 
 const DEFAULT_FINANCING_FORM: FinancingFormState = {
-  amount_try: "500000",
-  term_months: "36",
+  amount_try: "400000",
+  term_months: "48",
   product_type: "tasit_finansmani",
   bank_codes: [],
 };
@@ -61,15 +61,15 @@ export function SimulatorPage() {
       <div>
         <h1 className="text-xl font-semibold text-text-900">Simülatör</h1>
         <p className="mt-1 text-sm text-text-500">
-          Taksit, katılma getirisi ve BDDK finansman limiti hesaplayıcıları.
+          Bankaların güncel kâr payı oranlarıyla finansman taksitlerini hesaplayın, katılma hesabı getirilerini simüle edin ve yasal BDDK limitlerini sorgulayın.
         </p>
       </div>
 
       <Tabs defaultValue="financing">
         <TabsList>
-          <TabsTrigger value="financing">Taksit</TabsTrigger>
-          <TabsTrigger value="yield">Getiri</TabsTrigger>
-          <TabsTrigger value="bddk">BDDK</TabsTrigger>
+          <TabsTrigger value="financing">Finansman Hesaplama</TabsTrigger>
+          <TabsTrigger value="yield">Katılma Hesabı Getirisi</TabsTrigger>
+          <TabsTrigger value="bddk">BDDK Limit Sorgulama</TabsTrigger>
         </TabsList>
 
         <TabsContent value="financing" className="space-y-4">

@@ -333,8 +333,8 @@ def calculate_financing_simulation(
         method = (
             f"Eşit taksitli (annüite) plan; {tax_desc} "
             "Aylık oran, bankanın yayımladığı aylık kâr payı oranıdır. "
-            "Tahsis ücreti bu tekliflerde yayımlanmadığı için toplam maliyete "
-            "eklenemedi; sigorta gibi ek maliyetler de dahil değildir."
+            "Tahsis ücretleri bankadan bankaya azami olarak finansman tutarının binde beşi yani %0.50'si olarak tahsil edilmektedir; "
+            "bankalar arası farklılıklar gösterebileceğinden hesaplamaya dahil edilmemiştir; sigorta gibi ek maliyetler de dahil değildir."
         )
     if bddk_vade_notu:
         method = f"{method} {bddk_vade_notu}"

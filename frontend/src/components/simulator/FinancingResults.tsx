@@ -1,4 +1,4 @@
-import { ChevronDown, ExternalLink } from "lucide-react";
+import { ChevronDown, ExternalLink, Info } from "lucide-react";
 import { Fragment, useState } from "react";
 import {
   Bar,
@@ -378,7 +378,18 @@ export function FinancingResults({ result }: { result: FinancingSimulationRespon
         </div>
       )}
 
-      <p className="text-xs text-text-500">{result.method_note}</p>
+      <div className="rounded-lg border border-border bg-neutral-50 p-3.5 text-xs text-text-600">
+        <div className="flex items-start gap-2.5">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" aria-hidden="true" />
+          <div className="space-y-1">
+            <p className="font-medium text-text-900">Tahsis Ücreti ve Maliyet Bilgilendirmesi</p>
+            <p>
+              Tahsis ücretleri bankadan bankaya azami olarak finansman tutarının binde beşi yani %0.50&apos;si olarak tahsil edilmektedir. Bankalar arası farklılıklar gösterebileceğinden hesaplamaya dahil edilmemiştir.
+            </p>
+            <p className="text-text-500">{result.method_note}</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
