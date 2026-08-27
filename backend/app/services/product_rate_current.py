@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date
+from decimal import Decimal
 from typing import Protocol, TypeVar
 
 
@@ -64,4 +65,37 @@ def select_current_rates(rates: Sequence[T]) -> list[T]:
     return sonuc
 
 
-__all__ = ["select_current_rates"]
+def rate_covers_amount(
+    amount: Decimal,
+    *,
+    rate_min: Decimal | None,
+    rate_max: Decimal | None,
+    product_min: Decimal | None = None,
+    product_max: Decimal | None = None,
+) -> bool:
+    """İstenen tutar bu oran satırına uygulanabilir mi?
+
+    Hesaplayıcı / ödeme planı sorgusu tek bir örnek tutar yazar
+    (`amount_min == amount_max`). Bu bir yayımlanmış kapalı bant değildir;
+    aksi halde 150.000 TL örneği 400.000 TL simülasyonunu "oran yok" gösterir.
+
+    Gerçek aralık (`min < max`, ör. Ziraat ücret sayfası 0–400.000) hâlâ
+    dışarıdaki tutarı eler. Ürün tavanı (Jet `amount_max`) aşıldıysa satır
+    kullanılmaz; tavanı aşan örnek (800 bin probe, ürün max 400 bin) de elenir.
+    """
+    if product_min is not None and amount < product_min:
+        return False
+    if product_max is not None and amount > product_max:
+        return False
+    if rate_min is not None and rate_max is not None and rate_min == rate_max:
+        if product_max is not None and rate_min > product_max:
+            return False
+        return True
+    if rate_min is not None and amount < rate_min:
+        return False
+    if rate_max is not None and amount > rate_max:
+        return False
+    return True
+
+
+__all__ = ["select_current_rates", "rate_covers_amount"]

@@ -251,14 +251,8 @@ def rank_products(
             (ProductRate.term_days_min.is_(None)) | (ProductRate.term_days_min <= term_days),
             (ProductRate.term_days_max.is_(None)) | (ProductRate.term_days_max >= term_days),
         )
-    if amount_try is not None:
-        stmt = stmt.where(
-            (ProductRate.amount_min.is_(None)) | (ProductRate.amount_min <= amount_try),
-            (ProductRate.amount_max.is_(None)) | (ProductRate.amount_max >= amount_try),
-        )
-
     from app.services.calculator_probe_service import is_zero_rate_promotional
-    from app.services.product_rate_current import select_current_rates
+    from app.services.product_rate_current import rate_covers_amount, select_current_rates
 
     ham_satirlar = list(session.execute(stmt).all())
     guncel_idler = {o.id for o in select_current_rates([oran for oran, _, _ in ham_satirlar])}
@@ -278,6 +272,14 @@ def rank_products(
                 rate_type=oran.rate_type,
             ):
                 continue
+        if amount_try is not None and not rate_covers_amount(
+            amount_try,
+            rate_min=oran.amount_min,
+            rate_max=oran.amount_max,
+            product_min=urun.amount_min,
+            product_max=urun.amount_max,
+        ):
+            continue
         if urun.source_document_id and urun.source_document_id not in kaynaklar:
             belge = session.get(SourceDocument, urun.source_document_id)
             if belge:

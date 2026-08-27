@@ -207,6 +207,96 @@ class TestOranSecimi:
 
         assert sonuc.offers == []
 
+    def test_hesaplayici_nokta_ornegi_kapali_bant_degildir(self, seeded_session: Session) -> None:
+        """150.000 TL hesaplayıcı örneği 400.000 TL talebini 'oran yok' yapmaz."""
+        _oran_ekle(
+            seeded_session,
+            "albaraka",
+            "Taşıt",
+            profit_rate_pct=Decimal("3.21"),
+            term_months=48,
+            amount_min=Decimal("150000"),
+            amount_max=Decimal("150000"),
+        )
+
+        sonuc = calculate_financing_simulation(
+            seeded_session,
+            FinancingSimulationRequest(
+                amount_try=Decimal("400000"), term_months=48, product_type="tasit_finansmani"
+            ),
+        )
+
+        assert [t.bank_code for t in sonuc.offers] == ["albaraka"]
+        assert sonuc.offers[0].profit_rate_pct == Decimal("3.21")
+
+    def test_urun_tavanini_asan_tutar_elensin(self, seeded_session: Session) -> None:
+        banka = seeded_session.scalar(select(Bank).where(Bank.code == "albaraka"))
+        assert banka is not None
+        urun = Product(
+            bank_id=banka.id,
+            external_key="albaraka:tavanli-tasit",
+            name="Taşıt",
+            product_type="tasit_finansmani",
+            amount_max=Decimal("400000"),
+        )
+        seeded_session.add(urun)
+        seeded_session.flush()
+        seeded_session.add(
+            ProductRate(
+                product_id=urun.id,
+                band_key="tavanli",
+                rate_type="financing_rate",
+                currency="TRY",
+                evidence_text="kanıt",
+                profit_rate_pct=Decimal("3.21"),
+                term_months=48,
+                amount_min=Decimal("150000"),
+                amount_max=Decimal("150000"),
+            )
+        )
+        seeded_session.flush()
+
+        sonuc = calculate_financing_simulation(
+            seeded_session,
+            FinancingSimulationRequest(
+                amount_try=Decimal("500000"), term_months=48, product_type="tasit_finansmani"
+            ),
+        )
+
+        assert "albaraka" not in {t.bank_code for t in sonuc.offers}
+
+    def test_sahte_sifir_oran_vadesiz_satir_teklif_uretmez(self, seeded_session: Session) -> None:
+        """Emlak 'text' %0 (vade yok) gerçek hesaplayıcı oranını gizlemesin."""
+        _oran_ekle(
+            seeded_session,
+            "emlak_katilim",
+            "Konut",
+            profit_rate_pct=Decimal("0"),
+            term_months=None,
+            product_type="konut_finansmani",
+            rate_source="text",
+        )
+        _oran_ekle(
+            seeded_session,
+            "emlak_katilim",
+            "Konut2",
+            profit_rate_pct=Decimal("3.39"),
+            term_months=120,
+            product_type="konut_finansmani",
+            amount_min=Decimal("1000000"),
+            amount_max=Decimal("1000000"),
+        )
+
+        sonuc = calculate_financing_simulation(
+            seeded_session,
+            FinancingSimulationRequest(
+                amount_try=Decimal("400000"), term_months=120, product_type="konut_finansmani"
+            ),
+        )
+
+        assert [t.bank_code for t in sonuc.offers] == ["emlak_katilim"]
+        assert sonuc.offers[0].profit_rate_pct == Decimal("3.39")
+
 
 # ── Katılma getirisi ──────────────────────────────────────
 

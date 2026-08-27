@@ -212,7 +212,8 @@ def calculate_financing_simulation(
     tahsis_dahil = False
 
     for banka in bankalar:
-        from app.services.product_rate_current import select_current_rates
+        from app.services.calculator_probe_service import is_zero_rate_promotional
+        from app.services.product_rate_current import rate_covers_amount, select_current_rates
 
         satirlar = list(
             session.scalars(
@@ -232,16 +233,40 @@ def calculate_financing_simulation(
         )
         # Aynı bandın eski kazıma tarihleri DB'de kalır; teklifte yalnızca güncel.
         satirlar = select_current_rates(satirlar)
+        urun_by_id = {
+            u.id: u
+            for u in session.scalars(
+                select(Product).where(Product.id.in_({o.product_id for o in satirlar} or {0}))
+            )
+        }
 
-        # Tutar bandı yayımlanmışsa istenen tutar bandın dışındaysa oran geçersizdir.
-        satirlar = [
-            o
-            for o in satirlar
-            if (o.amount_min is None or req.amount_try >= o.amount_min)
-            and (o.amount_max is None or req.amount_try <= o.amount_max)
-        ]
+        uygun: list[ProductRate] = []
+        for o in satirlar:
+            urun = urun_by_id.get(o.product_id)
+            if urun is None:
+                continue
+            if (
+                o.profit_rate_pct is not None
+                and o.profit_rate_pct <= Decimal("0.05")
+                and not is_zero_rate_promotional(
+                    product_name=urun.name,
+                    description=urun.description,
+                    evidence_text=o.evidence_text,
+                    product_type=urun.product_type,
+                    rate_type=o.rate_type,
+                )
+            ):
+                continue
+            if rate_covers_amount(
+                req.amount_try,
+                rate_min=o.amount_min,
+                rate_max=o.amount_max,
+                product_min=urun.amount_min,
+                product_max=urun.amount_max,
+            ):
+                uygun.append(o)
 
-        oran, tam_eslesme = _en_yakin_vade(satirlar, req.term_months, dusuk_iyi=True)
+        oran, tam_eslesme = _en_yakin_vade(uygun, req.term_months, dusuk_iyi=True)
         if oran is None or oran.profit_rate_pct is None:
             eksikler.append(
                 MissingDataBank(
@@ -256,7 +281,7 @@ def calculate_financing_simulation(
             )
             continue
 
-        urun = session.get(Product, oran.product_id)
+        urun = urun_by_id.get(oran.product_id) or session.get(Product, oran.product_id)
         tax_cfg = financing_tax_rates(req.product_type)
         aylik_oran = oran.profit_rate_pct / _YUZDE
         efektif_aylik_oran = aylik_oran * tax_cfg.total_tax_multiplier
