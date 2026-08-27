@@ -76,15 +76,22 @@ class TestSaglayiciFabrikasi:
 
 
 class TestEvrenModelKimligi:
-    def test_lisans_apache_diye_yazilmaz(self) -> None:
-        """⚠️ Servisin arkasındaki modellerin lisansı bize bildirilmedi.
+    def test_lisans_kunyeden_okunur(self) -> None:
+        """Künye SSB tarafından yayımlandı; lisans model kartından doğrulandı.
 
-        Apache-2.0 yazmak doğrulanmamış bir iddia olur ve `LICENSES.md`'ye
-        yanlış bilgi taşır.
+        Bu test eskiden "Apache yazılmaz" diyordu. Kural değişmedi — künye
+        yayımlandığı için artık DOĞRULANMIŞ bir değer yazılabiliyor.
         """
-        bilgi = EvrenProvider(_ayarlar(llm_provider="evren")).model_info
-        assert "Apache" not in bilgi.license
+        bilgi = EvrenProvider(_ayarlar(llm_provider="evren", evren_model="llm-fast")).model_info
+        assert "Apache-2.0" in bilgi.license
+        assert "Qwen/Qwen3.6-35B-A3B" in bilgi.license
         assert bilgi.is_local is False
+
+    def test_kunyesi_olmayan_model_dogrulanmadi_der(self) -> None:
+        """ Bilinmeyeni izin verici saymak, doğrulanmamış bir iddiadır."""
+        bilgi = EvrenProvider(_ayarlar(llm_provider="evren", evren_model="yeni-model")).model_info
+        assert "doğrulanmadı" in bilgi.license
+        assert "Apache" not in bilgi.license
 
 
 class TestEvrenYanitAyristirma:
