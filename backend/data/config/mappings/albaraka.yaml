@@ -1,4 +1,7 @@
 # Albaraka — getFinanceCalculate (doğrulanmış 2026-08-23)
+#
+# Oran / taksit / YMO: pazarlama hesaplayıcısı.
+# Tutar-vade-LTV tavanı: Jet başvuru wsGetSettingParams (2026-08-26).
 
 profit_rate:
   - Data.ProfitRate
@@ -18,3 +21,28 @@ request:
   product: FinanceType  # JSON
 endpoint: /plugins/getFinanceCalculate
 method: GET
+
+# Jet başvuru formu (basvur.albaraka.com.tr) — limit, oran değil.
+jet_settings:
+  endpoint: /ws/wsGetSettingParams
+  family_amount:
+    "001": MAX_REQESTED_AMOUNT_001  # konut
+    "002": MAX_REQESTED_AMOUNT_002  # taşıt
+    "003": MAX_REQESTED_AMOUNT_003  # ihtiyaç
+  family_maturity:
+    "001": MAX_REQESTED_MATURITY_001
+    "002": MAX_REQESTED_MATURITY_002
+    "003": MAX_REQESTED_MATURITY_003
+  subtype_maturity_prefix: MAX_REQESTED_MATURITY_
+  ltv:
+    konut: RC_RESIDENCE_CREDIBILITY_PERCENT
+    tasit: RC_VEHICLE_CREDIBILITY_RATIO_1
+    tasit_alt: RC_VEHICLE_CREDIBILITY_RATIO_2
+    tasit_esik: RC_VEHICLE_CREDIBILITY_AMOUNT
+    ihtiyac: RC_CONSUMER_CREDIBILITY_RATIO
+  html:
+    type: "#txtFinansmanType"
+    subtype: "#txtFinansmanSubType"
+    amount_slider: "#finansmanTutarSlider"
+    term_slider: "#finansmanVadeSlider"
+

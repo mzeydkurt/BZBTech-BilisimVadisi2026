@@ -17,6 +17,12 @@ from bs4 import BeautifulSoup
 
 from app.config import get_settings
 from app.logging_config import get_logger
+from app.scrapers.banks.albaraka_jet import (
+    JetCatalog,
+    cap_amount_term,
+    family_code_for_hint,
+    parse_setting_params,
+)
 from app.scrapers.calculator_probes.api_adapters import (
     FinancingCalculation,
     parse_tr_money,
@@ -32,6 +38,8 @@ CALCULATOR_URL = (
     "finansman-hesaplama/ihtiyac-finansmani-hesaplama"
 )
 API_URL = "https://www.albaraka.com.tr/plugins/getFinanceCalculate"
+SETTINGS_URL = "https://basvur.albaraka.com.tr/ws/wsGetSettingParams"
+JET_REFERER = "https://basvur.albaraka.com.tr/jet-finansman"
 
 
 def _client(
@@ -89,12 +97,30 @@ def list_finance_types(client: httpx.Client | None = None) -> list[dict[str, Any
             client.close()
 
 
+def load_setting_params(client: httpx.Client | None = None) -> JetCatalog:
+    """Jet başvuru limitlerini çeker; hata olursa boş katalog."""
+    kendi = client is None
+    client = client or _client(accept="application/json, */*;q=0.8", ajax=False)
+    try:
+        # Referer başvuru formu; settings başka host'ta.
+        yanit = client.get(SETTINGS_URL, headers={"Referer": JET_REFERER})
+        yanit.raise_for_status()
+        return parse_setting_params(yanit.json() if yanit.content else yanit.text)
+    except Exception as exc:
+        logger.warning("albaraka_jet_settings_hata", hata=str(exc))
+        return JetCatalog()
+    finally:
+        if kendi:
+            client.close()
+
+
 def calculate(
     finance_type: dict[str, Any],
     *,
     amount: Decimal | None = None,
     term_months: int | None = None,
     client: httpx.Client | None = None,
+    catalog: JetCatalog | None = None,
 ) -> FinancingCalculation | None:
     """Tek ürün için getFinanceCalculate çağırır."""
     etiket = str(finance_type.get("_label") or finance_type.get("CampaignName") or "finansman")
@@ -113,6 +139,13 @@ def calculate(
     vade = min(
         vade, int(finance_type.get("MaturityMaxValue") or vade), bddk_ornek_vade(ipucu, tutar)
     )
+    if catalog is not None and not catalog.is_empty:
+        tutar, vade = cap_amount_term(
+            catalog,
+            family_code=family_code_for_hint(ipucu),
+            amount=tutar,
+            term_months=vade,
+        )
 
     # API'ye gönderilecek FinanceType — iç etiket alanını çıkar
     tip = {k: v for k, v in finance_type.items() if not k.startswith("_")}
@@ -196,12 +229,13 @@ def probe_all(
     """Dropdown'daki ürünlerin bir kısmını API ile hesaplar."""
     # Liste HTML, hesaplama JSON — ayrı client'lar
     tipler = list_finance_types()
+    katalog = load_setting_params()
     kendi = client is None
     client = client or _client()
     try:
         sonuclar: list[FinancingCalculation] = []
         for tip in tipler[:max_products]:
-            calc = calculate(tip, client=client)
+            calc = calculate(tip, client=client, catalog=katalog)
             if calc and calc.profit_rate_pct is not None:
                 sonuclar.append(calc)
         return sonuclar

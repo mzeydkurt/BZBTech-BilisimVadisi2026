@@ -197,11 +197,18 @@ class ProductRunner:
                 sayfalar.append(cikti)
 
         self._site_geneli_secicileri_ele(sayfalar, bank_code=kod)
+        # Belgeler faz 1'de flush edildi; bir ürün CHECK'i tüm çekimi
+        # PendingRollbackError'a düşürmesin diye yazmadan önce kalıcı olur.
+        if not dry_run:
+            session.commit()
 
         for hint, document, raws in sayfalar:
             try:
                 self._upsert_products(session, bank, raws, document, result, dry_run=dry_run)
+                if not dry_run:
+                    session.commit()
             except Exception as exc:
+                session.rollback()
                 result.add_error(f"{hint.url}: {type(exc).__name__}: {exc}")
                 logger.warning("urun_yazma_hatali", url=hint.url, banka=kod, hata=str(exc))
 
@@ -285,6 +292,10 @@ class ProductRunner:
         for _, _, raws in sayfalar:
             for kok in (r for r in raws if r.parent_external_key is None):
                 if (kok.term_months_min, kok.term_months_max) in ortak_vade:
+                    # Jet `wsGetSettingParams` aile/alt tür tavanı gerçek
+                    # ürüne aittir; Ziraat'in 1-60 ortak seçicisi değildir.
+                    if (kok.limits_evidence or "").startswith("wsGetSettingParams"):
+                        continue
                     logger.info(
                         "site_geneli_vade_elendi",
                         banka=bank_code,

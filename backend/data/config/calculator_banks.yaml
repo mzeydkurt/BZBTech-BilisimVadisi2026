@@ -31,6 +31,16 @@ banks:
         strategy: discover
         product_hint: ihtiyac_finansmani
         surface: product
+      - label: Jet finansman ürün sayfası
+        url: https://www.albaraka.com.tr/tr/bireysel/finansmanlar/ihtiyac/jet-finansman
+        strategy: discover
+        product_hint: ihtiyac_finansmani
+        surface: product
+      - label: Jet finansman başvuru limitleri (wsGetSettingParams)
+        url: https://basvur.albaraka.com.tr/ws/wsGetSettingParams
+        strategy: discover
+        product_hint: ihtiyac_finansmani
+        surface: calculator
 
   - code: kuveyt_turk
     name: Kuveyt Türk

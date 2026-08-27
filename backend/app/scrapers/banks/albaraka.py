@@ -43,6 +43,14 @@ from app.core.normalization.text import normalize_text
 from app.logging_config import get_logger
 from app.processing.categorizer import infer_segment
 from app.processing.cleaner import clean_html, extract_section_text, extract_title
+from app.scrapers.banks.albaraka_jet import (
+    SETTINGS_URLS,
+    JetCatalog,
+    apply_catalog_to_products,
+    catalog_from_html_attrs,
+    merge_catalogs,
+    parse_setting_params,
+)
 from app.scrapers.base import BaseScraper
 from app.scrapers.models import DiscoveredUrl, RawCampaign, RawProduct
 from app.scrapers.sitemap import extract_urls
@@ -384,7 +392,7 @@ class AlbarakaScraper(BaseScraper):
         return None
 
     def parse_products(self, html: str, url: str, hint: DiscoveredUrl) -> list[RawProduct]:
-        """Genel ayrıştırıcıyı çalıştırır; ücret sayfası için özel ayrıştırıcıya döner."""
+        """Genel ayrıştırıcıyı çalıştırır; ücret sayfası ve Jet limitleri özel."""
         from app.processing.fee_page_parsers import parse_albaraka_ucret_page
         from app.scrapers.products import product_external_key
 
@@ -406,4 +414,34 @@ class AlbarakaScraper(BaseScraper):
                 if urun.parent_external_key is None:
                     urun.parent_external_key = product_external_key(tasit_slug, None)
 
-        return urunler
+        katalog = merge_catalogs(self._jet_catalog(), catalog_from_html_attrs(html))
+        return apply_catalog_to_products(urunler, url, html, katalog)
+
+    def _jet_catalog(self) -> JetCatalog:
+        """Jet `wsGetSettingParams` yanıtını bir kez çeker; hata olursa boş.
+
+        Returns:
+            Parse edilmiş katalog. Ağ/robots/JSON hatasında boş katalog —
+            ürün kazıması settings olmadan da devam eder.
+        """
+        cached = getattr(self, "_jet_catalog_cache", None)
+        if isinstance(cached, JetCatalog):
+            return cached
+
+        katalog = JetCatalog()
+        for adres in SETTINGS_URLS:
+            fetch = self.fetcher.fetch(adres)
+            if not fetch.is_success or not fetch.html:
+                continue
+            aday = parse_setting_params(fetch.html)
+            if not aday.is_empty:
+                katalog = aday
+                logger.info(
+                    "albaraka_jet_settings",
+                    aile=len(aday.families),
+                    alt_vade=len(aday.subtype_term_max),
+                    url=adres,
+                )
+                break
+        self._jet_catalog_cache = katalog
+        return katalog

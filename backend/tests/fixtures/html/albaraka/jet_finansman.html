@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <title>Jet Finansman | Albaraka Türk</title>
+</head>
+<body>
+<h1>Jet Finansman</h1>
+<div id="_stepCalc" class="step-container step-1">
+    <div class="calc-wrapper">
+        <div class="form-group">
+            <label for="txtFinansmanType">Finansman Türü</label>
+            <select name="txtFinansmanType" id="txtFinansmanType">
+                <option selected disabled value="">Finansman türü seçiniz</option>
+                <option value="001">Konut Finansmanı</option>
+                <option value="002">Taşıt Finansmanı</option>
+                <option value="003">İhtiyaç Finansmanı</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="txtFinansmanSubType">Finansman Alt Türü</label>
+            <select name="txtFinansmanSubType" id="txtFinansmanSubType">
+                <option selected disabled value="">Finansman türü seçiniz</option>
+                <option maincode="003" value="137">Bebek İhtiyaçları Finansmanı</option>
+                <option maincode="003" value="145">Eğitim Finansmanı</option>
+                <option maincode="003" value="158">Bilgisayar Finansmanı</option>
+                <option maincode="003" value="161">Tablet Finansmanı</option>
+                <option maincode="003" value="164">Cep Telefonu Finansmanı</option>
+                <option maincode="003" value="177">Dijital Kira Finansmanı</option>
+            </select>
+        </div>
+    </div>
+    <div class="calculation">
+        <div class="form-group">
+            <label>Proforma Fatura Tutarı</label>
+            <input id="satisFiyatiIhtiyac" type="text" value="0" max_maturity="36" max_amount="100000" max_ratio="1.0">
+        </div>
+        <div class="form-group">
+            <label>Konut Satış Fiyatı</label>
+            <input id="satisFiyatiKonut" type="text" value="0" max_amount="2000000" max_maturity="120" max_ratio="0.80">
+        </div>
+        <div class="form-group">
+            <label>Araç Satış Değeri</label>
+            <input id="satisFiyatiArac" type="text" value="0" max_maturity="48" max_amount="400000" max_year="10" max_ratio="0.7" max_ratio2="0.5">
+        </div>
+    </div>
+</div>
+</body>
+</html>
