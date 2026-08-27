@@ -313,11 +313,36 @@ def rank_products(
             s.missing_reason = f"{alan} alanı bu üründe yayımlanmamış"
         sirali.sort(key=lambda s: Decimal(str(getattr(s, alan))), reverse=azalan)
 
+    # `en_avantajli` ölçütünde sıralama alanı hesaplanmış SKORDUR; `alan`
+    # bir sentinel taşır ve `getattr(s, alan)` AttributeError fırlatır.
+    def _deger(satir: RankedProduct) -> str:
+        return str(satir.score if criterion == "en_avantajli" else getattr(satir, alan))
+
+    # Aynı ürünün aynı değeri farklı tutar bantlarında tekrar edebilir;
+    # sıralamada tek satır olarak görünür.
+    benzersiz: dict[tuple[int, str], RankedProduct] = {}
+    for s in sirali:
+        benzersiz.setdefault((s.product_id, _deger(s)), s)
+    sirali = list(benzersiz.values())
+
     for i, s in enumerate(sirali, start=1):
         s.rank = i
+    tam_sirali = sirali
     sirali = sirali[:limit]
 
-    kazanan = sirali[0] if sirali else None
+    # ⚠️ BAĞLAYICI OLMAYAN SATIR KAZANAN OLAMAZ. Hesaplayıcı sorgusundan gelen
+    # ya da "bilgilendirme amaçlıdır" notu taşıyan oran bankanın taahhüdü
+    # değildir; listede KALIR ama karşılaştırmayı kazanamaz.
+    kazanan = next((s for s in tam_sirali if s.is_binding), None)
+    baglayici_yok = kazanan is None
+    if baglayici_yok:
+        kazanan = tam_sirali[0] if tam_sirali else None
+    beraberlik = (
+        sum(1 for s in tam_sirali if s is not kazanan and _deger(s) == _deger(kazanan))
+        if kazanan is not None
+        else 0
+    )
+
     gerekce: str | None = None
     if kazanan is not None:
         if criterion == "en_avantajli":
@@ -332,6 +357,10 @@ def rank_products(
             onek = "%" if birim == "%" else ""
             sonek = birim if birim != "%" else ""
             gerekce = f"{kazanan.bank_name} — {_OLCUT_ADI[criterion]}: {onek}{deger}{sonek}"
+        if beraberlik:
+            gerekce += f" · aynı değeri taşıyan {beraberlik} kayıt daha var"
+        if baglayici_yok:
+            gerekce += " · ⚠️ bağlayıcı oran bulunamadı, değer bilgilendirme amaçlıdır"
 
     return ProductRankingResponse(
         rate_type=rate_type,
@@ -455,14 +484,23 @@ def rank_campaigns(
 
     for i, s in enumerate(sirali, start=1):
         s.rank = i
+    tam_sirali = sirali
     sirali = sirali[:limit]
 
-    kazanan = sirali[0] if sirali else None
-    gerekce = (
-        f"{kazanan.bank_name} — {_KAMPANYA_OLCUT_ADI[criterion]}: {getattr(kazanan, alan)}"
-        if kazanan
-        else None
-    )
+    # Kampanya metriklerinde `is_binding` kavramı YOKTUR; burada yalnızca
+    # beraberlik bildirilir. Tek kazanan göstermek, aynı değeri taşıyan
+    # diğerlerini yok saymaktır.
+    kazanan = tam_sirali[0] if tam_sirali else None
+    gerekce: str | None = None
+    if kazanan is not None:
+        gerekce = (
+            f"{kazanan.bank_name} — {_KAMPANYA_OLCUT_ADI[criterion]}: {getattr(kazanan, alan)}"
+        )
+        beraberlik = sum(
+            1 for s in tam_sirali[1:] if str(getattr(s, alan)) == str(getattr(kazanan, alan))
+        )
+        if beraberlik:
+            gerekce += f" · aynı değeri taşıyan {beraberlik} kayıt daha var"
 
     return CampaignRankingResponse(
         criterion=criterion,
