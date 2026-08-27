@@ -50,6 +50,12 @@ LLM_CONFIDENCE: Final[Decimal] = Decimal("0.70")
 # Bozuk JSON'da kaç kez yeniden denenir (ilk deneme hariç).
 JSON_RETRY: Final[int] = 1
 
+# SAĞLAYICI VARSAYILANI BU ŞEMAYA YETMEZ. 22 alanın her biri değer + kanıt
+# alıntısı + güven taşıyor; çıktı JSON'u varsayılan bütçeyi kolayca aşıyor ve
+# yanıt YARIDA KESİLİYOR. Kesilen yanıt hata vermez, geçersiz JSON olur ve
+# kampanya sessizce LLM'siz kalır.
+EXTRACT_MAX_TOKENS: Final[int] = 4096
+
 # Modelin ürettiği kanıt bu uzunluğun altındaysa ofset araması yapılmaz:
 # iki üç karakterlik bir dize metnin her yerinde eşleşir ve kanıt
 # doğrulamasını anlamsızlaştırır.
@@ -270,6 +276,7 @@ async def extract_llm(
                     use_cache=use_cache,
                     system=sistem,
                     schema=sema,
+                    max_tokens=EXTRACT_MAX_TOKENS,
                 )
                 break
             except LLMInvalidJSONError as exc:
