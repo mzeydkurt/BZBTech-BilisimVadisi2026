@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from collections import Counter
 from pathlib import Path
@@ -111,8 +112,13 @@ def _rapor(ozet: dict) -> str:
     satirlar = [
         "# Sprint 5 — Sohbet Değerlendirme",
         "",
-        "> Bu rapor **sohbet uçtan uca** metriğidir. "
-        "`docs/evaluation.md` içindeki alan çıkarımı F1 (0.785) ile **karıştırılmamalıdır**.",
+        "> Bu rapor **sohbet uçtan uca** metriğidir; `docs/evaluation.md` içindeki "
+        "**alan çıkarımı F1 ile karıştırılmamalıdır**.",
+        ">",
+        "> ⚠️ Buraya alan çıkarımı F1'inin SAYISI YAZILMAZ. Önceden `0.785` elle",
+        "> yazılıydı ve çıkarım her yeniden ölçüldüğünde sessizce bayatladı —",
+        "> jüriye sunulan bir raporda yanlış rakam. İki ölçüm iki ayrı komuttan",
+        "> çıkıyor; güncel değer için `docs/evaluation.md` okunur.",
         "",
         f"- Sağlayıcı: `{ozet['provider']}`",
         f"- Gömme modeli ayarı: `{ozet['embedding_model']}`",
@@ -160,7 +166,13 @@ def _rapor(ozet: dict) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # ⚠️ Windows konsolu cp1254 olabiliyor; rapor UTF-8 yazıldığı hâlde
+    # ÖZET YAZDIRMA çöküyordu (`⚠️`, `—`). Betik işini bitirmiş olsa bile
+    # sıfırdan farklı çıkış kodu döndürmesi, çağıran zinciri durdurur.
     import asyncio
+
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
 
     configure_logging()
     parser = argparse.ArgumentParser()

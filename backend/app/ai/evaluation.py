@@ -50,12 +50,27 @@ MIN_SUPPORT: Final[int] = 5
 
 @dataclass
 class Counts:
-    """Bir alan (ya da alt küme) için dört durum sayacı."""
+    """Bir alan (ya da alt küme) için dört durum sayacı.
+
+    ⚠️ FP İKİ FARKLI HATAYI TOPLUYOR ve ikisi jüriye aynı şeyi söylemiyor:
+
+        fp_invented  gold NULL, sistem değer üretti     ← UYDURMA
+        fp_wrong     gold'da değer var, sistem başkasını buldu  ← YANLIŞ OKUMA
+
+    Tek bir "halüsinasyon oranı" bu ikisini birleştirdiği için sistemi
+    olduğundan kötü gösteriyordu: yanlış okunan bir tarih, kaynakta hiç
+    olmayan bir tutarı uydurmakla aynı ağırlıkta sayılıyor. Şartname 7'nin
+    puanladığı davranış "bilgi yokken bilgi üretmeme"dir; onun paydası
+    `fp_invented`tir, `fp` değil.
+    """
 
     tp: int = 0
     fp: int = 0
     fn: int = 0
     tn: int = 0
+    # fp = fp_invented + fp_wrong (değişmez; `_tally` ikisini birlikte işler).
+    fp_invented: int = 0
+    fp_wrong: int = 0
 
     @property
     def support(self) -> int:
@@ -82,15 +97,47 @@ class Counts:
 
     @property
     def hallucination_rate(self) -> float:
-        """Üretilen değerlerin ne kadarı kaynakta YOKTU? FP / (TP + FP)."""
+        """Üretilen değerlerin ne kadarı hatalı? FP / (TP + FP).
+
+        ⚠️ Bu oran uydurma ile yanlış okumayı TOPLAR. Ayrıştırılmış hâli
+        `invention_rate` + `value_error_rate`; jüriye ikisi ayrı verilir.
+        """
         payda = self.tp + self.fp
         return self.fp / payda if payda else 0.0
 
     @property
+    def invention_rate(self) -> float:
+        """Üretilen değerlerin ne kadarı kaynakta HİÇ YOKTU?
+
+        Şartname 7'nin "bilgi yokken bilgi üretmeme" ölçütünün doğru paydalı
+        karşılığı. `fp_wrong` buraya girmez: yanlış okunan bir değer için
+        kaynakta bir değer VARDIR.
+        """
+        payda = self.tp + self.fp
+        return self.fp_invented / payda if payda else 0.0
+
+    @property
+    def value_error_rate(self) -> float:
+        """Üretilen değerlerin ne kadarı VAR OLAN bir değerin yanlış okunması?"""
+        payda = self.tp + self.fp
+        return self.fp_wrong / payda if payda else 0.0
+
+    @property
     def correct_silence_rate(self) -> float:
-        """Boş olması gereken alanların ne kadarında SUSULDU? TN / (TN + FP)."""
-        payda = self.tn + self.fp
+        """Boş olması gereken alanların ne kadarında SUSULDU?
+
+        ⚠️ PAYDA `fp` DEĞİL `fp_invented`. Gold'da değeri OLAN bir alanı
+        yanlış okumak "susmadı" sayılamaz: o alanda susulması beklenmiyordu.
+        Eski payda (`tn + fp`) yanlış okumaları da susma fırsatı sayıyor ve
+        oranı olduğundan aşağı çekiyordu.
+        """
+        payda = self.tn + self.fp_invented
         return self.tn / payda if payda else 0.0
+
+    @property
+    def silence_opportunities(self) -> int:
+        """Gold'da NULL olan, yani susulması gereken örnek sayısı."""
+        return self.tn + self.fp_invented
 
 
 @dataclass
@@ -311,7 +358,12 @@ def evaluate(session: Session, *, mode: str = "rule_only") -> EvaluationResult:
 
         if etiket.gold_value is None:
             # Gold: "metinde yok".
-            _tally(hedefler, "fp" if sistem else "tn")
+            if sistem:
+                # UYDURMA: kaynakta değer yok, sistem üretti.
+                _tally(hedefler, "fp")
+                _tally(hedefler, "fp_invented")
+            else:
+                _tally(hedefler, "tn")
             continue
 
         if sistem is None:
@@ -321,7 +373,12 @@ def evaluate(session: Session, *, mode: str = "rule_only") -> EvaluationResult:
         else:
             # ⚠️ Yanlış değer HEM yanlış pozitif HEM kaçırmadır: doğru değer
             # bulunamadı (FN) ve olmayan bir değer üretildi (FP).
+            #
+            # ⚠️ Ama bu bir UYDURMA DEĞİLDİR — kaynakta bir değer var, sistem
+            # onu yanlış okudu. Ayrı sayılır (`fp_wrong`), aksi hâlde
+            # halüsinasyon oranı okuma hatalarıyla şişer.
             _tally(hedefler, "fp")
+            _tally(hedefler, "fp_wrong")
             _tally(hedefler, "fn")
 
     sonuc.gold_campaigns = len(kampanyalar)
@@ -346,25 +403,46 @@ def build_report(sonuc: EvaluationResult) -> str:
         f"| Makro F1 (destek ≥{MIN_SUPPORT}) | **{sonuc.macro_f1:.3f}** |",
         f"| Precision / Recall | {o.precision:.3f} / {o.recall:.3f} |",
         f"| Halüsinasyon oranı | **{o.hallucination_rate:.3f}** (FP/(TP+FP)) |",
-        f"| Doğru susma oranı | **{o.correct_silence_rate:.3f}** (TN/(TN+FP)) |",
+        f"| — bunun uydurma kısmı | **{o.invention_rate:.3f}** (FP_uydurma/(TP+FP)) |",
+        f"| — bunun yanlış okuma kısmı | {o.value_error_rate:.3f} (FP_yanlış/(TP+FP)) |",
+        f"| Doğru susma oranı | **{o.correct_silence_rate:.3f}** (TN/(TN+FP_uydurma)) |",
         f"| TP / FP / FN / TN | {o.tp} / {o.fp} / {o.fn} / {o.tn} |",
+        f"| FP dökümü | {o.fp_invented} uydurma · {o.fp_wrong} yanlış okuma |",
         "",
         "> **Doğru susma**, kaynakta bilgi olmadığında sistemin bilgi üretmemesidir",
         "> (şartname 7). Klasik F1 bu yeteneği ölçmez; ayrıca raporlanır.",
         "",
+        "### Hangi sayı hangi paydadan çıkıyor",
+        "",
+        "⚠️ ÜÇ ÖLÇÜTÜN PAYDASI ÜÇ FARKLI ŞEY. Aynı tabloya yazılıp paydası",
+        "yazılmazsa okuyan kişi bunları karşılaştırır ve yanlış sonuca varır.",
+        "",
+        "| Ölçüt | Değer | Payda | Payda ne demek |",
+        "|---|---|---|---|",
+        f"| Geri çağırma | **{o.recall:.3f}** | {o.support} | "
+        "gold'da **değeri bulunan** alan etiketi |",
+        f"| Kesinlik | **{o.precision:.3f}** | {o.tp + o.fp} | sistemin **ürettiği** değer |",
+        f"| Doğru susma | **{o.correct_silence_rate:.3f}** | {o.silence_opportunities} | "
+        "gold'da **boş** olan, yani susulması gereken alan |",
+        "",
+        "> Alan **doldurma oranı** (kaç kampanyada kaç alan dolu) bu tablodaki",
+        "> hiçbir satırla aynı şey değildir: paydası 482 kampanyanın tamamıdır ve",
+        "> kaynağında değer olmayan alanları da sayar. Karşılaştırması",
+        "> `docs/kapsama_ve_geri_cagirma.md` içinde.",
+        "",
         "## Alan bazında",
         "",
-        "| Alan | P | R | F1 | Destek | Halüsinasyon |",
-        "|---|---|---|---|---|---|",
+        "| Alan | P | R | F1 | Destek | Uydurma | Yanlış okuma |",
+        "|---|---|---|---|---|---|---|",
     ]
 
     for alan, s in sorted(sonuc.by_field.items(), key=lambda p: -p[1].support):
         if s.support < MIN_SUPPORT:
-            satirlar.append(f"| `{alan}` | — | — | *yetersiz örnek* | {s.support} | — |")
+            satirlar.append(f"| `{alan}` | — | — | *yetersiz örnek* | {s.support} | — | — |")
         else:
             satirlar.append(
                 f"| `{alan}` | {s.precision:.2f} | {s.recall:.2f} | **{s.f1:.2f}** "
-                f"| {s.support} | {s.hallucination_rate:.2f} |"
+                f"| {s.support} | {s.invention_rate:.2f} | {s.value_error_rate:.2f} |"
             )
 
     satirlar += [
