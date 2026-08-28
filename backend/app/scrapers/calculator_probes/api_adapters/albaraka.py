@@ -223,10 +223,16 @@ def calculate(
 
 def probe_all(
     *,
-    max_products: int = 12,
+    max_products: int = 24,
     client: httpx.Client | None = None,
 ) -> list[FinancingCalculation]:
-    """Dropdown'daki ürünlerin bir kısmını API ile hesaplar."""
+    """Dropdown'daki ürünlerin bir kısmını API ile hesaplar.
+
+    ⚠️ ÜST SINIR LİSTEYİ AŞMALI. Ölçüldü (2026-08-28): sayfada 16 tür var,
+    sınır 12'ydi ve liste sonundaki `KONTKRD` (konut) hiç sorgulanmıyordu.
+    Kesilen tür hata üretmez — yalnızca eksik veri üretir, ki fark edilmesi
+    çok daha zordur.
+    """
     # Liste HTML, hesaplama JSON — ayrı client'lar
     tipler = list_finance_types()
     katalog = load_setting_params()
@@ -234,6 +240,13 @@ def probe_all(
     client = client or _client()
     try:
         sonuclar: list[FinancingCalculation] = []
+        if len(tipler) > max_products:
+            # Kesme SESSİZ OLMAZ: kaç türün dışarıda kaldığı yazılır.
+            logger.warning(
+                "albaraka_tur_listesi_kesildi",
+                toplam=len(tipler),
+                sinir=max_products,
+            )
         for tip in tipler[:max_products]:
             calc = calculate(tip, client=client, catalog=katalog)
             if calc and calc.profit_rate_pct is not None:
