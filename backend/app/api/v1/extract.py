@@ -90,8 +90,13 @@ async def extract_from_text(session: DbSession, payload: ExtractRequest) -> Extr
     saglayici = get_provider(ayarlar)
     ozet_metni: str | None = None
 
+    atlanan: list[str] = []
     if payload.mode in LLM_MODES:
+        # Kuralın çözdüğü alan modele SORULMAZ (token tasarrufu). Bu doğru
+        # bir tasarım ama laboratuvarda görünmez olduğu için "model hiç
+        # çalışmamış" izlenimi veriyordu; atlananlar artık yanıtta bildirilir.
         cozulen = {alan.field_name for alan in bulgular}
+        atlanan = sorted(cozulen)
         llm_sonuc = await extract_llm(
             saglayici,
             session,
@@ -114,6 +119,12 @@ async def extract_from_text(session: DbSession, payload: ExtractRequest) -> Extr
         ozet_metni = ozet.summary if ozet.accepted else None
 
     # ── Guard + merger ────────────────────────────────────
+    # Yöntem dökümü BİRLEŞTİRMEDEN ÖNCE alınır: birleştirmede kural modeli
+    # ezdiği için sonradan sayılamaz.
+    yontem_dokumu: dict[str, int] = {}
+    for ham_alan in bulgular:
+        yontem_dokumu[ham_alan.method] = yontem_dokumu.get(ham_alan.method, 0) + 1
+
     guard = guard_fields(bulgular, metin)
     birlesim = merge_extractions(guard.accepted)
 
@@ -148,7 +159,7 @@ async def extract_from_text(session: DbSession, payload: ExtractRequest) -> Extr
     # Sınıflandırma DÖRT eksende metinden yapılır; `categorize` veritabanı
     # gerektirmez, tek metinlik istekte de çalışır.
     #
-    # ⚠️ Yalnızca çıkarılan enum alanlarına bakmak, `audience` ve `benefit`
+    # Yalnızca çıkarılan enum alanlarına bakmak, `audience` ve `benefit`
     # eksenlerini tamamen dışarıda bırakıyordu: "Emeklilere" ve "Yeni
     # müşterilerimize" geçen bir metinde `labels` BOŞ dönüyordu. Şartname
     # "hedef müşteri" alanını adıyla sayıyor.
@@ -180,4 +191,6 @@ async def extract_from_text(session: DbSession, payload: ExtractRequest) -> Extr
         ),
         latency_ms=int((time.monotonic() - baslangic) * 1000),
         mode=payload.mode,
+        method_summary=yontem_dokumu,
+        llm_skipped_fields=atlanan,
     )
