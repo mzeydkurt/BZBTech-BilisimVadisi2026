@@ -78,4 +78,19 @@ class ExtractResponse(BaseModel):
     # Uygulanan kip; istekte verilenden farklı olamaz ama yanıtta
     # görünmesi hata ayıklamayı kolaylaştırır.
     mode: str
+    #  `fields` BİRLEŞTİRME SONRASIDIR: aynı alanı hem kural hem model
+    # bulduğunda kural kazanır (`METHOD_PRIORITY`) ve model satırı görünmez.
+    # Hibritte model ayrıca kuralın çözdüğü alanları HİÇ DENEMEZ. İkisi bir
+    # araya gelince laboratuvarda "model hiç çalışmamış" izlenimi doğuyordu.
+    method_summary: dict[str, int] = Field(
+        default_factory=dict,
+        description="Birleştirmeden ÖNCE her yöntemin ürettiği alan sayısı",
+    )
+    llm_skipped_fields: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Hibritte kural zaten çözdüğü için modele hiç sorulmayan alanlar. "
+            "Boş liste, modelin tüm alanları denediği anlamına gelir."
+        ),
+    )
     extras: dict[str, Any] = Field(default_factory=dict)
