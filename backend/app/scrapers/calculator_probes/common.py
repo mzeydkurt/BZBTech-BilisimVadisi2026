@@ -145,9 +145,7 @@ def urun_tipi_ipucu(etiket: str) -> str | None:
     from app.core.normalization.text import ascii_fold_tr, lower_tr
 
     d = ascii_fold_tr(lower_tr(etiket))
-    if any(
-        ascii_fold_tr(k) in d for k in ("konut", "toki", "gayrimenkul", "kira finans")
-    ):
+    if any(ascii_fold_tr(k) in d for k in ("konut", "toki", "gayrimenkul", "kira finans")):
         return "konut_finansmani"
     if any(
         ascii_fold_tr(k) in d

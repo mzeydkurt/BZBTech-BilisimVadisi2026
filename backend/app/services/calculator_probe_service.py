@@ -153,6 +153,7 @@ def is_zero_rate_promotional(
     _ = description
     return False
 
+
 def finansman_orani_gosterilebilir_mi(
     *,
     profit_rate_pct: Decimal | None,
@@ -183,9 +184,7 @@ def finansman_orani_gosterilebilir_mi(
     )
     if profit_rate_pct <= Decimal("0.05"):
         return promo
-    if profit_rate_pct < SUPHELI_DUSUK_ORAN_TAVANI and not promo:
-        return False
-    return True
+    return not (profit_rate_pct < SUPHELI_DUSUK_ORAN_TAVANI and not promo)
 
 
 def _plan_vadesi(
@@ -248,10 +247,7 @@ def probe_orani_guvenilir_mi(
 
     # G4 — Ücret yüzdesi bandı: PTT %0.1, işlem %0.5 gibi. Meşru aylık
     # finansman kâr payı pratikte nadiren %1 altındadır (ölçülen ~%3.9).
-    if (
-        Decimal("0.05") < profit_rate_pct < SUPHELI_DUSUK_ORAN_TAVANI
-        and not promo
-    ):
+    if Decimal("0.05") < profit_rate_pct < SUPHELI_DUSUK_ORAN_TAVANI and not promo:
         return (
             False,
             f"şüpheli düşük kâr payı: %{profit_rate_pct} "
@@ -273,9 +269,7 @@ def probe_samples_for_product(product_type: str | None) -> list[ProbeSample]:
     """Ürün türüne / BDDK ailesine göre örnek tutar-vade listesi."""
     from app.scrapers.calculator_probes.common import bddk_ornek_noktalar
 
-    return [
-        ProbeSample(amount=a, term_months=v) for a, v in bddk_ornek_noktalar(product_type)
-    ]
+    return [ProbeSample(amount=a, term_months=v) for a, v in bddk_ornek_noktalar(product_type)]
 
 
 def products_needing_probe(session: Session, *, bank_code: str | None = None) -> list[Product]:

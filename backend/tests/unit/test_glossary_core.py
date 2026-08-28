@@ -44,8 +44,8 @@ def test_tanim_niyeti() -> None:
 
 
 def test_ara_odemeli_tanim_terimi() -> None:
-    from app.retrieval.query import _tanim_terimi
     from app.core.normalization.text import ascii_fold_tr, lower_tr, normalize_text
+    from app.retrieval.query import _tanim_terimi
 
     q = "Ara ödemeli katılma hesabı nedir, normal katılma hesabından farkı ne?"
     k = ascii_fold_tr(lower_tr(normalize_text(q)))
@@ -54,12 +54,10 @@ def test_ara_odemeli_tanim_terimi() -> None:
 
 def test_ara_odemeli_glossary_eslesme(seeded_session) -> None:
     from app.retrieval.corpus import build_corpus
-    from app.services.chat_service import _tanim_glossary_kayitlari
     from app.retrieval.query import parse_query
+    from app.services.chat_service import _tanim_glossary_kayitlari
 
-    plan = parse_query(
-        "Ara ödemeli katılma hesabı nedir, normal katılma hesabından farkı ne?"
-    )
+    plan = parse_query("Ara ödemeli katılma hesabı nedir, normal katılma hesabından farkı ne?")
     corpus = build_corpus(seeded_session)
     docs = _tanim_glossary_kayitlari(corpus, plan)
     assert len(docs) == 2
@@ -70,11 +68,7 @@ def test_ara_odemeli_glossary_eslesme(seeded_session) -> None:
 def test_ara_odemeli_chat_api(api_client) -> None:
     veri = api_client.post(
         "/api/v1/chat",
-        json={
-            "query": (
-                "Ara ödemeli katılma hesabı nedir, normal katılma hesabından farkı ne?"
-            )
-        },
+        json={"query": ("Ara ödemeli katılma hesabı nedir, normal katılma hesabından farkı ne?")},
     ).json()
     assert veri["intent"] == "tanim"
     assert len(veri.get("glossary") or []) == 2

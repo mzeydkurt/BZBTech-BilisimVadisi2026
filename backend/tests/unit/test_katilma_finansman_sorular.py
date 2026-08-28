@@ -37,10 +37,7 @@ class TestKatilmaKavramAyrimi:
 
 class TestOranListesiSimulasyonAyrimi:
     def test_katilma_oran_listesi_tutar_temizlenir(self) -> None:
-        q = (
-            "ziraatin aylık 3 aylık 6 aylık ve yıllık oranları nedir "
-            "katılım hesabında 10000"
-        )
+        q = "ziraatin aylık 3 aylık 6 aylık ve yıllık oranları nedir katılım hesabında 10000"
         assert katilma_oran_listesi_mi(q)
         slots = extract_slots(q, bank_codes=("ziraat_katilim",))
         assert slots.deposit_try is None

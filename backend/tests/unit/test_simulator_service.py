@@ -265,9 +265,7 @@ class TestOranSecimi:
 
         assert "albaraka" not in {t.bank_code for t in sonuc.offers}
 
-    def test_bin_tl_ayristirma_artigi_urun_tavani_sayilmaz(
-        self, seeded_session: Session
-    ) -> None:
+    def test_bin_tl_ayristirma_artigi_urun_tavani_sayilmaz(self, seeded_session: Session) -> None:
         banka = seeded_session.scalar(select(Bank).where(Bank.code == "emlak_katilim"))
         assert banka is not None
         urun = Product(

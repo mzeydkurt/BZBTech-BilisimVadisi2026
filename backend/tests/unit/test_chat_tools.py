@@ -40,11 +40,14 @@ class TestExtractSlots:
         assert slots.term_months == 120
         assert slots.amount_try is None
         assert slots.product_type == "konut_finansmani"
-        assert detect_tool(
-            "Bana 120 ay vadeli bir konut finansmanı önerir misin",
-            source_domain="finansman",
-            slots=slots,
-        ) == "finansman_teklif"
+        assert (
+            detect_tool(
+                "Bana 120 ay vadeli bir konut finansmanı önerir misin",
+                source_domain="finansman",
+                slots=slots,
+            )
+            == "finansman_teklif"
+        )
         assert "amount_try" in missing_for_tool("finansman_teklif", slots)
 
     def test_coklu_vade(self) -> None:
@@ -104,10 +107,7 @@ class TestDetectTool:
     def test_katilma_oran_listesi_hesaplayici_degil(self) -> None:
         from app.retrieval.query import katilma_oran_listesi_mi
 
-        q = (
-            "ziraatin aylık 3 aylık 6 aylık ve yıllık oranları nedir "
-            "katılım hesabında"
-        )
+        q = "ziraatin aylık 3 aylık 6 aylık ve yıllık oranları nedir katılım hesabında"
         assert katilma_oran_listesi_mi(q)
         slots = extract_slots(q, bank_codes=("ziraat_katilim",))
         assert slots.deposit_try is None

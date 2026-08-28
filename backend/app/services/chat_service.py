@@ -202,9 +202,9 @@ def sirala_katilma_satirlari(
 ) -> list[tuple[KatilimHesabiRow, Decimal]]:
     """Pivot satırlarını tek hücreye göre (banka başına bir kez) sıralar.
 
-    `oncelik_bankalar` verilirse önce bu bankalar (sorguda adı geçen),
-    kalan slotlar diğer bankalardan doldurulur. Böylece global top-3 içinde
-  olmayan banka (ör. Ziraat) boş dönmez.
+      `oncelik_bankalar` verilirse önce bu bankalar (sorguda adı geçen),
+      kalan slotlar diğer bankalardan doldurulur. Böylece global top-3 içinde
+    olmayan banka (ör. Ziraat) boş dönmez.
     """
     adaylar: list[tuple[KatilimHesabiRow, Decimal]] = []
     for satir in satirlar:
@@ -419,9 +419,7 @@ def _katilma_yanit(
     for ay in vadeler:
         vade_etiketi = KATILIM_HESABI_VADE_ETIKETI.get(ay, "aylik")
         hucre = f"{vade_etiketi}|{currency}"
-        sira = sirala_katilma_satirlari(
-            pivot.rows, hucre=hucre, limit=3, oncelik_bankalar=oncelik
-        )
+        sira = sirala_katilma_satirlari(pivot.rows, hucre=hucre, limit=3, oncelik_bankalar=oncelik)
         vade_siralar.append((ay, sira))
 
     tek_banka_cok_vade = len(oncelik) == 1 and len(vadeler) > 1
@@ -612,13 +610,15 @@ def _katilma_kavram_yanit(
             understood=_understood(plan),
             answer=AnswerBlock(text=metin, source="computed", is_grounded=True),
             results=[],
-            glossary=glossary or None,
+            glossary=glossary,
             retrieval=RetrievalReport(
                 corpus_size=0,
                 returned=len(ornek_satirlar),
                 lexical_used=False,
                 semantic_used=False,
-                semantic_note="Katılma kavram açıklaması; getiri ile paylaşım oranı karıştırılmadı.",
+                semantic_note=(
+                    "Katılma kavram açıklaması; getiri ile paylaşım oranı karıştırılmadı."
+                ),
                 elapsed_ms=elapsed_ms,
             ),
             forbidden_terms_warning=uyari,
@@ -633,7 +633,12 @@ def _glossary_bul_from_db(session: Session, terim: str) -> ChatGlossaryItem | No
     from app.db.models import GlossaryTerm
 
     aranan = _fold(terim)
-    for kayit in session.scalars(select(GlossaryTerm).where(GlossaryTerm.is_forbidden_conventional.is_(False))):
+    sorgu = select(GlossaryTerm).where(GlossaryTerm.is_forbidden_conventional.is_(False))
+    for kayit in session.scalars(sorgu):
+        # ⚠️ Tanımı boş terim tanım olarak DÖNDÜRÜLMEZ: kullanıcı "bulundu" sanır
+        # ama ekranda boş bir kutu görür. Sözlük ıskası aramaya düşsün.
+        if not kayit.definition:
+            continue
         if aranan in _fold(kayit.term) or _fold(kayit.term) in aranan:
             return ChatGlossaryItem(
                 term_id=kayit.id,
@@ -2026,9 +2031,9 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
         if sozluk_doc is not None:
             cevap = resp.answer.text or ""
             tanim_parca = (sozluk_doc.definition or "")[:40]
-            zaten_var = (
-                sozluk_doc.term in cevap and tanim_parca and tanim_parca in cevap
-            ) or (f"{sozluk_doc.term}:" in cevap)
+            zaten_var = (sozluk_doc.term in cevap and tanim_parca and tanim_parca in cevap) or (
+                f"{sozluk_doc.term}:" in cevap
+            )
             if not zaten_var:
                 resp.glossary = [
                     ChatGlossaryItem(

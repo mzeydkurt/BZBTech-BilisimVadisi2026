@@ -154,10 +154,7 @@ def test_merhaba_dogal_coklu_vade_yaniti() -> None:
 
 
 def test_ziraat_coklu_vade_oran_sorusu_pivot_yolu() -> None:
-    q = (
-        "ziraatin aylık 3 aylık 6 aylık ve yıllık oranları nedir "
-        "katılım hesabında"
-    )
+    q = "ziraatin aylık 3 aylık 6 aylık ve yıllık oranları nedir katılım hesabında"
     plan = parse_query(q)
     assert plan.source_domain == "katilma"
     assert plan.bank_codes == ("ziraat_katilim",)

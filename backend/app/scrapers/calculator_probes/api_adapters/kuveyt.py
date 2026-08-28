@@ -195,9 +195,7 @@ def probe_noktalari(title: str, product: dict[str, Any]) -> list[tuple[Decimal, 
 
     if noktalar:
         return noktalar
-    yedek = _noktayi_kirp(
-        product, title=title, amount=Decimal("100000"), term_months=36
-    )
+    yedek = _noktayi_kirp(product, title=title, amount=Decimal("100000"), term_months=36)
     return [yedek] if yedek else []
 
 

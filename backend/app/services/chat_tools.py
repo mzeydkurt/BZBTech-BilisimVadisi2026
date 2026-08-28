@@ -99,22 +99,25 @@ def detect_tool(raw: str, *, source_domain: str, slots: QuerySlots | None = None
             for k in kelimeler
         )
 
-    teklif_niyeti = _var(
-        "uygun",
-        "bul",
-        "öner",
-        "oner",
-        "önerir",
-        "onerir",
-        "hesapla",
-        "taksit",
-        "hangisi",
-        "mantikli",
-        "avantajli",
-        "almak",
-        "simule",
-        "simulasyon",
-    ) or re.search(r"(?<![a-z0-9])oner", katlanmis) is not None
+    teklif_niyeti = (
+        _var(
+            "uygun",
+            "bul",
+            "öner",
+            "oner",
+            "önerir",
+            "onerir",
+            "hesapla",
+            "taksit",
+            "hangisi",
+            "mantikli",
+            "avantajli",
+            "almak",
+            "simule",
+            "simulasyon",
+        )
+        or re.search(r"(?<![a-z0-9])oner", katlanmis) is not None
+    )
 
     # BDDK / limit soruları — oran listesi veya tanıma düşmesin.
     limit_kok = re.search(r"(?<![a-z0-9ğüşıöç])limit", katlanmis) is not None
@@ -136,14 +139,18 @@ def detect_tool(raw: str, *, source_domain: str, slots: QuerySlots | None = None
         return "bddk_limit"
 
     # Tutar + ürün + teklif niyeti → toplam maliyet simülasyonu (oran listesi değil).
-    if s.amount_try is not None and s.product_type and (
-        teklif_niyeti or s.tool_hint == "finansman_teklif" or bool(s.term_months_options)
+    if (
+        s.amount_try is not None
+        and s.product_type
+        and (teklif_niyeti or s.tool_hint == "finansman_teklif" or bool(s.term_months_options))
     ):
         return "finansman_teklif"
 
     # Vade + ürün + öneri, tutar yok → netleştir (120 ay'ı tutar sanma).
-    if s.product_type and s.term_months is not None and (
-        teklif_niyeti or s.tool_hint == "finansman_teklif"
+    if (
+        s.product_type
+        and s.term_months is not None
+        and (teklif_niyeti or s.tool_hint == "finansman_teklif")
     ):
         return "finansman_teklif"
 
@@ -155,14 +162,15 @@ def detect_tool(raw: str, *, source_domain: str, slots: QuerySlots | None = None
     # Finansman teklifi: tutar + vade (+ isteğe bağlı ürün) veya açık istek.
     if s.amount_try is not None and s.term_months is not None and source_domain == "finansman":
         return "finansman_teklif"
-    if s.amount_try is not None and s.term_months is not None and (
-        teklif_niyeti or _var("finansman")
+    if (
+        s.amount_try is not None
+        and s.term_months is not None
+        and (teklif_niyeti or _var("finansman"))
     ):
         return "finansman_teklif"
 
-    if (
-        _var("bddk", "azami finansman", "ne kadar alabilir", "kasko")
-        and (s.asset_value_try is not None or "bddk" in katlanmis)
+    if _var("bddk", "azami finansman", "ne kadar alabilir", "kasko") and (
+        s.asset_value_try is not None or "bddk" in katlanmis
     ):
         return "bddk_limit"
 
@@ -346,7 +354,7 @@ def _clarify(tool: str, slots: QuerySlots, eksik: list[str]) -> ToolResult:
     }
     eksik_tr = ", ".join(etiketler.get(e, e) for e in eksik)
     soru = f"Hesaplama için şunları belirtmeniz gerekiyor: {eksik_tr}."
-    aksiyonlar: list[ChatAction] = []
+    aksiyonlar = []
     # Yalnızca tutar eksikse sık kullanılan tutarlarla simülatöre / sohbete yönlendir.
     if (
         tool == "finansman_teklif"
@@ -444,7 +452,10 @@ def _finansman(session: Session, slots: QuerySlots, baslangic: float) -> ToolRes
                     f"Aylık {teklif.monthly_payment_try:,.2f} ₺ · "
                     f"Toplam {teklif.total_cost_try:,.2f} ₺ · "
                     f"Kâr payı %{teklif.profit_rate_pct}"
-                ).replace(",", "X").replace(".", ",").replace("X", "."),
+                )
+                .replace(",", "X")
+                .replace(".", ",")
+                .replace("X", "."),
                 action=_simulator_action(
                     label="Simülatörde taksitleri gör",
                     tab="financing",
@@ -712,10 +723,7 @@ def _katilma(session: Session, slots: QuerySlots, baslangic: float) -> ToolResul
             banka_notu = " " + "; ".join(
                 f"{m.bank_name}: {m.reason}" for m in sonuc.banks_without_data[:3]
             )
-        metin = (
-            "Katılma hesabı getirisi için yayımlanmış oran bulunamadı."
-            + banka_notu
-        )
+        metin = "Katılma hesabı getirisi için yayımlanmış oran bulunamadı." + banka_notu
     elif len(offers) == 1:
         t = sonuc.offers[0]
         bakiye = _kurusla(slots.deposit_try + t.net_profit_try)

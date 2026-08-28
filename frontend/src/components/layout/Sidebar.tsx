@@ -20,7 +20,7 @@ const NAV_ITEMS = [
   { to: "/katilim-hesabi", label: "Katılım Hesabı", icon: HandCoins, end: false },
   { to: "/compare", label: "Karşılaştırma", icon: ArrowLeftRight, end: false },
   { to: "/simulator", label: "Simülatör", icon: Calculator, end: false },
-  { to: "/chat", label: "Katibim-AI", icon: MessageSquare, end: false },
+  { to: "/chat", label: "Katibim AI", icon: MessageSquare, end: false },
   { to: "/extract", label: "Çıkarım Lab", icon: FlaskConical, end: false },
 ];
 

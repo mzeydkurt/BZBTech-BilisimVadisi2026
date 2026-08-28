@@ -209,11 +209,12 @@ def _banka_karsilastirma_mi(katlanmis: str, banka_sayisi: int) -> bool:
     if any(isaretci in katlanmis for isaretci in COMPARE_MARKERS):
         return True
     # "X mi … Y mi?" tercih kalıbı + üstünlük sıfatı.
-    if re.search(r"\b(mi|mu|mı|mü)\b", katlanmis) and any(
-        x in katlanmis for x in ("avantaj", "iyi", "uygun", "mantik", "ucuz", "dusuk", "yuksek")
-    ):
-        return True
-    return False
+    return bool(
+        re.search(r"(mi|mu|mı|mü)", katlanmis)
+        and any(
+            x in katlanmis for x in ("avantaj", "iyi", "uygun", "mantik", "ucuz", "dusuk", "yuksek")
+        )
+    )
 
 
 def karsilastirma_konusu_belirsiz(plan: QueryPlan) -> bool:
@@ -225,7 +226,8 @@ def karsilastirma_konusu_belirsiz(plan: QueryPlan) -> bool:
         return False
     if plan.rate_type or plan.axis_filters.get("product_type"):
         return False
-    if any(
+    # Konu terimi geçiyorsa belirsizlik yoktur.
+    return not any(
         x in katlanmis
         for x in (
             "kampanya",
@@ -241,9 +243,8 @@ def karsilastirma_konusu_belirsiz(plan: QueryPlan) -> bool:
             "taksit avantaj",
             "nakit iade",
         )
-    ):
-        return False
-    return True
+    )
+
 
 # ── Tanım niyeti ──────────────────────────────────────────
 DEFINITION_MARKERS: Final[tuple[str, ...]] = (
@@ -713,10 +714,7 @@ def katilma_kar_payi_paylasim_karsilastirma_mi(raw: str) -> bool:
     "Kâr payı ile paylaşım oranı aynı mı?" → True (oran tablosu değil, kavram).
     """
     k = _fold(raw)
-    has_kar = any(
-        x in k
-        for x in ("kar payi", "dagitilan kar", "getiri oran", "kar payi oran")
-    )
+    has_kar = any(x in k for x in ("kar payi", "dagitilan kar", "getiri oran", "kar payi oran"))
     has_paylasim = any(
         x in k for x in ("paylasim orani", "paylasim oran", "kar paylasim", "musteri payi")
     )
@@ -766,7 +764,7 @@ def finansman_oran_listesi_mi(raw: str) -> bool:
         )
     ):
         return False
-    oran_sorusu = any(
+    return any(
         x in k
         for x in (
             "oranlari",
@@ -784,7 +782,6 @@ def finansman_oran_listesi_mi(raw: str) -> bool:
             "liste",
         )
     ) or ("oran" in k and any(x in k for x in ("nedir", "neler", "ne ")))
-    return oran_sorusu
 
 
 def _filtrele_rate_type_adaylari(katlanmis: str, adaylar: list[str]) -> list[str]:
@@ -794,8 +791,7 @@ def _filtrele_rate_type_adaylari(katlanmis: str, adaylar: list[str]) -> list[str
     k = katlanmis
     katilma = any(x in k for x in ("katilma", "katilim hesap", "standart katilma", "birikim"))
     finansman = any(
-        x in k
-        for x in ("finansman", "konut finans", "tasit finans", "ihtiyac finans", "kredi")
+        x in k for x in ("finansman", "konut finans", "tasit finans", "ihtiyac finans", "kredi")
     )
     sonuc = list(adaylar)
 
@@ -1172,11 +1168,9 @@ def _rate_type_adaylari(katlanmis: str) -> list[str]:
             # ⚠️ "getirir misin" → participation_yield YANLIŞ EŞLEŞMESİ.
             # "getiri" kökü fiil ekleriyle biter; yalnızca bağımsız sözcük say.
             if isaretci == "getiri":
-                eslesme = re.search(r"(?<![a-z0-9])getiri(?![a-z])", katlanmis)
-            elif _kelime_var(katlanmis, isaretci) or isaretci in katlanmis:
-                eslesme = True
+                eslesme = re.search(r"(?<![a-z0-9])getiri(?![a-z])", katlanmis) is not None
             else:
-                eslesme = None
+                eslesme = _kelime_var(katlanmis, isaretci) or isaretci in katlanmis
             if eslesme:
                 if tur not in adaylar:
                     adaylar.append(tur)
@@ -1224,12 +1218,13 @@ def _limit_sorusu_mu(katlanmis: str) -> bool:
     if any(isaretci in katlanmis for isaretci in _LIMIT_SORU_ISARETCILERI):
         return True
     # "limit/limitler/limitini/limitlerini…" kökü.
-    if re.search(r"(?<![a-z0-9])limit", katlanmis) and any(
-        _kelime_var(katlanmis, k)
-        for k in ("finansman", "tasit", "konut", "ihtiyac", "arac", "kredi", "vade")
-    ):
-        return True
-    return False
+    return bool(
+        re.search(r"(?<![a-z0-9])limit", katlanmis)
+        and any(
+            _kelime_var(katlanmis, k)
+            for k in ("finansman", "tasit", "konut", "ihtiyac", "arac", "kredi", "vade")
+        )
+    )
 
 
 def _sohbet_mi(katlanmis: str, *, finansal: bool) -> bool:
@@ -1413,11 +1408,7 @@ def parse_query(raw: str) -> QueryPlan:
     )
     # Banka adı, sayısal kısıt veya BDDK/limit sorusu olgusaldır; "nedir"
     # eki tanım niyetine yetmez ("taşıt finansmanında limitler nedir").
-    olgusal_sinyal = bool(
-        banka_sinyalleri
-        or kisitlar
-        or _limit_sorusu_mu(katlanmis)
-    )
+    olgusal_sinyal = bool(banka_sinyalleri or kisitlar or _limit_sorusu_mu(katlanmis))
     if _tanim_mi(katlanmis, olgusal=olgusal_sinyal):
         niyet = "tanim"
         glossary_term = _tanim_terimi(raw, katlanmis)
@@ -1427,12 +1418,9 @@ def parse_query(raw: str) -> QueryPlan:
         niyet = "kapsam_disi"
     elif toplama is not None:
         niyet = "aggregate"
-    elif (
-        len(banka_sinyalleri) > 1
-        and (
-            _banka_karsilastirma_mi(katlanmis, len(banka_sinyalleri))
-            or any(isaretci in katlanmis for isaretci in COMPARE_MARKERS)
-        )
+    elif len(banka_sinyalleri) > 1 and (
+        _banka_karsilastirma_mi(katlanmis, len(banka_sinyalleri))
+        or any(isaretci in katlanmis for isaretci in COMPARE_MARKERS)
     ):
         niyet = "compare"
     elif _tekil_urun_sorusu(
@@ -1650,8 +1638,8 @@ __all__ = [
     "NumericConstraint",
     "QueryPlan",
     "QuerySignal",
-    "has_definition_marker",
     "finansman_oran_listesi_mi",
+    "has_definition_marker",
     "karsilastirma_konusu_belirsiz",
     "katilma_kar_payi_paylasim_karsilastirma_mi",
     "katilma_oran_listesi_mi",

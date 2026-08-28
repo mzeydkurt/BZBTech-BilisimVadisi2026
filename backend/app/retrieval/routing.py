@@ -31,6 +31,7 @@ def _sinyal_var(katlanmis: str, sinyal: str) -> bool:
         return re.search(rf"(?<![a-z0-9]){re.escape(sinyal)}(?![a-z0-9])", katlanmis) is not None
     return sinyal in katlanmis
 
+
 # En yüksek iki alan arasındaki fark bu eşiğin altındaysa belirsiz.
 AMBIGUITY_GAP: Final[float] = 0.30
 # Bu güvenin altında LLM router (açıksa) devreye girebilir.
@@ -174,8 +175,7 @@ def score_domains(
     kanitlar: dict[str, list[str]] = {"kampanya": [], "finansman": [], "katilma": []}
 
     kampanya_modu = any(
-        _sinyal_var(katlanmis, s)
-        for s in ("kampanya", "kampanyalar", "kampanyasi", "kampanyalari")
+        _sinyal_var(katlanmis, s) for s in ("kampanya", "kampanyalar", "kampanyasi", "kampanyalari")
     )
 
     if rate_type == "participation_yield" or rate_type == "profit_sharing_ratio":

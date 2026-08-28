@@ -23,9 +23,7 @@ class TestZeroRatePromotional:
     def test_promosyon_metinleri_gecerli(self) -> None:
         assert is_zero_rate_promotional(product_name="Togg Finansmanı")
         assert is_zero_rate_promotional(product_name="0 Faizli İhtiyaç Kredisi")
-        assert is_zero_rate_promotional(
-            product_name="Vade Farksız Alışveriş Finansmanı"
-        )
+        assert is_zero_rate_promotional(product_name="Vade Farksız Alışveriş Finansmanı")
         assert is_zero_rate_promotional(evidence_text="Yıllık %0 kâr payı ile masrafsız finansman")
 
     def test_aciklamadaki_vade_farksiz_yetmez(self) -> None:

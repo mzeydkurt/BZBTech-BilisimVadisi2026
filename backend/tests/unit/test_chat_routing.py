@@ -52,9 +52,11 @@ class TestScoreDomains:
             axis_filters={},
         )
         # Paylaşımlı sinyaller birden fazla alana puan verir.
-        assert karar.is_ambiguous or abs(
-            max(karar.scores.values()) - sorted(karar.scores.values())[-2]
-        ) < AMBIGUITY_GAP + 0.01
+        assert (
+            karar.is_ambiguous
+            or abs(max(karar.scores.values()) - sorted(karar.scores.values())[-2])
+            < AMBIGUITY_GAP + 0.01
+        )
 
     def test_tanim_ve_kapsam(self) -> None:
         assert parse_query("Murabaha nedir?").source_domain == "tanim"
@@ -102,8 +104,5 @@ class TestScoreDomains:
     def test_iki_banka_konu_belli_netlestirme_yok(self) -> None:
         from app.retrieval.query import karsilastirma_konusu_belirsiz
 
-        plan = parse_query(
-            "Kuveyt Türk ile Albaraka katılma hesabı getirisinde hangisi daha iyi"
-        )
+        plan = parse_query("Kuveyt Türk ile Albaraka katılma hesabı getirisinde hangisi daha iyi")
         assert not karsilastirma_konusu_belirsiz(plan)
-

@@ -184,11 +184,11 @@ def extract_slots(raw: str, *, bank_codes: tuple[str, ...] = ()) -> QuerySlots:
                     carpan = {"bin": 1000, "milyon": 1_000_000, "milyar": 1_000_000_000}.get(
                         (bare.group(2) or "").lower(), 1
                     )
-                    if bare.group(2) or re.search(r"(?:tl|₺|try)\b", bare.group(0)):
-                        slots.amount_try = deger * carpan
-                        slots.asset_value_try = slots.amount_try
-                        slots.deposit_try = slots.amount_try
-                    elif deger >= 1000:
+                    if (
+                        bare.group(2)
+                        or re.search(r"(?:tl|₺|try)\b", bare.group(0))
+                        or deger >= 1000
+                    ):
                         slots.amount_try = deger * carpan
                         slots.asset_value_try = slots.amount_try
                         slots.deposit_try = slots.amount_try
@@ -272,8 +272,7 @@ def extract_slots(raw: str, *, bank_codes: tuple[str, ...] = ()) -> QuerySlots:
     # Araç ipucu — kelime sınırına duyarlı ( "hesapla" ⊂ "hesaplari" olmasın ).
     def _var(*kelimeler: str) -> bool:
         return any(
-            re.search(rf"(?<![a-z0-9]){re.escape(k)}(?![a-z0-9])", katlanmis)
-            for k in kelimeler
+            re.search(rf"(?<![a-z0-9]){re.escape(k)}(?![a-z0-9])", katlanmis) for k in kelimeler
         )
 
     limit_kok = re.search(r"(?<![a-z0-9])limit", katlanmis) is not None
@@ -288,14 +287,18 @@ def extract_slots(raw: str, *, bank_codes: tuple[str, ...] = ()) -> QuerySlots:
         )
         or re.search(r"(?<![a-z0-9])kampanya", katlanmis) is not None
     )
-    if _var("bddk", "azami finansman", "ltv", "kasko degeri", "kasko değeri") or (
-        limit_kok
-        and (
-            slots.product_type
-            or slots.asset_type
-            or _var("finansman", "tasit", "konut", "ihtiyac", "arac", "kredi")
+    if (
+        _var("bddk", "azami finansman", "ltv", "kasko degeri", "kasko değeri")
+        or (
+            limit_kok
+            and (
+                slots.product_type
+                or slots.asset_type
+                or _var("finansman", "tasit", "konut", "ihtiyac", "arac", "kredi")
+            )
         )
-    ) or _var("azami oran", "azami vade", "azami tutar", "finansman limiti"):
+        or _var("azami oran", "azami vade", "azami tutar", "finansman limiti")
+    ):
         slots.tool_hint = "bddk_limit"
     elif not kampanya_sorusu and _var(
         "simule",
@@ -329,10 +332,9 @@ def extract_slots(raw: str, *, bank_codes: tuple[str, ...] = ()) -> QuerySlots:
     ):
         # Tutar + ürün türü varken "hangisi" oran listesi değil teklif simülasyonu.
         slots.tool_hint = "finansman_teklif"
-    elif _var("getiri hesapla", "ne kadar kazani", "ne kadar kazanir", "ne kadar kazanır"):
-        slots.tool_hint = "katilma_getiri"
-    elif _var("yatir", "yatirir", "yatirsam", "yatirdim") and _var(
-        "katilma", "katilim", "hesap", "hesabi"
+    elif _var("getiri hesapla", "ne kadar kazani", "ne kadar kazanir", "ne kadar kazanır") or (
+        _var("yatir", "yatirir", "yatirsam", "yatirdim")
+        and _var("katilma", "katilim", "hesap", "hesabi")
     ):
         slots.tool_hint = "katilma_getiri"
     elif _var("karsilastir", "karşılaştır", "hangisi daha"):
@@ -384,7 +386,7 @@ def validate_numeric_slots_against_query(
     temiz: dict[str, Any] = {}
     reddedilen: list[str] = []
 
-    sayisal = {
+    sayisal: dict[str, Decimal | int | None] = {
         "amount_try": gercek.amount_try,
         "term_months": gercek.term_months,
         "term_days": gercek.term_days,
@@ -403,12 +405,12 @@ def validate_numeric_slots_against_query(
         gercek_deger = sayisal[anahtar]
         if anahtar == "term_months" and gercek_deger is None and term_adaylari:
             try:
-                onerilen = int(Decimal(str(deger).replace(",", ".")))
+                onerilen_vade = int(Decimal(str(deger).replace(",", ".")))
             except Exception:
                 reddedilen.append(anahtar)
                 continue
-            if onerilen in term_adaylari:
-                temiz[anahtar] = str(onerilen)
+            if onerilen_vade in term_adaylari:
+                temiz[anahtar] = str(onerilen_vade)
             else:
                 reddedilen.append(anahtar)
             continue
@@ -421,13 +423,12 @@ def validate_numeric_slots_against_query(
             reddedilen.append(anahtar)
             continue
         # Tolerans: %1 veya 1 birim — biçim farkı (400000 vs 400.000).
-        if gercek_deger == 0:
+        mevcut = Decimal(str(gercek_deger))
+        if mevcut == 0:
             if onerilen != 0:
                 reddedilen.append(anahtar)
                 continue
-        elif abs(onerilen - gercek_deger) / gercek_deger > Decimal("0.01") and abs(
-            onerilen - gercek_deger
-        ) > 1:
+        elif abs(onerilen - mevcut) / mevcut > Decimal("0.01") and abs(onerilen - mevcut) > 1:
             reddedilen.append(anahtar)
             continue
         temiz[anahtar] = str(gercek_deger)
