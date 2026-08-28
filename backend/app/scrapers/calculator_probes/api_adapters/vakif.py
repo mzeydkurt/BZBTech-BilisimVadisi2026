@@ -30,11 +30,39 @@ CALCULATOR_URL = (
 )
 API_PATH = "https://www.vakifkatilim.com.tr/plugins/InstallmentPayBack"
 
-# financingType kodları + örnek tutar/vade (ürün ailesine uygun)
-FINANCING_TYPES: tuple[tuple[str, str, str, Decimal, int], ...] = (
-    ("IF", "İhtiyaç Finansmanı", "ihtiyac_finansmani", Decimal("100000"), 18),
-    ("KF", "Konut Finansmanı", "konut_finansmani", Decimal("1000000"), 120),
-    ("TF", "Taşıt Finansmanı", "tasit_finansmani", Decimal("400000"), 48),
+# ⚠️ KODLAR SAYFADAN OKUNUR, SABİT YAZILMAZ. Ölçüldü (2026-08-28): burada
+# elle yazılan `KF` ve `TF` kodları sitede YOK — seçenek listesi
+# `IF · K · K2 · BO · BO2 · I · A`. Yanlış kod HATA VERMEZ; uç 200 döner ve
+# `ornekOdemeBilgisi` alanlarını BOŞ bırakır. Bu yüzden konut ve taşıt kâr
+# payı oranları aylardır sessizce çekilemiyordu (7 türden yalnızca 1'i).
+# Kardeş adaptör `albaraka.py` seçenekleri zaten sayfadan okuyor; burası da
+# öyle yapar, aşağıdaki tablo yalnızca YEDEKTİR.
+SELECT_ID = "financing-type-select"
+
+# kod → (ürün tipi ipucu, örnek tutar, örnek vade)
+#
+# ⚠️ BO2 (2. el taşıt) 400.000 TL ÜSTÜNDE boş döner — ölçüldü: 750.000 ve
+# 1.000.000 TL'de oran yok. Tutar bandı BDDK 2. el taşıt sınırıyla uyumlu
+# tutulur, yoksa tür yine sessizce kaybolur.
+PROBE_PLANI: dict[str, tuple[str, Decimal, int]] = {
+    "IF": ("ihtiyac_finansmani", Decimal("100000"), 18),
+    "K": ("konut_finansmani", Decimal("1000000"), 120),
+    "K2": ("konut_finansmani", Decimal("1000000"), 120),
+    "BO": ("tasit_finansmani", Decimal("400000"), 48),
+    "BO2": ("tasit_finansmani", Decimal("400000"), 36),
+    "I": ("isyeri_finansmani", Decimal("500000"), 60),
+    "A": ("arsa_finansmani", Decimal("500000"), 60),
+}
+
+# Sayfa okunamazsa kullanılacak yedek liste (kod, etiket).
+FINANCING_TYPES_YEDEK: tuple[tuple[str, str], ...] = (
+    ("IF", "İhtiyaç Finansmanı"),
+    ("K", "Sıfır Konut Finansmanı"),
+    ("K2", "2. El Konut Finansmanı"),
+    ("BO", "Taşıt Finansmanı 0 km"),
+    ("BO2", "Taşıt Finansmanı 2.El"),
+    ("I", "İşyeri Finansmanı"),
+    ("A", "Arsa Finansmanı"),
 )
 
 
@@ -132,6 +160,35 @@ def calculate(
             client.close()
 
 
+def list_financing_types(client: httpx.Client | None = None) -> list[tuple[str, str]]:
+    """Hesaplama sayfasındaki finansman türü seçeneklerini okur.
+
+    Sayfa okunamazsa `FINANCING_TYPES_YEDEK` döner — kazıma tamamen durmaz
+    ama listenin güncelliği garanti edilemez.
+    """
+    kendi = client is None
+    client = client or _client()
+    try:
+        sayfa = client.get(CALCULATOR_URL)
+        sayfa.raise_for_status()
+        sel = BeautifulSoup(sayfa.text, "lxml").select_one(f"select#{SELECT_ID}")
+        if sel is None:
+            logger.warning("vakif_tur_secici_yok", secici=SELECT_ID)
+            return list(FINANCING_TYPES_YEDEK)
+        tipler = [
+            (str(o.get("value")).strip(), o.get_text(strip=True))
+            for o in sel.find_all("option")
+            if str(o.get("value") or "").strip()
+        ]
+        return tipler or list(FINANCING_TYPES_YEDEK)
+    except Exception as exc:
+        logger.warning("vakif_tur_listesi_hata", hata=str(exc))
+        return list(FINANCING_TYPES_YEDEK)
+    finally:
+        if kendi:
+            client.close()
+
+
 def probe_all(
     *,
     client: httpx.Client | None = None,
@@ -141,7 +198,13 @@ def probe_all(
     client = client or _client()
     try:
         sonuclar: list[FinancingCalculation] = []
-        for kod, etiket, ipucu, tutar, vade in FINANCING_TYPES:
+        for kod, etiket in list_financing_types(client):
+            plan = PROBE_PLANI.get(kod)
+            if plan is None:
+                # Sitede yeni bir tür açılmış; sessizce atlamak yerine bildir.
+                logger.warning("vakif_plansiz_tur", kod=kod, etiket=etiket)
+                continue
+            ipucu, tutar, vade = plan
             calc = calculate(
                 financing_type=kod,
                 product_label=etiket,
@@ -152,6 +215,10 @@ def probe_all(
             )
             if calc and calc.profit_rate_pct is not None:
                 sonuclar.append(calc)
+            else:
+                # ⚠️ Boş dönüş SESSİZ GEÇMEZ: yanlış kod da, banda uymayan
+                # tutar da aynı boş yanıtı üretir; ayırt etmek için loglanır.
+                logger.warning("vakif_oran_bos", kod=kod, tutar=str(tutar), vade=vade)
         return sonuclar
     finally:
         if kendi:
