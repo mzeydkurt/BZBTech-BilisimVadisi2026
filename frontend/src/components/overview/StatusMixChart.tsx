@@ -20,6 +20,7 @@ const SLICES = [
 /** Kampanya durum karışımı — donut. */
 export function StatusMixChart({ active, upcoming, expired, unknown }: StatusMixChartProps) {
   const values = { active, upcoming, expired, unknown };
+  const total = active + upcoming + expired + unknown;
   const chartData = SLICES.map((s) => ({
     name: s.label,
     value: values[s.key],
@@ -32,16 +33,16 @@ export function StatusMixChart({ active, upcoming, expired, unknown }: StatusMix
         <CardTitle>Durum Dağılımı</CardTitle>
       </CardHeader>
       <CardContent>
-        <div style={{ width: "100%", height: 220 }}>
+        <div style={{ width: "100%", height: 260 }}>
           <ResponsiveContainer>
             <PieChart>
               <Pie
                 data={chartData}
                 dataKey="value"
                 nameKey="name"
-                innerRadius={55}
-                outerRadius={85}
-                paddingAngle={1}
+                innerRadius={65}
+                outerRadius={105}
+                paddingAngle={2}
                 isAnimationActive={false}
               >
                 {chartData.map((entry) => (
@@ -49,7 +50,10 @@ export function StatusMixChart({ active, upcoming, expired, unknown }: StatusMix
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value: number) => formatNumber(value)}
+                formatter={(value: number) => [
+                  `${formatNumber(value)} (${total > 0 ? ((value / total) * 100).toFixed(1) : 0}%)`,
+                  "Kampanya",
+                ]}
                 contentStyle={{
                   border: "1px solid var(--border)",
                   borderRadius: 6,
@@ -59,13 +63,26 @@ export function StatusMixChart({ active, upcoming, expired, unknown }: StatusMix
             </PieChart>
           </ResponsiveContainer>
         </div>
-        <ul className="mt-2 grid grid-cols-2 gap-1 text-xs text-text-500">
-          {SLICES.map((s) => (
-            <li key={s.key} className="flex items-center gap-2">
-              <span className="inline-block h-2 w-2 rounded-sm" style={{ background: s.color }} />
-              {s.label}: {formatNumber(values[s.key])}
-            </li>
-          ))}
+        <ul className="mt-3 grid grid-cols-2 gap-2 text-xs">
+          {SLICES.map((s) => {
+            const val = values[s.key];
+            const pct = total > 0 ? ((val / total) * 100).toFixed(1) : "0";
+            return (
+              <li
+                key={s.key}
+                className="flex items-center justify-between rounded bg-neutral-50 px-2.5 py-1.5 border border-border/50"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+                  <span className="font-medium text-text-700">{s.label}</span>
+                </div>
+                <div className="flex items-center gap-1 tabular">
+                  <span className="font-semibold text-text-900">{formatNumber(val)}</span>
+                  <span className="text-[11px] text-text-400">(%{pct})</span>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       </CardContent>
     </Card>

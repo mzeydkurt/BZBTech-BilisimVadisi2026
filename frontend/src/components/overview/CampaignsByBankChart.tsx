@@ -22,9 +22,9 @@ export function CampaignsByBankChart({ data }: { data: BankCampaignCount[] }) {
         <CardTitle>Bankaya Göre Kampanya Hacmi</CardTitle>
       </CardHeader>
       <CardContent>
-        <div style={{ width: "100%", height: Math.max(chartData.length * 34, 200) }}>
+        <div style={{ width: "100%", height: Math.max(chartData.length * 36, 220) }}>
           <ResponsiveContainer>
-            <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 16 }}>
+            <BarChart data={chartData} layout="vertical" margin={{ left: 12, right: 16 }}>
               <CartesianGrid horizontal={false} stroke="var(--border)" />
               <XAxis
                 type="number"
