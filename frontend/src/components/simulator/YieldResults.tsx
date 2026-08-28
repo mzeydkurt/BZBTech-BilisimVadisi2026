@@ -1,6 +1,7 @@
 import { ExternalLink } from "lucide-react";
 
 import { ExactTermMatchWarning } from "@/components/simulator/ExactTermMatchWarning";
+import { BankLogo } from "@/components/common/BankLogo";
 import { EvidenceText } from "@/components/common/EvidenceText";
 import { Button } from "@/components/ui/button";
 import { downloadExcelWorkbook, downloadRichCsv } from "@/lib/csv";
@@ -144,9 +145,12 @@ export function YieldResults({
           className="rounded-lg border border-border bg-surface p-4"
         >
           <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm text-text-500">{offer.bank_name}</p>
-              <p className="text-base font-semibold text-text-900">{offer.product_name}</p>
+            <div className="flex items-center gap-3">
+              <BankLogo bankCode={offer.bank_code} bankName={offer.bank_name} size="md" />
+              <div>
+                <p className="text-sm font-medium text-text-500">{offer.bank_name}</p>
+                <p className="text-base font-semibold text-text-900">{offer.product_name}</p>
+              </div>
             </div>
             <div className="text-right">
               <p className="tabular text-2xl font-semibold text-brand-700">
