@@ -8,7 +8,48 @@ import { LogicViolationsSection } from "@/components/extract/LogicViolationsSect
 import { RejectedFieldsSection } from "@/components/extract/RejectedFieldsSection";
 import { taxonomyLabel } from "@/lib/taxonomy";
 import { useExtract } from "@/hooks/useExtract";
-import type { ExtractMode } from "@/types/api";
+import type { ExtractMode, ExtractResponse } from "@/types/api";
+
+
+/**
+ * Hangi yöntem kaç alan üretti — BİRLEŞTİRMEDEN ÖNCE.
+ *
+ * ⚠️ Tablodaki `fields` birleştirme sonucudur: aynı alanı hem kural hem model
+ * bulduğunda kural kazanır (`METHOD_PRIORITY`) ve model satırı kaybolur.
+ * Hibritte model ayrıca kuralın çözdüğü alanları HİÇ DENEMEZ. İkisi bir araya
+ * gelince tabloda yalnızca "kural" görünüyor ve model hiç çalışmamış gibi
+ * duruyordu.
+ */
+function MethodSummary({ data }: { data: ExtractResponse }) {
+  const dokum = Object.entries(data.method_summary ?? {});
+  if (dokum.length === 0) return null;
+
+  const etiket: Record<string, string> = {
+    rule: "kural",
+    llm: "model",
+    table: "tablo",
+  };
+  const atlanan = data.llm_skipped_fields ?? [];
+
+  return (
+    <div className="mt-2 rounded border border-border bg-neutral-50 p-2 text-xs text-text-700">
+      <span className="text-text-500">Birleştirmeden önce: </span>
+      {dokum.map(([yontem, adet], i) => (
+        <span key={yontem}>
+          {i > 0 && " · "}
+          <span className="font-medium">{etiket[yontem] ?? yontem}</span> {adet} alan
+        </span>
+      ))}
+      {atlanan.length > 0 && (
+        <p className="mt-1 text-text-500">
+          Kural {atlanan.length} alanı zaten çözdüğü için modele sorulmadı; model
+          yalnızca kalan alanlarda çalıştı. Tabloda aynı alanı ikisi de bulduysa
+          kural gösterilir.
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function ExtractPage() {
   const [text, setText] = useState("");
@@ -51,6 +92,7 @@ export function ExtractPage() {
             <div className="mt-2">
               <ExtractedFieldsTable fields={mutation.data.fields} />
             </div>
+            <MethodSummary data={mutation.data} />
           </section>
 
           {Object.keys(mutation.data.labels).length > 0 && (
