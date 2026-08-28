@@ -1,3 +1,4 @@
+import { BankLogo } from "@/components/common/BankLogo";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatNumber } from "@/lib/format";
 import type { BankCoverage } from "@/types/api";
@@ -24,7 +25,9 @@ export function BankCoverageTable({ data }: { data: BankCoverage[] }) {
             <tbody>
               {rows.map((row) => (
                 <tr key={row.bank_code} className="border-b border-border/60 last:border-0">
-                  <td className="py-2 text-text-900">{row.bank_name}</td>
+                  <td className="py-2.5">
+                    <BankLogo bankCode={row.bank_code} bankName={row.bank_name} size="md" className="h-7 max-w-[120px]" />
+                  </td>
                   <td className="tabular py-2 text-right text-brand-500">
                     {formatNumber(row.active)}
                   </td>

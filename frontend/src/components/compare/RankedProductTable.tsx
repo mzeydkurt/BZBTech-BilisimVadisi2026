@@ -1,5 +1,6 @@
 import { ExternalLink } from "lucide-react";
 
+import { BankLogo } from "@/components/common/BankLogo";
 import { MissingValue } from "@/components/common/MissingValue";
 import { RateTypeBadge } from "@/components/products/RateTypeBadge";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,8 @@ export function RankedProductTable({
   winnerId,
   rateType,
   showFeeColumns: showFeeColumnsProp,
+  logoOnly = false,
+  showBankLogo = true,
 }: {
   items: RankedProduct[];
   winnerId?: number;
@@ -38,6 +41,8 @@ export function RankedProductTable({
   rateType?: ComparableRateType | string;
   /** Geriye uyumluluk; `rateType` yoksa bu kullanılır. */
   showFeeColumns?: boolean;
+  logoOnly?: boolean;
+  showBankLogo?: boolean;
 }) {
   const showFeeColumns =
     showFeeColumnsProp !== undefined
@@ -84,7 +89,20 @@ export function RankedProductTable({
                   </p>
                 )}
               </TableCell>
-              <TableCell className="text-text-500">{item.bank_name}</TableCell>
+              <TableCell>
+                {showBankLogo ? (
+                  logoOnly ? (
+                    <BankLogo bankCode={item.bank_code} bankName={item.bank_name} size="sm" className="h-6 max-w-[105px]" />
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <BankLogo bankCode={item.bank_code} bankName={item.bank_name} size="sm" />
+                      <span className="text-text-700">{item.bank_name}</span>
+                    </div>
+                  )
+                ) : (
+                  <span className="text-text-500">{item.bank_name}</span>
+                )}
+              </TableCell>
               <TableCell>
                 <RateTypeBadge rateType={item.rate_type} />
               </TableCell>
