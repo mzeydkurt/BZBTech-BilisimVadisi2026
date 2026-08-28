@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { ExternalLink, X } from "lucide-react";
 
+import { BankLogo } from "@/components/common/BankLogo";
 import { StatusBadge } from "@/components/campaigns/StatusBadge";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
@@ -66,7 +67,10 @@ export function EvidenceDrawer({ campaignId, onClose }: EvidenceDrawerProps) {
             {!isLoading && !isError && campaign && (
               <div className="space-y-5">
                 <div>
-                  <p className="text-xs text-text-500">{campaign.bank_name}</p>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <BankLogo bankCode={campaign.bank_code} bankName={campaign.bank_name} size="sm" />
+                    <span className="text-xs font-medium text-text-500">{campaign.bank_name}</span>
+                  </div>
                   <h3 className="mt-0.5 text-base font-semibold text-text-900">
                     {campaign.title}
                   </h3>
