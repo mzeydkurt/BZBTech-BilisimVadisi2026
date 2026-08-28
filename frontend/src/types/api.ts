@@ -889,6 +889,63 @@ export interface ChatTopMatch {
   detail_path: string | null;
 }
 
+export interface ChatAction {
+  kind: "navigate" | "prefill" | "refine" | string;
+  label: string;
+  path: string | null;
+  params: Record<string, string>;
+  reason: string | null;
+}
+
+export interface ChatOfferItem {
+  bank_code: string;
+  bank_name: string;
+  product_id: number | null;
+  product_name: string | null;
+  product_type: string | null;
+  profit_rate_pct: string | null;
+  monthly_payment_try: string | null;
+  total_cost_try: string | null;
+  term_months: number | null;
+  term_exact_match: boolean | null;
+  is_binding: boolean | null;
+  source_url: string | null;
+  summary: string | null;
+  action: ChatAction | null;
+}
+
+export interface ChatToolRun {
+  tool: string;
+  inputs: Record<string, string>;
+  summary: string;
+  elapsed_ms: number;
+  note: string | null;
+}
+
+export interface ChatBddkBlock {
+  asset_type: string;
+  asset_value_try: string;
+  energy_class: string | null;
+  first_home: boolean | null;
+  value_band_label: string | null;
+  max_financing_ratio_pct: string | null;
+  max_financing_amount_try: string | null;
+  max_allowed_term_months: number | null;
+  is_financing_allowed: boolean;
+  legal_reference: string | null;
+}
+
+export interface RoutingReport {
+  domain: string;
+  confidence: number;
+  scores: Record<string, number>;
+  is_ambiguous: boolean;
+  runner_up: string | null;
+  llm_used: boolean;
+  rejected_slots: string[];
+  evidence: string[];
+}
+
 export interface ChatSessionSummary {
   session_key: string;
   title: string | null;
@@ -941,6 +998,11 @@ export interface ChatResponse {
   comparison: ChatComparisonBlock | null;
   source_domain?: string | null;
   top_matches?: ChatTopMatch[];
+  actions?: ChatAction[];
+  offers?: ChatOfferItem[];
+  tool_runs?: ChatToolRun[];
+  bddk?: ChatBddkBlock | null;
+  routing?: RoutingReport | null;
   /** Sunucu oturum anahtarı — localStorage'da saklanır. */
   session_id?: string | null;
   turn_index?: number | null;

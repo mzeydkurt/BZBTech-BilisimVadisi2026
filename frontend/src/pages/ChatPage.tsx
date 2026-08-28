@@ -1,16 +1,21 @@
 import { Copy, PanelLeftOpen, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { ActionButtons } from "@/components/chat/ActionButtons";
+import { BddkResultCard } from "@/components/chat/BddkResultCard";
 import { ChatForm } from "@/components/chat/ChatForm";
 import { ChatMatchCard } from "@/components/chat/ChatResultCard";
 import { ForbiddenTermsAlert } from "@/components/chat/ForbiddenTermsAlert";
 import { AggregatePanel } from "@/components/chat/AggregatePanel";
 import { EvidenceDisclosure } from "@/components/chat/EvidenceDisclosure";
+import { GlossaryCard } from "@/components/chat/GlossaryCard";
 import { ModelSelector } from "@/components/chat/ModelSelector";
+import { OfferCards } from "@/components/chat/OfferCards";
 import { SessionHistory } from "@/components/chat/SessionHistory";
 import { GroundingNotice } from "@/components/chat/GroundingNotice";
 import { RelaxationHints } from "@/components/chat/RelaxationHints";
 import { RetrievalStrip } from "@/components/chat/RetrievalStrip";
+import { ToolRunStrip } from "@/components/chat/ToolRunStrip";
 import { UnderstoodChips } from "@/components/chat/UnderstoodChips";
 import { ErrorState } from "@/components/common/ErrorState";
 import { Button } from "@/components/ui/button";
@@ -53,8 +58,9 @@ function matchHref(m: ChatTopMatch): string {
   if (m.entity_type === "product" || m.entity_type === "product_rate") {
     return `/products/${m.id}`;
   }
-  if (m.entity_type === "glossary") return "/chat";
-  return "/chat";
+  // Glossary kartları GlossaryCard ile gösterilir; ölü /chat bağlantısı yok.
+  if (m.entity_type === "glossary") return "/financing";
+  return "/campaigns";
 }
 
 /** Eski yanıtlardaki [1] / [N] atıflarını temizle. */
@@ -100,6 +106,17 @@ function zincirUcunuBul(msgs: ChatSessionMessage[]): string | null {
 }
 
 function TopMatchCards({ data }: { data: ChatResponse }) {
+  // Saf tanım turunda top_matches boş kalır; glossary kartı ayrı render edilir.
+  if (data.intent === "tanim" && (data.glossary?.length ?? 0) > 0) {
+    return null;
+  }
+  // Teklif kartları varken ürün fallback'i tekrar gösterme.
+  if ((data.offers?.length ?? 0) > 0) {
+    const matches = (data.top_matches ?? []).filter((m) => m.entity_type === "campaign");
+    if (matches.length === 0) return null;
+    return <MatchGrid items={matches.slice(0, 3)} />;
+  }
+
   const matches = (data.top_matches ?? []).slice(0, 3);
   if (matches.length > 0) {
     return <MatchGrid items={matches} />;
@@ -226,9 +243,13 @@ function AssistantBubble({
           </div>
         )}
         <p className="whitespace-pre-wrap">{answerText}</p>
-        {data.clarification_needed && data.clarification_question && (
-          <p className="mt-2 text-amber-800">{data.clarification_question}</p>
-        )}
+        {/* clarification_question answer.text ile aynıysa tekrar gösterme */}
+        {data.clarification_needed &&
+          data.clarification_question &&
+          data.clarification_question.trim() !== answerText.trim() &&
+          !answerText.includes(data.clarification_question.trim()) && (
+            <p className="mt-2 text-amber-800">{data.clarification_question}</p>
+          )}
         {showDirection && data.direction_note && (
           <p className="mt-2 text-xs text-brand-800">{data.direction_note}</p>
         )}
@@ -236,7 +257,19 @@ function AssistantBubble({
           <CopyButton text={answerText} />
         </div>
       </div>
+
+      {(data.glossary?.length ?? 0) > 0 && <GlossaryCard items={data.glossary} />}
+      {(data.offers?.length ?? 0) > 0 && <OfferCards offers={data.offers!} />}
+      {data.bddk && <BddkResultCard bddk={data.bddk} />}
+      {(data.actions?.length ?? 0) > 0 && (
+        <ActionButtons
+          actions={data.actions!}
+          baseQuery={data.query}
+          onRefine={onRefine}
+        />
+      )}
       <TopMatchCards data={data} />
+      {(data.tool_runs?.length ?? 0) > 0 && <ToolRunStrip runs={data.tool_runs!} />}
 
       {/*
         ⚠️ Backend bu üç bloğu ZATEN üretiyordu; arayüz onları kullanmadığı için
@@ -248,6 +281,7 @@ function AssistantBubble({
         filters={data.understood}
         onRemove={(filtre) => {
           if (!onRefine) return;
+          if (filtre.kind === "source_domain") return;
           const temiz = data.query
             .replace(new RegExp(filtre.evidence, "gi"), " ")
             .replace(/\s+/g, " ")
