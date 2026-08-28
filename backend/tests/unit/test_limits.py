@@ -197,6 +197,14 @@ class TestMetindenOran:
         )
         assert oran == Decimal("0")
 
+    def test_yalniz_vade_farksiz_oran_uretmez(self) -> None:
+        from app.processing.limits import extract_profit_rate_from_text
+
+        oran, _ = extract_profit_rate_from_text(
+            "Konut finansmanında vade farksız seçenekler sunulabilir."
+        )
+        assert oran is None
+
     def test_aylik_kar_orani(self) -> None:
         from app.processing.limits import extract_profit_rate_from_text
 

@@ -104,6 +104,20 @@ class TestHonestSilence:
     ) -> None:
         veri = api_client.post(
             "/api/v1/chat",
+            json={"query": "Kuveyt Türk mü daha avantajlı, Albaraka mı?"},
+        ).json()
+        assert veri.get("clarification_needed") is True
+        assert veri["answer"]["source"] == "computed"
+        assert "hangi konuda" in veri["answer"]["text"].lower()
+        assert "veriyle yanıt verilemiyor" not in veri["answer"]["text"].lower()
+        assert veri["intent"] == "compare"
+        assert len(veri.get("actions") or []) >= 2
+
+    def test_rate_type_belirsiz_netlestirir_genel(
+        self, api_client: httpx.Client, seeded_session: Session
+    ) -> None:
+        veri = api_client.post(
+            "/api/v1/chat",
             json={"query": "Kuveyt Türk mü daha avantajlı, Albaraka mı? oran karşılaştırması"},
         ).json()
         if veri.get("clarification_needed"):
@@ -119,8 +133,13 @@ class TestHonestSilence:
         assert veri["intent"] == "tanim"
         assert veri["answer"]["source"] == "computed"
         assert veri["glossary"]
+        # Tek kaynak: tanım glossary'de; answer kısa yönlendirme; top_matches boş.
+        tanim = veri["glossary"][0]["definition"]
+        assert tanim
+        assert tanim not in veri["answer"]["text"]
+        assert veri.get("top_matches") == []
         metin = veri["answer"]["text"].lower()
-        assert "kâr" in metin or "kar" in metin
+        assert "kâr" in metin or "kar" in metin or "tanımı" in metin
 
     def test_tekil_sorgu_veri_yok_uydurmaz(
         self, api_client: httpx.Client, seeded_session: Session

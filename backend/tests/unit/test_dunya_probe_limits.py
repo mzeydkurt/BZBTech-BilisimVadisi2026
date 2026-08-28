@@ -7,6 +7,7 @@ from app.scrapers.banks.dunya_katilim import DunyaKatilimScraper
 from app.scrapers.calculator_probes.api_adapters import dunya as dunya_adapter
 from app.scrapers.models import DiscoveredUrl, RawProduct
 from app.services.calculator_probe_service import (
+    finansman_orani_gosterilebilir_mi,
     is_zero_rate_promotional,
     probe_orani_guvenilir_mi,
 )
@@ -22,8 +23,27 @@ class TestZeroRatePromotional:
     def test_promosyon_metinleri_gecerli(self) -> None:
         assert is_zero_rate_promotional(product_name="Togg Finansmanı")
         assert is_zero_rate_promotional(product_name="0 Faizli İhtiyaç Kredisi")
-        assert is_zero_rate_promotional(description="Aboneliklerde vade farksız finansman imkanı")
+        assert is_zero_rate_promotional(
+            product_name="Vade Farksız Alışveriş Finansmanı"
+        )
         assert is_zero_rate_promotional(evidence_text="Yıllık %0 kâr payı ile masrafsız finansman")
+
+    def test_aciklamadaki_vade_farksiz_yetmez(self) -> None:
+        """Tanıtım cümlesindeki 'vade farksız' / 'sıfır kâr' tek başına yetmez."""
+        assert not is_zero_rate_promotional(
+            product_name="Gönlüne Göre Konut Finansmanı",
+            description="Aboneliklerde vade farksız finansman imkanı, sıfır kâr oranı ile...",
+        )
+
+    def test_alisveris_finansmani_sifir_korunur(self) -> None:
+        """LC Waikiki vb. alışveriş kampanyası %0 uydurma değildir."""
+        assert is_zero_rate_promotional(product_name="LC Waikiki Alışveriş Finansmanı")
+        assert finansman_orani_gosterilebilir_mi(
+            profit_rate_pct=Decimal("0"),
+            product_name="LC Waikiki Alışveriş Finansmanı",
+            product_type="ihtiyac_finansmani",
+            evidence_text="sıfır kâr / vade farksız ifadesi",
+        )
 
     def test_standart_finansmanlar_sifir_oran_alamaz(self) -> None:
         assert not is_zero_rate_promotional(product_name="Araç Finansmanı")
@@ -47,6 +67,19 @@ class TestProbeOraniGuvenilirlik:
         assert not guvenilir
         assert neden is not None
         assert "sıfır/geçersiz kâr payı" in neden
+
+    def test_ucret_bandi_dusuk_oran_reddedilir(self) -> None:
+        guvenilir, neden = probe_orani_guvenilir_mi(
+            profit_rate_pct=Decimal("0.5000"),
+            term_months=120,
+            monthly_installment=None,
+            total_repayment=None,
+            product_name="Kentsel Dönüşüm Finansmanı",
+            product_type="konut_finansmani",
+        )
+        assert not guvenilir
+        assert neden is not None
+        assert "şüpheli düşük" in neden
 
     def test_mevcut_oranli_standart_urun_kabul_edilir(self) -> None:
         guvenilir, neden = probe_orani_guvenilir_mi(

@@ -87,11 +87,20 @@ def test_yillik_maliyet_orani_reddedilir() -> None:
     assert "aylık oran olamaz" in str(neden)
 
 
-@pytest.mark.parametrize("oran", [0.89, 3.05, 6.1, 9.0, 19.99])
+@pytest.mark.parametrize("oran", [1.0, 3.05, 6.1, 9.0, 19.99])
 def test_guvenilir_kaynaklarin_araligi_korunur(oran) -> None:
-    """Ölçülen tavan %9.0 (pdf_table); kapı meşru hiçbir oranı düşürmez."""
+    """Ölçülen tavan %9.0 (pdf_table); kapı meşru hiçbir oranı düşürmez.
+    %1 altı ücret bandı G4 ile ayrı test edilir."""
     tamam, neden = _kontrol(oran, 36)
     assert tamam, neden
+
+
+def test_supheli_dusuk_oran_reddedilir() -> None:
+    """%0.50 / %0.89 gibi ücret veya hatalı probe bantları yazılmaz."""
+    for oran in (0.5, 0.89):
+        tamam, neden = _kontrol(oran, 120)
+        assert not tamam
+        assert "şüpheli düşük" in str(neden)
 
 
 def test_sifir_oran_yalnizca_promosyon_ile_gecerli() -> None:

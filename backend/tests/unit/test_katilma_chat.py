@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from app.core.normalization.text import ascii_fold_tr, lower_tr, normalize_text
 from app.retrieval.query import (
+    katilma_oran_listesi_mi,
     parse_katilma_vade,
     parse_katilma_vadeler,
     parse_katilma_varyant,
@@ -62,6 +63,46 @@ def test_sirala_banka_basi_tek_ve_en_yuksek() -> None:
     assert sonuc[0][1] == Decimal("35.1")
 
 
+def test_oncelik_bankasi_global_top3_icinde_olmasa_bile_gelir() -> None:
+    """Sorguda banka adı geçince önce o banka, kalan slotlar diğerlerinden."""
+    satirlar = [
+        KatilimHesabiRow(
+            bank_code="tom",
+            bank_name="TOM",
+            values={"3_aylik|TRY": Decimal("42.74")},
+            data_source="tkbb_veripetegi",
+        ),
+        KatilimHesabiRow(
+            bank_code="hayat",
+            bank_name="Hayat",
+            values={"3_aylik|TRY": Decimal("39.31")},
+            data_source="tkbb_veripetegi",
+        ),
+        KatilimHesabiRow(
+            bank_code="kuveyt_turk",
+            bank_name="Kuveyt Türk",
+            values={"3_aylik|TRY": Decimal("34.42")},
+            data_source="tkbb_veripetegi",
+        ),
+        KatilimHesabiRow(
+            bank_code="ziraat_katilim",
+            bank_name="Ziraat Katılım",
+            values={"3_aylik|TRY": Decimal("28.65")},
+            data_source="tkbb_veripetegi",
+        ),
+    ]
+    sonuc = sirala_katilma_satirlari(
+        satirlar,
+        hucre="3_aylik|TRY",
+        limit=3,
+        oncelik_bankalar=("ziraat_katilim",),
+    )
+    assert sonuc[0][0].bank_code == "ziraat_katilim"
+    assert sonuc[0][1] == Decimal("28.65")
+    assert len(sonuc) == 3
+    assert {s.bank_code for s, _ in sonuc} == {"ziraat_katilim", "tom", "hayat"}
+
+
 def test_coklu_vade_aylik_haric_tutulmaz() -> None:
     folded = _fold(
         "aylık 3 aylık 6 aylık ve 1 yıllık katılma hesapları varmış "
@@ -110,3 +151,46 @@ def test_merhaba_dogal_coklu_vade_yaniti() -> None:
     assert "3 Aylık vadede" in metin or "3 aylık vadede" in metin
     assert "T.O.M. Katılım Bankası" in metin
     assert "%42,74" in metin
+
+
+def test_ziraat_coklu_vade_oran_sorusu_pivot_yolu() -> None:
+    q = (
+        "ziraatin aylık 3 aylık 6 aylık ve yıllık oranları nedir "
+        "katılım hesabında"
+    )
+    plan = parse_query(q)
+    assert plan.source_domain == "katilma"
+    assert plan.bank_codes == ("ziraat_katilim",)
+    assert katilma_oran_listesi_mi(q)
+    assert parse_katilma_vadeler(_fold(q)) == (1, 3, 6, 12)
+
+    q2 = q + " 10000"
+    assert katilma_oran_listesi_mi(q2)
+
+
+def test_tek_banka_coklu_vade_metni() -> None:
+    a = KatilimHesabiRow(
+        bank_code="ziraat_katilim",
+        bank_name="Ziraat Katılım",
+        values={},
+        data_source="tkbb_veripetegi",
+    )
+    metin = _katilma_cevap_metni(
+        folded="oranlari nedir",
+        giris_gerekli=False,
+        sirala=False,
+        currency="TRY",
+        oran_etiketi="dağıtılan kâr payı (getiri)",
+        urun_adi="Standart Katılma Hesabı",
+        vade_siralar=[
+            (1, [(a, Decimal("28.01"))]),
+            (3, [(a, Decimal("28.65"))]),
+            (6, [(a, Decimal("29.64"))]),
+            (12, [(a, Decimal("31.88"))]),
+        ],
+        oncelik_bankalar=("ziraat_katilim",),
+    )
+    assert "Ziraat Katılım" in metin
+    assert "%28,01" in metin
+    assert "%31,88" in metin
+    assert "en yüksek üç banka" not in metin
