@@ -11,6 +11,7 @@ import {
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
+import { BankLogo } from "@/components/common/BankLogo";
 import { KatilimHesabiTable } from "@/components/katilimHesabi/KatilimHesabiTable";
 import { RankedProductTable } from "@/components/compare/RankedProductTable";
 import { useKatilimHesabi } from "@/hooks/useKatilimHesabi";
@@ -211,15 +212,24 @@ export function KatilimHesabiPage() {
         {mutation.isSuccess && (
           <div className="mt-3 space-y-3">
             {mutation.data.winner_reason && (
-              <p className="rounded-md bg-teal-100 px-3 py-2 text-sm text-brand-900">
-                {mutation.data.winner_reason}
-              </p>
+              <div className="flex items-center gap-3 rounded-md bg-teal-100 px-4 py-3 text-sm text-brand-900">
+                {mutation.data.winner?.bank_code && (
+                  <BankLogo
+                    bankCode={mutation.data.winner.bank_code}
+                    bankName={mutation.data.winner.bank_name}
+                    size="sm"
+                    className="h-6 max-w-[95px]"
+                  />
+                )}
+                <span className="font-medium">{mutation.data.winner_reason}</span>
+              </div>
             )}
             {mutation.data.ranked.length > 0 ? (
               <RankedProductTable
                 items={mutation.data.ranked}
                 winnerId={mutation.data.winner?.product_id}
                 showFeeColumns={false}
+                showBankLogo={false}
               />
             ) : (
               <p className="text-sm text-text-500">{mutation.data.note}</p>
