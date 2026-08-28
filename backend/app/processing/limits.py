@@ -389,13 +389,16 @@ def extract_profit_rate_from_text(text: str | None) -> tuple[Decimal | None, str
         return None, None
     katlanmis = _fold(text)
 
+    # ⚠️ "vade farksız" tek başına %0 yazılmaz: pazarlama metinlerinde sık
+    # geçer (ör. konut ürünü) ama gerçek kâr payı sıfır değildir. Yalnızca
+    # açık "sıfır kâr payı / oranı" ifadeleri oran üretir.
     if re.search(
         r"(sifir|0)\s*(kar\s*oran|kar\s*payi|kar\s*orani)|"
         r"kar\s*(oran|payi)\w*\s*(sifir|%?\s*0([.,]0+)?\b)|"
-        r"vade\s*farksiz",
+        r"%\s*0([.,]0+)?\s*(kar\s*(oran|payi)|faiz)",
         katlanmis,
     ):
-        return Decimal("0"), "sıfır kâr / vade farksız ifadesi"
+        return Decimal("0"), "sıfır kâr payı ifadesi"
 
     # "aylık kâr oranı %3,75" · "kâr payı oranı %4"
     for kalip in (

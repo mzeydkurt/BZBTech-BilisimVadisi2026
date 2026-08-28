@@ -32,6 +32,7 @@ from app.core.taxonomy import (
     PRODUCT_TYPE_KEYWORDS,
     SECTOR_KEYWORDS,
 )
+from app.retrieval.routing import resolve_source_domain, score_domains
 
 # ── Banka takma adları ────────────────────────────────────
 # ⚠️ Kullanıcı bankanın tam adını yazmıyor. `banks.name` ile birebir eşleşme
@@ -178,6 +179,71 @@ BANK_ROSTER_MARKERS: Final[tuple[str, ...]] = (
 )
 
 COMPARE_MARKERS: Final[tuple[str, ...]] = ("karsilastir", "kiyasla", "hangisi daha", " ile ")
+
+_BANKA_KARSILASTIRMA_KALIPLARI: Final[tuple[str, ...]] = (
+    "hangisi daha",
+    "daha avantajli",
+    "daha iyi",
+    "daha uygun",
+    "daha mantikli",
+    "daha ucuz",
+    "karsilastir",
+    "kiyasla",
+    "arasında hangisi",
+    "arasinda hangisi",
+    "hangisini secmeliyim",
+    "hangisini seçmeliyim",
+)
+
+
+def _banka_karsilastirma_mi(katlanmis: str, banka_sayisi: int) -> bool:
+    """İki veya daha fazla banka adı geçen tercih / karşılaştırma sorusu mu?
+
+    "Kuveyt Türk mü daha avantajlı, Albaraka mı?" → True.
+    "Kuveyt Türk kampanyaları" → False.
+    """
+    if banka_sayisi < 2:
+        return False
+    if any(k in katlanmis for k in _BANKA_KARSILASTIRMA_KALIPLARI):
+        return True
+    if any(isaretci in katlanmis for isaretci in COMPARE_MARKERS):
+        return True
+    # "X mi … Y mi?" tercih kalıbı + üstünlük sıfatı.
+    if re.search(r"\b(mi|mu|mı|mü)\b", katlanmis) and any(
+        x in katlanmis for x in ("avantaj", "iyi", "uygun", "mantik", "ucuz", "dusuk", "yuksek")
+    ):
+        return True
+    return False
+
+
+def karsilastirma_konusu_belirsiz(plan: QueryPlan) -> bool:
+    """İki banka karşılaştırılıyor ama kampanya/finansman/katılma konusu yok mu?"""
+    if len(plan.bank_codes) < 2:
+        return False
+    katlanmis = _fold(plan.raw)
+    if not _banka_karsilastirma_mi(katlanmis, len(plan.bank_codes)) and plan.intent != "compare":
+        return False
+    if plan.rate_type or plan.axis_filters.get("product_type"):
+        return False
+    if any(
+        x in katlanmis
+        for x in (
+            "kampanya",
+            "finansman",
+            "katilma",
+            "katilim hesap",
+            "getiri",
+            "konut finans",
+            "tasit finans",
+            "ihtiyac finans",
+            "kar payi",
+            "oran",
+            "taksit avantaj",
+            "nakit iade",
+        )
+    ):
+        return False
+    return True
 
 # ── Tanım niyeti ──────────────────────────────────────────
 DEFINITION_MARKERS: Final[tuple[str, ...]] = (
@@ -498,46 +564,17 @@ class QueryPlan:
     focus_campaign_id: int | None = None
     # Katibim: birincil kaynak alanı.
     source_domain: str = "kampanya"
+    # Güven puanlı yönlendirme (yalnızca ekleme).
+    domain_confidence: float = 1.0
+    domain_ambiguous: bool = False
+    domain_scores: tuple[tuple[str, float], ...] = ()
+    domain_runner_up: str | None = None
 
     @property
     def has_filters(self) -> bool:
         """Herhangi bir yapısal süzgeç çıkarıldı mı?"""
         return bool(self.bank_codes or self.axis_filters or self.numeric or self.statuses)
 
-
-# Kaynak alanı sinyalleri (LLM'siz).
-_KAMPANYA_SINYAL: Final[tuple[str, ...]] = (
-    "kampanya",
-    "kampanyalar",
-    "kart",
-    "nakit iade",
-    "nakit iadesi",
-    "cashback",
-    "mil",
-    "puan",
-    "hediye",
-    "indirim",
-    "bonus",
-)
-_FINANSMAN_SINYAL: Final[tuple[str, ...]] = (
-    "finansman",
-    "konut",
-    "tasit",
-    "ihtiyac",
-    "murabaha",
-    "ltv",
-)
-_KATILMA_SINYAL: Final[tuple[str, ...]] = (
-    "katilma",
-    "katilim hesabi",
-    "katilim hesab",
-    "standart katilma",
-    "standart katilim",
-    "getiri",
-    "kar paylasim",
-    "kar paylasimi",
-    "dagitilan kar",
-)
 
 # Katılma vadesi — uzun kalıp önce (3 aylık, "aylık"tan önce).
 _KATILMA_VADE: Final[tuple[tuple[tuple[str, ...], int], ...]] = (
@@ -546,49 +583,6 @@ _KATILMA_VADE: Final[tuple[tuple[tuple[str, ...], int], ...]] = (
     (("yillik", "12 ay", "1 yil", "bir yil"), 12),
     (("aylik", "1 ay", "bir aylik"), 1),
 )
-
-
-def resolve_source_domain(
-    katlanmis: str,
-    *,
-    intent: str,
-    rate_type: str | None,
-    axis_filters: dict[str, tuple[str, ...]],
-) -> str:
-    """Sorgu için birincil kaynak alanını seçer.
-
-    Returns:
-        kampanya | finansman | katilma | tanim | kapsam_disi
-    """
-    if intent == "kapsam_disi":
-        return "kapsam_disi"
-    if intent == "sohbet":
-        return "sohbet"
-    if intent == "tanim":
-        return "tanim"
-
-    if rate_type == "participation_yield" or rate_type == "profit_sharing_ratio":
-        return "katilma"
-    if rate_type == "financing_rate":
-        return "finansman"
-
-    if any(s in katlanmis for s in _KATILMA_SINYAL):
-        return "katilma"
-    if any(s in katlanmis for s in _FINANSMAN_SINYAL):
-        return "finansman"
-    if any(s in katlanmis for s in _KAMPANYA_SINYAL):
-        return "kampanya"
-
-    urun = axis_filters.get("product_type", ())
-    if any("finansman" in d or d in {"kart"} for d in urun):
-        if any("birikim" in d or "katilma" in d for d in urun):
-            return "katilma"
-        if "kart" in urun and not any("finansman" in d for d in urun):
-            return "kampanya"
-        return "finansman"
-
-    # Finansal sinyal yoksa search bile kampanya varsayılanı (serbest RAG).
-    return "kampanya"
 
 
 def parse_katilma_vade(katlanmis: str) -> int | None:
@@ -643,6 +637,204 @@ def parse_katilma_varyant(katlanmis: str) -> str:
     return "normal"
 
 
+_KATILMA_HESAPLAMA_ISARET: Final[tuple[str, ...]] = (
+    "yatirsam",
+    "yatirirsem",
+    "yatirir",
+    "yatirdim",
+    "yatiracagim",
+    "yatiracagim",
+    "ne kadar olur",
+    "ne kadar olma",
+    "donem sonu",
+    "donem sonunda",
+    "getiri hesapla",
+    "kazancim",
+    "kazanirim",
+    "param ne kadar",
+    "bakiye ne olur",
+    "ne kadar kazanir",
+    "ne kadar kazanır",
+)
+
+
+def katilma_oran_listesi_mi(raw: str) -> bool:
+    """Katılma hesabı oran tablosu sorusu mu (getiri simülasyonu değil)?
+
+    "Ziraat'ın aylık/3/6/12 aylık oranları nedir" → True.
+    "10.000 TL yatırsam dönem sonu ne olur" → False.
+    """
+    k = _fold(raw)
+    if any(i in k for i in _KATILMA_HESAPLAMA_ISARET):
+        return False
+    if "katilma" not in k and "katilim" not in k and "hesap" not in k:
+        return False
+    oran_sorusu = any(
+        x in k
+        for x in (
+            "oranlari",
+            "oranlar",
+            "oran nedir",
+            "oran ne",
+            "kar payi oran",
+            "getiri oran",
+            "dagitilan kar",
+        )
+    ) or ("oran" in k and any(x in k for x in ("nedir", "neler", "kac", "ne ")))
+    if not oran_sorusu:
+        return False
+    vadeler = parse_katilma_vadeler(k)
+    return len(vadeler) >= 2 or "oranlari" in k or "oranlar" in k
+
+
+_FINANSMAN_HESAPLAMA_ISARET: Final[tuple[str, ...]] = (
+    "hesapla",
+    "simule",
+    "simulasyon",
+    "taksit",
+    "ne kadar od",
+    "ne kadar öd",
+    "aylik taksit",
+    "aylık taksit",
+    "toplam maliyet",
+    "geri odeme",
+    "geri ödeme",
+    "kullandir",
+    "kullandır",
+    "almak istiyorum",
+    "cikacak",
+    "çıkacak",
+)
+
+
+def katilma_kar_payi_paylasim_karsilastirma_mi(raw: str) -> bool:
+    """Dağıtılan kâr payı (getiri) ile kâr paylaşım oranı karşılaştırması mı?
+
+    "Kâr payı ile paylaşım oranı aynı mı?" → True (oran tablosu değil, kavram).
+    """
+    k = _fold(raw)
+    has_kar = any(
+        x in k
+        for x in ("kar payi", "dagitilan kar", "getiri oran", "kar payi oran")
+    )
+    has_paylasim = any(
+        x in k for x in ("paylasim orani", "paylasim oran", "kar paylasim", "musteri payi")
+    )
+    if not (has_kar and has_paylasim):
+        return False
+    return any(
+        x in k
+        for x in (
+            "fark",
+            "ayni",
+            "farkli",
+            "karsilastir",
+            "karsilastirma",
+            "ile",
+            "midir",
+            "mıdır",
+            "mu ",
+            "mı ",
+            "mi ",
+            "ne demek",
+            "nedir",
+            "karistir",
+            "karıştır",
+        )
+    )
+
+
+def finansman_oran_listesi_mi(raw: str) -> bool:
+    """Finansman kâr payı oranı listesi mi (taksit simülasyonu değil)?
+
+    "Konut finansmanı kâr payı oranları" → True.
+    "400.000 TL 48 ay konut finansmanı hesapla" → False.
+    """
+    k = _fold(raw)
+    if katilma_oran_listesi_mi(raw):
+        return False
+    if any(i in k for i in _FINANSMAN_HESAPLAMA_ISARET):
+        return False
+    if not any(
+        x in k
+        for x in (
+            "finansman",
+            "konut finans",
+            "tasit finans",
+            "ihtiyac finans",
+            "kredi",
+        )
+    ):
+        return False
+    oran_sorusu = any(
+        x in k
+        for x in (
+            "oranlari",
+            "oranlar",
+            "oran nedir",
+            "oran ne",
+            "kar payi oran",
+            "kar payi",
+            "en dusuk",
+            "en yuksek",
+            "hangi banka",
+            "hangi bankada",
+            "kac",
+            "kaç",
+            "liste",
+        )
+    ) or ("oran" in k and any(x in k for x in ("nedir", "neler", "ne ")))
+    return oran_sorusu
+
+
+def _filtrele_rate_type_adaylari(katlanmis: str, adaylar: list[str]) -> list[str]:
+    """Alan bağlamına göre yanlış oran türü adaylarını eler."""
+    if not adaylar:
+        return adaylar
+    k = katlanmis
+    katilma = any(x in k for x in ("katilma", "katilim hesap", "standart katilma", "birikim"))
+    finansman = any(
+        x in k
+        for x in ("finansman", "konut finans", "tasit finans", "ihtiyac finans", "kredi")
+    )
+    sonuc = list(adaylar)
+
+    if finansman and not katilma:
+        sonuc = [t for t in sonuc if t != "participation_yield"]
+
+    if katilma and "participation_yield" in sonuc and "profit_sharing_ratio" in sonuc:
+        if katilma_kar_payi_paylasim_karsilastirma_mi(k):
+            return sonuc
+        paylasim = any(
+            x in k
+            for x in (
+                "paylasim orani",
+                "paylasim oran",
+                "musteri payi",
+                "katilimci payi",
+                "90/10",
+                "98/2",
+            )
+        )
+        getiri = any(
+            x in k
+            for x in (
+                "getiri",
+                "dagitilan",
+                "yillik oran",
+                "kar payi oran",
+                "oranlari",
+                "oranlar",
+            )
+        ) or katilma_oran_listesi_mi(k)
+        if paylasim and not getiri:
+            sonuc = [t for t in sonuc if t != "participation_yield"]
+        elif getiri and not paylasim:
+            sonuc = [t for t in sonuc if t != "profit_sharing_ratio"]
+
+    return sonuc
+
+
 def _fold(text: str | None) -> str:
     """Karşılaştırma için metni sadeleştirir (küçük harf + ASCII katlama).
 
@@ -659,8 +851,16 @@ def _kelime_var(hedef: str, aranan: str) -> bool:
     'nin) sağda devam ediyor; sağ sınır da zorunlu tutulursa "markette"
     kelimesi "market" terimini bulmaz. `categorizer._kelime_var` ile aynı
     kural — davranış iki katmanda ayrışmasın.
+
+    ⚠️ Kısa kökler (≤3 harf) sağ sınırı da ister. Aksi halde `mil` → `milyon`
+    önek eşleşmesi `benefit=puan_mil` üretir ("1 milyon liralık araç…").
     """
-    return re.search(rf"(?<![a-z0-9]){re.escape(_fold(aranan))}", hedef) is not None
+    kalip = _fold(aranan)
+    if not kalip:
+        return False
+    if len(kalip) <= 3:
+        return re.search(rf"(?<![a-z0-9]){re.escape(kalip)}(?![a-z0-9])", hedef) is not None
+    return re.search(rf"(?<![a-z0-9]){re.escape(kalip)}", hedef) is not None
 
 
 def _karsilastirma_maskele(katlanmis: str) -> str:
@@ -969,7 +1169,15 @@ def _rate_type_adaylari(katlanmis: str) -> list[str]:
     adaylar: list[str] = []
     for tur, isaretciler in RATE_TYPE_MARKERS.items():
         for isaretci in sorted(isaretciler, key=len, reverse=True):
-            if _kelime_var(katlanmis, isaretci) or isaretci in katlanmis:
+            # ⚠️ "getirir misin" → participation_yield YANLIŞ EŞLEŞMESİ.
+            # "getiri" kökü fiil ekleriyle biter; yalnızca bağımsız sözcük say.
+            if isaretci == "getiri":
+                eslesme = re.search(r"(?<![a-z0-9])getiri(?![a-z])", katlanmis)
+            elif _kelime_var(katlanmis, isaretci) or isaretci in katlanmis:
+                eslesme = True
+            else:
+                eslesme = None
+            if eslesme:
                 if tur not in adaylar:
                     adaylar.append(tur)
                 break
@@ -998,6 +1206,32 @@ def _tanim_mi(katlanmis: str, *, olgusal: bool = False) -> bool:
     return any(isaretci in katlanmis for isaretci in DEFINITION_MARKERS)
 
 
+_LIMIT_SORU_ISARETCILERI: Final[tuple[str, ...]] = (
+    "bddk",
+    "ltv",
+    "azami finansman",
+    "azami oran",
+    "azami vade",
+    "azami tutar",
+    "finansman limiti",
+    "finansman limitleri",
+    "kredi limiti",
+)
+
+
+def _limit_sorusu_mu(katlanmis: str) -> bool:
+    """BDDK / finansman limiti sorusu mu? Tanım niyetine düşmemeli."""
+    if any(isaretci in katlanmis for isaretci in _LIMIT_SORU_ISARETCILERI):
+        return True
+    # "limit/limitler/limitini/limitlerini…" kökü.
+    if re.search(r"(?<![a-z0-9])limit", katlanmis) and any(
+        _kelime_var(katlanmis, k)
+        for k in ("finansman", "tasit", "konut", "ihtiyac", "arac", "kredi", "vade")
+    ):
+        return True
+    return False
+
+
 def _sohbet_mi(katlanmis: str, *, finansal: bool) -> bool:
     """Kısa selam/teşekkür/kimsin — finansal sinyal yoksa sohbet.
 
@@ -1018,6 +1252,15 @@ def _tanim_terimi(raw: str, katlanmis: str) -> str | None:
         temiz = temiz.replace(isaretci, " ")
     for sw in ("bir", "bu", "su", "mi", "mu", "midir", "mudur", "nedir"):
         temiz = re.sub(rf"(?<![a-z0-9]){sw}(?![a-z0-9])", " ", temiz)
+    # "X nedir, Y'den farkı ne?" → yalnızca X kısmı.
+    if "fark" in temiz:
+        for ayirici in (",", " ile ", " ve "):
+            if ayirici in temiz:
+                on = temiz.split(ayirici, 1)[0].strip()
+                if on:
+                    temiz = on
+                    break
+        temiz = re.split(r"\s+normal\s+", temiz, maxsplit=1)[0].strip()
     terim = " ".join(temiz.split()).strip(" ?¿.,;:!")
     if terim:
         return terim
@@ -1120,7 +1363,7 @@ def parse_query(raw: str) -> QueryPlan:
     durum_sinyalleri = _durumlar(katlanmis)
     kisitlar = _sayisal_kisitlar(katlanmis)
     toplama = _toplama(katlanmis)
-    rate_adaylar = _rate_type_adaylari(katlanmis)
+    rate_adaylar = _filtrele_rate_type_adaylari(katlanmis, _rate_type_adaylari(katlanmis))
     rate_type = rate_adaylar[0] if len(rate_adaylar) == 1 else None
 
     axis_filters: dict[str, tuple[str, ...]] = {}
@@ -1168,9 +1411,13 @@ def parse_query(raw: str) -> QueryPlan:
         durum=bool(durum_sinyalleri),
         toplama=toplama is not None,
     )
-    # Banka adı ya da sayısal kısıt varsa soru olgusaldır; "nedir" eki
-    # tanım niyetine yetmez.
-    olgusal_sinyal = bool(banka_sinyalleri or kisitlar)
+    # Banka adı, sayısal kısıt veya BDDK/limit sorusu olgusaldır; "nedir"
+    # eki tanım niyetine yetmez ("taşıt finansmanında limitler nedir").
+    olgusal_sinyal = bool(
+        banka_sinyalleri
+        or kisitlar
+        or _limit_sorusu_mu(katlanmis)
+    )
     if _tanim_mi(katlanmis, olgusal=olgusal_sinyal):
         niyet = "tanim"
         glossary_term = _tanim_terimi(raw, katlanmis)
@@ -1180,7 +1427,13 @@ def parse_query(raw: str) -> QueryPlan:
         niyet = "kapsam_disi"
     elif toplama is not None:
         niyet = "aggregate"
-    elif any(isaretci in katlanmis for isaretci in COMPARE_MARKERS) and len(banka_sinyalleri) > 1:
+    elif (
+        len(banka_sinyalleri) > 1
+        and (
+            _banka_karsilastirma_mi(katlanmis, len(banka_sinyalleri))
+            or any(isaretci in katlanmis for isaretci in COMPARE_MARKERS)
+        )
+    ):
         niyet = "compare"
     elif _tekil_urun_sorusu(
         katlanmis,
@@ -1192,7 +1445,7 @@ def parse_query(raw: str) -> QueryPlan:
     else:
         niyet = "search"
 
-    source_domain = resolve_source_domain(
+    karar = score_domains(
         katlanmis,
         intent=niyet,
         rate_type=rate_type,
@@ -1212,7 +1465,11 @@ def parse_query(raw: str) -> QueryPlan:
         rate_type=rate_type,
         rate_type_candidates=tuple(rate_adaylar),
         glossary_term=glossary_term,
-        source_domain=source_domain,
+        source_domain=karar.domain,
+        domain_confidence=karar.confidence,
+        domain_ambiguous=karar.is_ambiguous,
+        domain_scores=tuple(sorted(karar.scores.items())),
+        domain_runner_up=karar.runner_up,
     )
 
 
@@ -1348,7 +1605,7 @@ def merge_with_previous(plan: QueryPlan, previous: QueryPlan | None) -> QueryPla
     if not degisti:
         return plan
 
-    source_domain = resolve_source_domain(
+    karar = score_domains(
         _konvansiyonel_normalize(_fold(plan.raw)),
         intent=plan.intent,
         rate_type=rate_type,
@@ -1367,7 +1624,12 @@ def merge_with_previous(plan: QueryPlan, previous: QueryPlan | None) -> QueryPla
         rate_type=rate_type,
         rate_type_candidates=rate_candidates,
         glossary_term=plan.glossary_term,
-        source_domain=source_domain,
+        source_domain=karar.domain,
+        domain_confidence=karar.confidence,
+        domain_ambiguous=karar.is_ambiguous,
+        domain_scores=tuple(sorted(karar.scores.items())),
+        domain_runner_up=karar.runner_up,
+        focus_campaign_id=plan.focus_campaign_id,
     )
 
 
@@ -1389,6 +1651,10 @@ __all__ = [
     "QueryPlan",
     "QuerySignal",
     "has_definition_marker",
+    "finansman_oran_listesi_mi",
+    "karsilastirma_konusu_belirsiz",
+    "katilma_kar_payi_paylasim_karsilastirma_mi",
+    "katilma_oran_listesi_mi",
     "merge_with_previous",
     "parse_katilma_vadeler",
     "parse_katilma_varyant",

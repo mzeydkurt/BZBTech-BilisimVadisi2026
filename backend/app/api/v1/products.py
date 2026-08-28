@@ -22,29 +22,25 @@ router = APIRouter(prefix="/products", tags=["products"])
 
 def _guncel_oranlar(urun: Product, rate_type: str | None = None) -> list[ProductRateOut]:
     """Yalnızca her bandın en yeni tarihli oranını döner (eski kazımalar gizlenir)."""
-    from decimal import Decimal
-
-    from app.services.calculator_probe_service import is_zero_rate_promotional
+    from app.services.calculator_probe_service import finansman_orani_gosterilebilir_mi
 
     ham = select_current_rates(list(urun.rates))
     if rate_type:
         ham = [o for o in ham if o.rate_type == rate_type]
 
-    # Sıfır kâr payı koşulu belirtilmeyen hatalı sıfır oranları süz
+    # Hatalı sıfır / ücret bandı (%0.05–%1) oranlarını süz
     ham = [
         o
         for o in ham
-        if not (
-            o.rate_type == "financing_rate"
-            and o.profit_rate_pct is not None
-            and o.profit_rate_pct <= Decimal("0.05")
-            and not is_zero_rate_promotional(
-                product_name=urun.name,
-                description=urun.description,
-                evidence_text=o.evidence_text,
-                product_type=urun.product_type,
-                rate_type=o.rate_type,
-            )
+        if o.rate_type != "financing_rate"
+        or finansman_orani_gosterilebilir_mi(
+            profit_rate_pct=o.profit_rate_pct,
+            product_name=urun.name,
+            description=urun.description,
+            evidence_text=o.evidence_text,
+            product_type=urun.product_type,
+            rate_type=o.rate_type,
+            variant_label=urun.variant_label,
         )
     ]
     return [ProductRateOut.model_validate(o) for o in ham]

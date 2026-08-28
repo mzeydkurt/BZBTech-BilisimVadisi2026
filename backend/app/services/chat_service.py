@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.providers import active_embedding_model, get_provider
 from app.ai.providers.base import LLMProvider, LLMProviderError
+from app.ai.router import route_with_llm
 from app.ai.validation.terminology import check_terminology, load_forbidden_terms
 from app.config import get_settings
 from app.core.normalization.text import ascii_fold_tr, lower_tr, normalize_text
@@ -68,6 +69,7 @@ from app.retrieval.relevance import (
     refers_to_focus_entity,
     strip_citation_markers,
 )
+from app.retrieval.routing import LOW_CONFIDENCE, DomainDecision
 from app.retrieval.search import (
     CHANNEL_CANDIDATES,
     FilterReport,
@@ -77,9 +79,11 @@ from app.retrieval.search import (
     search,
 )
 from app.retrieval.semantic import EmbeddingStore, SemanticHit
+from app.retrieval.slots import extract_slots
 from app.schemas.chat import (
     AggregateBlock,
     AnswerBlock,
+    ChatAction,
     ChatComparisonBlock,
     ChatGlossaryItem,
     ChatMetric,
@@ -91,6 +95,7 @@ from app.schemas.chat import (
     FilterRejection,
     RelaxationHintOut,
     RetrievalReport,
+    RoutingReport,
     TerminologyWarningOut,
     UnderstoodFilter,
     UnverifiedNumberOut,
@@ -99,6 +104,7 @@ from app.schemas.compare import CRITERIA
 from app.schemas.katilim_hesabi import KatilimHesabiRow
 from app.services import chat_model_service as chat_models
 from app.services import chat_session_service as chat_sessions
+from app.services.chat_tools import detect_tool, run_tool
 from app.services.comparison_service import RankingError, rank_products
 from app.services.katilim_hesabi_service import build_katilim_hesabi
 
@@ -131,10 +137,31 @@ _NETLESTIRME_SORU = (
     "katılma hesabı dağıtılan kâr payı, yoksa kâr paylaşım oranı (müşteri payı)?"
 )
 
+_BANKA_KARSILASTIRMA_SORU = (
+    "Hangi konuda karşılaştırayım? Kampanya, finansman kâr payı oranı veya "
+    "katılma hesabı getirisi için ayrı ayrı bakabilirim — konu belirtilmeden "
+    "tek bir «daha avantajlı» yanıtı veremem.\n\n"
+    "Örnek: «{ornek} konut finansmanında hangisi daha avantajlı?» veya "
+    "«{ornek} katılma hesabı getirisinde hangisi daha iyi?»"
+)
+
 _KATILMA_GIRIS = (
     "Katılma hesabı, katılım bankasında kâr-zarar ortaklığına dayanan vadeli "
     "birikim ürünüdür. Dağıtılan kâr payı (getiri) ile kâr paylaşım oranı "
     "(müşteri/banka payı, örn. 90/10) ayrı sayılardır."
+)
+
+_KAR_PAYI_PAYLASIM_ACIKLAMA = (
+    "Dağıtılan kâr payı (getiri) ile kâr paylaşım oranı aynı şey değildir:\n\n"
+    "• Dağıtılan kâr payı (getiri): Katılma hesabında dönem sonunda yatırımcıya "
+    "aktarılan yıllık getiri oranıdır (ör. %28,65). Katılım Hesabı tablosunda "
+    "vade vade yayımlanır; getiri hesabında bu oran kullanılır.\n"
+    "• Kâr paylaşım oranı: Bankanın dağıttığı kârdan müşteriye düşen pay "
+    "(ör. %90 müşteri / %10 banka). Bu bir getiri yüzdesi değildir; tabloda "
+    "ayrı bir sütundur.\n\n"
+    "Finansman kâr payı oranı da bunlardan farklıdır — konut/taşıt/ihtiyaç "
+    "finansmanında maliyet oranıdır, katılma getirisi değildir.\n"
+    "Geçmiş getiri gelecek getiriyi taahhüt etmez."
 )
 
 _SIRA_ISARET: tuple[str, ...] = (
@@ -171,8 +198,14 @@ def sirala_katilma_satirlari(
     *,
     hucre: str,
     limit: int = 3,
+    oncelik_bankalar: tuple[str, ...] = (),
 ) -> list[tuple[KatilimHesabiRow, Decimal]]:
-    """Pivot satırlarını tek hücreye göre (banka başına bir kez) sıralar."""
+    """Pivot satırlarını tek hücreye göre (banka başına bir kez) sıralar.
+
+    `oncelik_bankalar` verilirse önce bu bankalar (sorguda adı geçen),
+    kalan slotlar diğer bankalardan doldurulur. Böylece global top-3 içinde
+  olmayan banka (ör. Ziraat) boş dönmez.
+    """
     adaylar: list[tuple[KatilimHesabiRow, Decimal]] = []
     for satir in satirlar:
         deger = satir.values.get(hucre)
@@ -180,14 +213,34 @@ def sirala_katilma_satirlari(
             continue
         adaylar.append((satir, deger))
     adaylar.sort(key=lambda ikili: (-ikili[1], ikili[0].bank_name))
-    return adaylar[:limit]
+
+    if not oncelik_bankalar:
+        return adaylar[:limit]
+
+    oncelik = set(oncelik_bankalar)
+    birincil = [ikili for ikili in adaylar if ikili[0].bank_code in oncelik]
+    diger = [ikili for ikili in adaylar if ikili[0].bank_code not in oncelik]
+    return (birincil + diger)[:limit]
 
 
 def _katilma_rate_type(plan: QueryPlan) -> str:
     folded = _fold(plan.raw)
-    if plan.rate_type == "profit_sharing_ratio" or "paylasim" in folded:
+    if plan.rate_type in {"profit_sharing_ratio", "participation_yield"}:
+        return plan.rate_type
+    if any(
+        k in folded
+        for k in (
+            "paylasim orani",
+            "paylasim oran",
+            "musteri payi",
+            "katilimci payi",
+            "90/10",
+            "98/2",
+        )
+    ):
         return "profit_sharing_ratio"
-    # "ideal / getiri / aylık standart" → dağıtılan kâr payı (Katılım Hesabı sekmesi).
+    if "paylasim" in folded and "kar payi" not in folded:
+        return "profit_sharing_ratio"
     return "participation_yield"
 
 
@@ -237,6 +290,7 @@ def _katilma_cevap_metni(
     oran_etiketi: str,
     urun_adi: str,
     vade_siralar: list[tuple[int, list[tuple[KatilimHesabiRow, Decimal]]]],
+    oncelik_bankalar: tuple[str, ...] = (),
 ) -> str:
     """Müşteriye konuşan, kaynaklı katılma yanıtı (şablon; model yok)."""
     bloklar: list[str] = []
@@ -251,6 +305,22 @@ def _katilma_cevap_metni(
         bloklar.append(
             "Bu süzgeçte Katılım Hesabı verisinde oran bulamadım. "
             "Katılım Hesabı sayfasından vade veya para birimini değiştirmeyi deneyin."
+        )
+        return "\n\n".join(bloklar)
+
+    # Tek banka + çoklu vade: tüm vadeleri o banka için listele.
+    tek_banka = len(oncelik_bankalar) == 1 and len(dolu) > 1
+    if tek_banka:
+        banka_adi = dolu[0][1][0][0].bank_name
+        satirlar = []
+        for ay, sira in dolu:
+            vade_adi = _VADE_ADI.get(ay, "aylık")
+            satirlar.append(f"• {vade_adi.capitalize()}: {_yuzde_yaz(sira[0][1])}")
+        bloklar.append(
+            f"{banka_adi} {urun_adi} için {oran_etiketi} ({currency}):\n"
+            + "\n".join(satirlar)
+            + "\nKaynak: Katılım Hesabı (TKBB öncelikli). Geçmiş getiri gelecek "
+            "getiriyi taahhüt etmez."
         )
         return "\n\n".join(bloklar)
 
@@ -345,55 +415,106 @@ def _katilma_yanit(
     )
 
     vade_siralar: list[tuple[int, list[tuple[KatilimHesabiRow, Decimal]]]] = []
+    oncelik = tuple(plan.bank_codes)
     for ay in vadeler:
         vade_etiketi = KATILIM_HESABI_VADE_ETIKETI.get(ay, "aylik")
         hucre = f"{vade_etiketi}|{currency}"
-        vade_siralar.append((ay, sirala_katilma_satirlari(pivot.rows, hucre=hucre, limit=3)))
+        sira = sirala_katilma_satirlari(
+            pivot.rows, hucre=hucre, limit=3, oncelik_bankalar=oncelik
+        )
+        vade_siralar.append((ay, sira))
 
+    tek_banka_cok_vade = len(oncelik) == 1 and len(vadeler) > 1
+    kart_vade = 3 if 3 in vadeler else vadeler[0]
     kart_sirali = next((sira for ay, sira in vade_siralar if ay == kart_vade), [])
-    vade_adi = _VADE_ADI.get(kart_vade, "aylık")
 
     bank_ids = {
         b.code: b.id
         for b in session.scalars(
-            select(Bank).where(Bank.code.in_([s.bank_code for s, _ in kart_sirali] or ["__yok__"]))
+            select(Bank).where(
+                Bank.code.in_(
+                    [s.bank_code for s, _ in kart_sirali]
+                    + (list(oncelik) if tek_banka_cok_vade else [])
+                    or ["__yok__"]
+                )
+            )
         )
     }
 
     products: list[ChatProductItem] = []
     top_adaylar: list[RankCandidate] = []
-    for i, (satir, deger) in enumerate(kart_sirali):
-        kaynak = "TKBB Veri Peteği" if "tkbb" in (satir.data_source or "") else "banka sitesi"
-        reason = f"{vade_adi.capitalize()} {oran_etiketi}: {_yuzde_yaz(deger)} ({kaynak})"
-        products.append(
-            ChatProductItem(
-                product_id=bank_ids.get(satir.bank_code, i + 1),
-                product_name=urun_adi,
-                bank_code=satir.bank_code,
-                bank_name=satir.bank_name,
-                product_type="birikim_katilma_hesabi",
-                rate_type=rate_type,
-                card_text=reason,
-                profit_rate_pct=deger if rate_type == "participation_yield" else None,
-                investor_share_pct=deger if rate_type == "profit_sharing_ratio" else None,
-                term_months=kart_vade,
-                source_url=None,
+    if tek_banka_cok_vade:
+        # Tüm vadeler için tek bankanın kartları.
+        for ay, sira in vade_siralar:
+            if not sira:
+                continue
+            satir, deger = sira[0]
+            vade_adi = _VADE_ADI.get(ay, "aylık")
+            kaynak = "TKBB Veri Peteği" if "tkbb" in (satir.data_source or "") else "banka sitesi"
+            reason = f"{vade_adi.capitalize()} {oran_etiketi}: {_yuzde_yaz(deger)} ({kaynak})"
+            products.append(
+                ChatProductItem(
+                    product_id=bank_ids.get(satir.bank_code, ay),
+                    product_name=urun_adi,
+                    bank_code=satir.bank_code,
+                    bank_name=satir.bank_name,
+                    product_type="birikim_katilma_hesabi",
+                    rate_type=rate_type,
+                    card_text=reason,
+                    profit_rate_pct=deger if rate_type == "participation_yield" else None,
+                    investor_share_pct=deger if rate_type == "profit_sharing_ratio" else None,
+                    term_months=ay,
+                    source_url=None,
+                )
             )
-        )
-        top_adaylar.append(
-            RankCandidate(
-                entity_type="product_rate",
-                id=bank_ids.get(satir.bank_code, i + 1),
-                title=urun_adi,
-                bank_name=satir.bank_name,
-                source_url=None,
-                detail_path="/katilim-hesabi",
-                rank_index=i,
-                is_active=True,
-                intent_boost=0.2,
-                reason=reason,
+            top_adaylar.append(
+                RankCandidate(
+                    entity_type="product_rate",
+                    id=bank_ids.get(satir.bank_code, ay),
+                    title=urun_adi,
+                    bank_name=satir.bank_name,
+                    source_url=None,
+                    detail_path="/katilim-hesabi",
+                    rank_index=len(top_adaylar),
+                    is_active=True,
+                    intent_boost=0.2,
+                    reason=reason,
+                )
             )
-        )
+    else:
+        vade_adi = _VADE_ADI.get(kart_vade, "aylık")
+        for i, (satir, deger) in enumerate(kart_sirali):
+            kaynak = "TKBB Veri Peteği" if "tkbb" in (satir.data_source or "") else "banka sitesi"
+            reason = f"{vade_adi.capitalize()} {oran_etiketi}: {_yuzde_yaz(deger)} ({kaynak})"
+            products.append(
+                ChatProductItem(
+                    product_id=bank_ids.get(satir.bank_code, i + 1),
+                    product_name=urun_adi,
+                    bank_code=satir.bank_code,
+                    bank_name=satir.bank_name,
+                    product_type="birikim_katilma_hesabi",
+                    rate_type=rate_type,
+                    card_text=reason,
+                    profit_rate_pct=deger if rate_type == "participation_yield" else None,
+                    investor_share_pct=deger if rate_type == "profit_sharing_ratio" else None,
+                    term_months=kart_vade,
+                    source_url=None,
+                )
+            )
+            top_adaylar.append(
+                RankCandidate(
+                    entity_type="product_rate",
+                    id=bank_ids.get(satir.bank_code, i + 1),
+                    title=urun_adi,
+                    bank_name=satir.bank_name,
+                    source_url=None,
+                    detail_path="/katilim-hesabi",
+                    rank_index=i,
+                    is_active=True,
+                    intent_boost=0.2,
+                    reason=reason,
+                )
+            )
 
     giris_gerekli = any(k in folded for k in ("nedir", "ne demek", "ne anlama"))
     metin = _katilma_cevap_metni(
@@ -404,6 +525,7 @@ def _katilma_yanit(
         oran_etiketi=oran_etiketi,
         urun_adi=urun_adi,
         vade_siralar=vade_siralar,
+        oncelik_bankalar=oncelik,
     )
     kart_hucre = f"{KATILIM_HESABI_VADE_ETIKETI.get(kart_vade, 'aylik')}|{currency}"
 
@@ -432,6 +554,162 @@ def _katilma_yanit(
         ),
         plan,
         top=score_candidates(top_adaylar),
+    )
+
+
+def _katilma_kavram_yanit(
+    session: Session,
+    plan: QueryPlan,
+    *,
+    uyari: str | None,
+    elapsed_ms: int,
+) -> ChatResponse:
+    """Kâr payı vs paylaşım oranı gibi kavram soruları — pivot yerine net açıklama."""
+    folded = _fold(plan.raw)
+    metin = _KAR_PAYI_PAYLASIM_ACIKLAMA
+    oncelik = tuple(plan.bank_codes)
+    ornek_satirlar: list[str] = []
+
+    if oncelik:
+        variant = parse_katilma_varyant(folded)
+        vadeler = _katilma_vade_secimi(folded, plan)
+        ay = 3 if 3 in vadeler else vadeler[0]
+        for rate_type, etiket in (
+            ("participation_yield", "dağıtılan kâr payı (getiri)"),
+            ("profit_sharing_ratio", "kâr paylaşım oranı (müşteri payı)"),
+        ):
+            pivot = build_katilim_hesabi(
+                session,
+                rate_type=rate_type,
+                variant=variant,
+                currency="TRY",
+                term_months=ay,
+            )
+            hucre = f"{KATILIM_HESABI_VADE_ETIKETI.get(ay, 'aylik')}|TRY"
+            sira = sirala_katilma_satirlari(
+                pivot.rows, hucre=hucre, limit=1, oncelik_bankalar=oncelik
+            )
+            if sira:
+                satir, deger = sira[0]
+                ornek_satirlar.append(
+                    f"• {satir.bank_name} — {_VADE_ADI.get(ay, 'aylık').capitalize()} "
+                    f"{etiket}: {_yuzde_yaz(deger)}"
+                )
+
+    if ornek_satirlar:
+        metin += "\n\nSorduğunuz banka için örnek (TKBB öncelikli):\n" + "\n".join(ornek_satirlar)
+
+    glossary = []
+    for terim in ("Dağıtılan Kâr Payı (Getiri)", "Kâr Paylaşım Oranı"):
+        doc = _glossary_bul_from_db(session, terim)
+        if doc:
+            glossary.append(doc)
+
+    return _finalize(
+        ChatResponse(
+            query=plan.raw,
+            intent=plan.intent,
+            understood=_understood(plan),
+            answer=AnswerBlock(text=metin, source="computed", is_grounded=True),
+            results=[],
+            glossary=glossary or None,
+            retrieval=RetrievalReport(
+                corpus_size=0,
+                returned=len(ornek_satirlar),
+                lexical_used=False,
+                semantic_used=False,
+                semantic_note="Katılma kavram açıklaması; getiri ile paylaşım oranı karıştırılmadı.",
+                elapsed_ms=elapsed_ms,
+            ),
+            forbidden_terms_warning=uyari,
+        ),
+        plan,
+        top=[],
+    )
+
+
+def _glossary_bul_from_db(session: Session, terim: str) -> ChatGlossaryItem | None:
+    """Oturumdan tek glossary kartı (kavram yanıtları için)."""
+    from app.db.models import GlossaryTerm
+
+    aranan = _fold(terim)
+    for kayit in session.scalars(select(GlossaryTerm).where(GlossaryTerm.is_forbidden_conventional.is_(False))):
+        if aranan in _fold(kayit.term) or _fold(kayit.term) in aranan:
+            return ChatGlossaryItem(
+                term_id=kayit.id,
+                term=kayit.term,
+                definition=kayit.definition,
+                conventional_equivalent=kayit.conventional_equivalent,
+            )
+        for alias in kayit.aliases or []:
+            if aranan in _fold(alias) or _fold(alias) in aranan:
+                return ChatGlossaryItem(
+                    term_id=kayit.id,
+                    term=kayit.term,
+                    definition=kayit.definition,
+                    conventional_equivalent=kayit.conventional_equivalent,
+                )
+    return None
+
+
+def _banka_karsilastirma_netlestirme(
+    plan: QueryPlan,
+    corpus: Corpus,
+    *,
+    uyari: str | None,
+    elapsed_ms: int,
+) -> ChatResponse:
+    """İki banka karşılaştırması — konu belirtilmemişse yönlendirici netleştirme."""
+    kod_ad = dict(corpus.banks)
+    isimler = [kod_ad.get(k, k) for k in plan.bank_codes[:2]]
+    if len(isimler) == 2:
+        ornek = f"{isimler[0]} ile {isimler[1]}"
+    elif isimler:
+        ornek = isimler[0]
+    else:
+        ornek = "Kuveyt Türk ile Albaraka"
+
+    soru = _BANKA_KARSILASTIRMA_SORU.format(ornek=ornek)
+
+    aksiyonlar = [
+        ChatAction(
+            kind="refine",
+            label="Kampanyalar",
+            params={"append": "kampanyalarında hangisi daha avantajlı"},
+            reason="Aktif kampanya ve fayda karşılaştırması",
+        ),
+        ChatAction(
+            kind="refine",
+            label="Konut finansmanı",
+            params={"product_type": "konut_finansmani"},
+            reason="Konut finansman kâr payı oranı",
+        ),
+        ChatAction(
+            kind="refine",
+            label="Katılma getirisi",
+            params={"append": "katılma hesabı getirisinde hangisi daha avantajlı"},
+            reason="Dağıtılan kâr payı (getiri) karşılaştırması",
+        ),
+    ]
+
+    return ChatResponse(
+        query=plan.raw,
+        intent=plan.intent if plan.intent == "compare" else "compare",
+        understood=_understood(plan),
+        answer=AnswerBlock(text=soru, source="computed", is_grounded=True),
+        results=[],
+        retrieval=RetrievalReport(
+            corpus_size=corpus.size,
+            returned=0,
+            lexical_used=False,
+            semantic_used=False,
+            semantic_note="İki banka karşılaştırması; konu belirtilmedi — netleştirme.",
+            elapsed_ms=elapsed_ms,
+        ),
+        forbidden_terms_warning=uyari,
+        clarification_needed=True,
+        clarification_question=soru,
+        actions=aksiyonlar,
     )
 
 
@@ -740,6 +1018,9 @@ async def _anlat_computed(
         return resp
     if plan.intent in {"sohbet", "tanim", "kapsam_disi"} or resp.clarification_needed:
         return resp
+    # Araç çıktısı (BDDK / simülasyon / teklif) zaten kanonik; model yeniden yazmasın.
+    if resp.tool_runs or resp.bddk or resp.offers:
+        return resp
     if resp.answer.text.startswith("Bu soru") or resp.answer.source == "refusal":
         return resp
     try:
@@ -904,16 +1185,60 @@ def _fold(text: str) -> str:
 
 
 def _glossary_bul(corpus: Corpus, terim: str | None) -> GlossaryDoc | None:
+    """Sözlükte en özgül (uzun) eşleşen terimi döndürür."""
+    eslesmeler = _glossary_eslesmeler(corpus, terim)
+    return eslesmeler[0] if eslesmeler else None
+
+
+def _glossary_eslesmeler(corpus: Corpus, terim: str | None) -> list[GlossaryDoc]:
+    """Sorguya uyan glossary kayıtlarını özgüllük sırasıyla döndürür."""
     if not terim or not corpus.glossary_docs:
-        return None
+        return []
     aranan = _fold(terim)
+    bulunan: list[tuple[int, GlossaryDoc]] = []
     for doc in corpus.glossary_docs.values():
-        if aranan in _fold(doc.term) or _fold(doc.term) in aranan:
-            return doc
-        for alias in doc.aliases:
-            if aranan in _fold(alias) or _fold(alias) in aranan:
-                return doc
-    return None
+        en_uzun = 0
+        for aday in (_fold(doc.term), *(_fold(a) for a in doc.aliases)):
+            if not aday:
+                continue
+            if aranan == aday or aday in aranan or aranan in aday:
+                en_uzun = max(en_uzun, len(aday))
+        if en_uzun:
+            bulunan.append((en_uzun, doc))
+    bulunan.sort(key=lambda ikili: (-ikili[0], ikili[1].term))
+    gorulen: set[int] = set()
+    sonuc: list[GlossaryDoc] = []
+    for _, doc in bulunan:
+        if doc.term_id in gorulen:
+            continue
+        gorulen.add(doc.term_id)
+        sonuc.append(doc)
+    return sonuc
+
+
+def _tanim_glossary_kayitlari(corpus: Corpus, plan: QueryPlan) -> list[GlossaryDoc]:
+    """Tanım sorusu için bir veya birden fazla sözlük kaydı."""
+    birincil = _glossary_eslesmeler(corpus, plan.glossary_term)
+    if not birincil:
+        return []
+    k = _fold(plan.raw)
+    if "fark" not in k and "ayni" not in k and "farkli" not in k:
+        return birincil[:1]
+    kayitlar = list(birincil[:1])
+    ek_terimler: list[str] = []
+    if any(x in k for x in ("ara odeme", "ara odemeli", "ara donem")):
+        ek_terimler.append("standart katilma hesabi")
+    if any(x in k for x in ("standart katilma", "normal katilma")):
+        ek_terimler.append("ara odemeli katilma hesabi")
+    for ek in ek_terimler:
+        doc = _glossary_bul(corpus, ek)
+        if doc and all(d.term_id != doc.term_id for d in kayitlar):
+            kayitlar.append(doc)
+    if len(kayitlar) == 1 and len(birincil) > 1:
+        ikinci = birincil[1]
+        if ikinci.term_id != kayitlar[0].term_id:
+            kayitlar.append(ikinci)
+    return kayitlar[:2]
 
 
 # Sektör ekseni → ürün tipi. Ölçüldü: "en uygun kredi hangisinde konut için"
@@ -1139,7 +1464,10 @@ def _top_from_products(
         )
         reason = None
         if p.profit_rate_pct is not None:
-            reason = f"Getiri {_yuzde_yaz(p.profit_rate_pct)}"
+            if domain == "finansman" or (p.rate_type or "") == "financing_rate":
+                reason = f"Kâr payı {_yuzde_yaz(p.profit_rate_pct)}"
+            else:
+                reason = f"Getiri {_yuzde_yaz(p.profit_rate_pct)}"
         elif p.investor_share_pct is not None and domain != "katilma":
             reason = f"Katılımcı payı {_yuzde_yaz(p.investor_share_pct)}"
         adaylar.append(
@@ -1169,6 +1497,7 @@ def _top_from_products(
 
 
 def _top_from_glossary(items: list[ChatGlossaryItem]) -> list[ChatTopMatch]:
+    """Sözlük eşleşmeleri — tanım metni reason'a YAZILMAZ (çift cevap önlemi)."""
     adaylar = [
         RankCandidate(
             entity_type="glossary",
@@ -1176,14 +1505,94 @@ def _top_from_glossary(items: list[ChatGlossaryItem]) -> list[ChatTopMatch]:
             title=g.term,
             bank_name=None,
             source_url=None,
-            detail_path="/chat",
+            detail_path=None,
             rank_index=i,
             intent_boost=0.2,
-            reason=g.definition[:120] if g.definition else None,
+            reason=None,
         )
         for i, g in enumerate(items)
     ]
     return score_candidates(adaylar)
+
+
+def _decision_from_plan(plan: QueryPlan) -> DomainDecision:
+    """QueryPlan üzerindeki yönlendirme alanlarından DomainDecision üretir."""
+    if plan.domain_scores:
+        skorlar = dict(plan.domain_scores)
+    else:
+        skorlar = {plan.source_domain: plan.domain_confidence}
+    return DomainDecision(
+        domain=plan.source_domain,
+        confidence=plan.domain_confidence,
+        scores=skorlar,
+        evidence=(),
+        is_ambiguous=plan.domain_ambiguous,
+        runner_up=plan.domain_runner_up,
+    )
+
+
+def _routing_report(
+    plan: QueryPlan,
+    *,
+    llm_used: bool = False,
+    rejected_slots: tuple[str, ...] | list[str] = (),
+    evidence: tuple[str, ...] | list[str] = (),
+) -> RoutingReport:
+    return RoutingReport(
+        domain=plan.source_domain,
+        confidence=plan.domain_confidence,
+        scores=dict(plan.domain_scores) if plan.domain_scores else {},
+        is_ambiguous=plan.domain_ambiguous,
+        runner_up=plan.domain_runner_up,
+        llm_used=llm_used,
+        rejected_slots=list(rejected_slots),
+        evidence=list(evidence),
+    )
+
+
+def _alan_cipi(plan: QueryPlan) -> UnderstoodFilter | None:
+    """Alan yönlendirmesini 'Anladığım' çipi olarak gösterir."""
+    if plan.source_domain in {"sohbet", "kapsam_disi", "tanim"}:
+        return None
+    etiket = {
+        "kampanya": "Kampanya",
+        "finansman": "Finansman",
+        "katilma": "Katılma hesabı",
+    }.get(plan.source_domain, plan.source_domain)
+    if plan.domain_ambiguous and plan.domain_runner_up:
+        ikinci = {
+            "kampanya": "kampanyalar",
+            "finansman": "finansman",
+            "katilma": "katılma hesabı",
+        }.get(plan.domain_runner_up, plan.domain_runner_up)
+        display = f"{etiket} — belirsiz, {ikinci} de tarandı"
+        evidence = f"güven={plan.domain_confidence:.2f}; belirsiz"
+    else:
+        display = etiket
+        evidence = f"güven={plan.domain_confidence:.2f}"
+    return UnderstoodFilter(
+        kind="source_domain",
+        value=plan.source_domain,
+        label="Alan",
+        display=display,
+        evidence=evidence,
+    )
+
+
+def _with_routing(
+    resp: ChatResponse,
+    plan: QueryPlan,
+    *,
+    llm_used: bool = False,
+    rejected_slots: tuple[str, ...] | list[str] = (),
+) -> ChatResponse:
+    """Yanıta routing raporu ve alan çipi ekler."""
+    if resp.routing is None:
+        resp.routing = _routing_report(plan, llm_used=llm_used, rejected_slots=rejected_slots)
+    cip = _alan_cipi(plan)
+    if cip is not None and not any(u.kind == "source_domain" for u in resp.understood):
+        resp.understood = [cip, *resp.understood]
+    return resp
 
 
 def _yanitlanamadi_mi(answer: AnswerBlock) -> bool:
@@ -1204,9 +1613,12 @@ def _finalize(
     plan: QueryPlan,
     *,
     top: list[ChatTopMatch] | None = None,
+    llm_used: bool = False,
+    rejected_slots: tuple[str, ...] | list[str] = (),
 ) -> ChatResponse:
-    """source_domain + top_matches ekler (sözleşme: yalnızca ekleme)."""
+    """source_domain + top_matches + routing ekler (sözleşme: yalnızca ekleme)."""
     resp.source_domain = plan.source_domain
+    resp = _with_routing(resp, plan, llm_used=llm_used, rejected_slots=rejected_slots)
 
     # ── "Yanıtlanamıyor" diyen yanıt KANIT TAŞIMAZ ─────────
     # Arayüzdeki başlık "Yanıtın dayandığı kanıt" der. Yanıt "elimizdeki
@@ -1243,7 +1655,8 @@ def _finalize(
             resp.top_matches = score_candidates(adaylar)
         elif resp.products:
             resp.top_matches = _top_from_products(resp.products, domain=plan.source_domain)
-        elif resp.glossary:
+        elif resp.glossary and plan.intent != "tanim":
+            # Saf tanım turunda top_matches boş kalır — tanım yalnızca glossary[].
             resp.top_matches = _top_from_glossary(resp.glossary)
     return resp
 
@@ -1605,17 +2018,26 @@ async def process_chat_query(session: Session, req: ChatRequest) -> ChatResponse
     # soru "nedir" ile de bitebilir). Ama tanım tamamen kaybolmamalı:
     # "Karz-ı hasen nedir? Dünya Katılım'da böyle bir ürün var mı?" sorusu hem
     # tanım hem olgu ister. Niyet olgusal kalır, tanım yanıta EKLENİR.
+    #
+    # Örtüşme denetimi: cevap metni tanımı zaten içeriyorsa tekrar eklenmez
+    # (çift cevap — "Kâr Payı Oranı" kartı + aynı metin balonu).
     if not resp.glossary and has_definition_marker(req.query):
         sozluk_doc = _glossary_bul(corpus, plan.glossary_term or _tanim_terimi_kaba(req.query))
         if sozluk_doc is not None:
-            resp.glossary = [
-                ChatGlossaryItem(
-                    term_id=sozluk_doc.term_id,
-                    term=sozluk_doc.term,
-                    definition=sozluk_doc.definition,
-                    conventional_equivalent=sozluk_doc.conventional_equivalent,
-                )
-            ]
+            cevap = resp.answer.text or ""
+            tanim_parca = (sozluk_doc.definition or "")[:40]
+            zaten_var = (
+                sozluk_doc.term in cevap and tanim_parca and tanim_parca in cevap
+            ) or (f"{sozluk_doc.term}:" in cevap)
+            if not zaten_var:
+                resp.glossary = [
+                    ChatGlossaryItem(
+                        term_id=sozluk_doc.term_id,
+                        term=sozluk_doc.term,
+                        definition=sozluk_doc.definition,
+                        conventional_equivalent=sozluk_doc.conventional_equivalent,
+                    )
+                ]
 
     resp.session_id = oturum.session_key
     resp.turn_index = turn
@@ -1666,10 +2088,75 @@ async def _process_chat_core(
             plan,
         )
 
+    from app.retrieval.query import karsilastirma_konusu_belirsiz
+
+    if karsilastirma_konusu_belirsiz(plan):
+        return _finalize(
+            _banka_karsilastirma_netlestirme(plan, corpus, uyari=uyari, elapsed_ms=gecen()),
+            plan,
+        )
+
+    # ── Düşük güvende LLM router (sayı üretmez) ────────────
+    llm_used = False
+    rejected_slots: list[str] = []
+    router_tool: str | None = None
+    karar = _decision_from_plan(plan)
+    if karar.is_low_confidence and plan.intent not in {"tanim"}:
+        saglayici = _provider_or_none(plan=plan, model_id=req.model_id)
+        router = await route_with_llm(plan.raw, karar, provider=saglayici)
+        llm_used = router.llm_used
+        rejected_slots = list(router.rejected_slots)
+        router_tool = router.tool
+        if router.domain and router.domain in {
+            "kampanya",
+            "finansman",
+            "katilma",
+            "tanim",
+            "sohbet",
+            "kapsam_disi",
+        }:
+            plan = replace(
+                plan,
+                source_domain=router.domain,
+                domain_confidence=max(plan.domain_confidence, 0.60),
+                domain_ambiguous=False,
+                domain_runner_up=None,
+            )
+            if router.domain == "tanim":
+                plan = replace(plan, intent="tanim")
+            elif router.domain == "sohbet":
+                plan = replace(plan, intent="sohbet")
+            elif router.domain == "kapsam_disi":
+                plan = replace(plan, intent="kapsam_disi")
+
+    # Router sohbet / kapsam_disi'ye çevirdiyse erken çık.
+    if plan.intent == "sohbet":
+        return _with_routing(
+            _sohbet_yanit(plan, uyari=uyari, elapsed_ms=gecen()),
+            plan,
+            llm_used=llm_used,
+            rejected_slots=rejected_slots,
+        )
+    if plan.intent == "kapsam_disi":
+        return _finalize(
+            ChatResponse(
+                query=plan.raw,
+                intent=plan.intent,
+                understood=_understood(plan),
+                answer=AnswerBlock(text=_KAPSAM_DISI_METIN, source="refusal", is_grounded=True),
+                results=[],
+                retrieval=_empty_retrieval(corpus.size, gecen(), "Kapsam dışı; model çağrılmadı."),
+                forbidden_terms_warning=uyari,
+            ),
+            plan,
+            llm_used=llm_used,
+            rejected_slots=rejected_slots,
+        )
+
     # ── tanim — glossary, modele gitmez ───────────────────
     if plan.intent == "tanim":
-        doc = _glossary_bul(corpus, plan.glossary_term)
-        if doc is None:
+        docs = _tanim_glossary_kayitlari(corpus, plan)
+        if not docs:
             # ⚠️ SÖZLÜKTE YOKSA ARAMAYA DÜŞÜLÜR, "bulunamadı" DENMEZ.
             #
             # Ölçüldü (100 soruluk gerçek test havuzu): "nedir" ile biten her
@@ -1695,14 +2182,22 @@ async def _process_chat_core(
                     definition=doc.definition,
                     conventional_equivalent=doc.conventional_equivalent,
                 )
+                for doc in docs
             ]
+            if len(docs) == 1:
+                metin = f"«{docs[0].term}» tanımı aşağıda."
+            else:
+                metin = (
+                    f"«{docs[0].term}» ile «{docs[1].term}» arasındaki fark "
+                    "aşağıda; her iki terimin tanımı kartlarda."
+                )
             return _finalize(
                 ChatResponse(
                     query=plan.raw,
                     intent=plan.intent,
                     understood=_understood(plan),
                     answer=AnswerBlock(
-                        text=f"{doc.term}: {doc.definition}",
+                        text=metin,
                         source="computed",
                         is_grounded=True,
                     ),
@@ -1710,7 +2205,7 @@ async def _process_chat_core(
                     glossary=glossary,
                     retrieval=RetrievalReport(
                         corpus_size=len(corpus.glossary_docs or {}),
-                        returned=1,
+                        returned=len(glossary),
                         lexical_used=False,
                         semantic_used=False,
                         semantic_note=(
@@ -1721,13 +2216,113 @@ async def _process_chat_core(
                     forbidden_terms_warning=uyari,
                 ),
                 plan,
-                top=_top_from_glossary(glossary),
+                top=[],
             )
 
-    # ── katılma → Katılım Hesabı pivot (TKBB öncelikli) ───
-    if plan.source_domain == "katilma":
+    # ── Araç katmanı (finansman / BDDK / katılma getiri) ───
+    # Slotlar kullanıcı metninden; model sayı üretmez.
+    # ⚠️ Katılma pivot'undan ÖNCE: tutar+vade ile getiri hesabı isteniyorsa
+    # `katilma_getiri` çalışmalı; aksi halde yalnızca oran tablosu döner.
+    slots = extract_slots(plan.raw, bank_codes=plan.bank_codes)
+    from app.retrieval.query import (
+        finansman_oran_listesi_mi,
+        katilma_kar_payi_paylasim_karsilastirma_mi,
+        katilma_oran_listesi_mi,
+    )
+
+    arac = detect_tool(plan.raw, source_domain=plan.source_domain, slots=slots)
+    if katilma_oran_listesi_mi(plan.raw):
+        if arac == "katilma_getiri":
+            arac = None
+        if router_tool == "katilma_getiri":
+            router_tool = None
+    if finansman_oran_listesi_mi(plan.raw):
+        if arac == "finansman_teklif":
+            arac = None
+        if router_tool == "finansman_teklif":
+            router_tool = None
+    arac = arac or router_tool
+    if arac is not None and plan.intent not in {"aggregate", "compare"}:
+        arac_sonuc = run_tool(session, arac, slots, rate_type=plan.rate_type)
+        products = list(arac_sonuc.products) if arac_sonuc.products else []
+        comparison = None
+        if arac_sonuc.comparison is not None:
+            ranking = arac_sonuc.comparison
+            comparison = ChatComparisonBlock(
+                rate_type=getattr(ranking, "rate_type", plan.rate_type or "financing_rate"),
+                criterion=getattr(ranking, "criterion", ""),
+                winner_product_id=getattr(getattr(ranking, "winner", None), "product_id", None),
+                winner_bank_code=getattr(getattr(ranking, "winner", None), "bank_code", None),
+                winner_reason=getattr(ranking, "winner_reason", None),
+                ranked=[],
+                without_data=[],
+                note=getattr(ranking, "note", None),
+            )
+            if not products and getattr(ranking, "ranked", None):
+                products = [
+                    ChatProductItem(
+                        product_id=s.product_id,
+                        product_name=s.product_name,
+                        bank_code=s.bank_code,
+                        bank_name=s.bank_name,
+                        product_type=s.product_type,
+                        rate_type=s.rate_type,
+                        card_text=s.evidence_text or s.product_name,
+                        profit_rate_pct=s.profit_rate_pct,
+                        investor_share_pct=s.investor_share_pct,
+                        term_months=s.term_months,
+                        source_url=s.source_url,
+                    )
+                    for s in ranking.ranked[:5]
+                ]
+        return _finalize(
+            ChatResponse(
+                query=plan.raw,
+                intent=plan.intent,
+                understood=_understood(plan),
+                answer=AnswerBlock(
+                    text=arac_sonuc.answer_text,
+                    source="computed",
+                    is_grounded=True,
+                ),
+                results=[],
+                products=products,
+                comparison=comparison,
+                retrieval=RetrievalReport(
+                    corpus_size=corpus.size,
+                    returned=len(arac_sonuc.offers) or len(products),
+                    lexical_used=False,
+                    semantic_used=False,
+                    semantic_note=f"Araç çalıştı: {arac}; model sayı üretmedi.",
+                    elapsed_ms=gecen(),
+                ),
+                forbidden_terms_warning=uyari,
+                clarification_needed=arac_sonuc.clarification_needed,
+                clarification_question=arac_sonuc.clarification_question,
+                actions=arac_sonuc.actions,
+                offers=arac_sonuc.offers,
+                tool_runs=arac_sonuc.tool_runs,
+                bddk=arac_sonuc.bddk,
+            ),
+            plan,
+            top=_top_from_products(products, domain=plan.source_domain) if products else [],
+            llm_used=llm_used,
+            rejected_slots=rejected_slots,
+        )
+
+    # ── katılma kavramı (getiri ≠ paylaşım oranı) ───────────
+    if katilma_kar_payi_paylasim_karsilastirma_mi(plan.raw):
+        return _katilma_kavram_yanit(session, plan, uyari=uyari, elapsed_ms=gecen())
+
+    # ── katılma → oran tablosu (tutar/vade hesabı yoksa) ─
+    if (
+        plan.source_domain == "katilma"
+        and not plan.domain_ambiguous
+        and plan.domain_confidence >= LOW_CONFIDENCE
+    ):
         return _katilma_yanit(session, plan, req, uyari=uyari, elapsed_ms=gecen())
 
+    # Belirsiz katılma: pivot kısa devresi yok; aşağıdaki dallar çalışır.
     # ── netleştirme ───────────────────────────────────────
     if _netlestirme_gerekli(plan):
         return _finalize(

@@ -458,11 +458,25 @@ class ProductRunner:
         varyantları götürür. Artık sunulmayan varyant silinmez, `updated_at`
         eskir ve raporda görünür.
         """
+        from app.services.calculator_probe_service import is_fee_schedule_product
+
         mevcut = session.scalar(
             select(Product).where(
                 Product.bank_id == bank.id, Product.external_key == raw.external_key
             )
         )
+
+        if is_fee_schedule_product(raw.name):
+            logger.info(
+                "ucret_tarifesi_urun_atlandi",
+                banka=bank.code,
+                ad=raw.name,
+                url=getattr(document, "url", None),
+            )
+            if mevcut is not None and not dry_run:
+                # Daha önce yanlışlıkla finansman sanılmışsa gizle.
+                mevcut.is_active = False
+            return None
 
         if mevcut is None:
             result.products_new += 1

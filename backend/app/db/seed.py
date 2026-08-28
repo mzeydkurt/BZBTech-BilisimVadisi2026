@@ -204,8 +204,9 @@ GLOSSARY_SEED: list[dict[str, Any]] = [
         "conventional_equivalent": "faiz oranı",
         "category": "oran",
         "definition": (
-            "Katılım bankacılığında faiz yerine kullanılan, finansman işlemine konu olan "
-            "mal veya hizmet üzerinden oluşan kâr payı oranı."
+            "Finansman işleminde (konut, taşıt, ihtiyaç) mal veya hizmet üzerinden "
+            "hesaplanan kâr payı oranı. Katılma hesabı getirisi veya kâr paylaşım "
+            "oranı ile karıştırılmamalıdır."
         ),
         "aliases": ["kar payi orani", "kâr payı oranı", "kar payı oranı", "kârpayı oranı"],
         "is_forbidden_conventional": False,
@@ -261,9 +262,48 @@ GLOSSARY_SEED: list[dict[str, Any]] = [
         "category": "hesap",
         "definition": (
             "Kâr-zarar ortaklığına dayalı, önceden sabit bir getiri taahhüdü içermeyen "
-            "vadeli hesap türü."
+            "vadeli hesap türü. Standart ve ara ödemeli alt türleri vardır."
         ),
         "aliases": ["katilma hesabi", "katılma hesabı"],
+        "is_forbidden_conventional": False,
+    },
+    {
+        "term": "Standart Katılma Hesabı",
+        "conventional_equivalent": "vadeli mevduat hesabı",
+        "category": "hesap",
+        "definition": (
+            "Vade sonunda anapara ve dağıtılan kâr payının birlikte hesaba aktarıldığı "
+            "klasik katılma hesabı. TKBB veri peteğinde «Katılma Hesabı» satırı olarak "
+            "yayımlanır; vade boyunca ara dönem ödemesi yapılmaz."
+        ),
+        "aliases": [
+            "standart katilma",
+            "standart katilma hesabi",
+            "standart katılma hesabı",
+            "normal katilma hesabi",
+            "normal katılma hesabı",
+        ],
+        "is_forbidden_conventional": False,
+    },
+    {
+        "term": "Ara Ödemeli Katılma Hesabı",
+        "conventional_equivalent": "ara dönem faiz ödemeli mevduat",
+        "category": "hesap",
+        "definition": (
+            "Vade içinde belirli dönemlerde (ör. 3 veya 6 ayda bir) kâr payı ödemesi "
+            "yapılabilen katılma hesabı. Standart katılma hesabında kâr payı genellikle "
+            "yalnızca vade sonunda dağıtılır; ara ödemeli hesapta müşteri vade bitmeden "
+            "de kâr payı alabilir. TKBB'de getiri oranları standart hesaptan ayrı "
+            "satırda yayımlanır; tüm katılım bankaları bu ürünü sunmayabilir."
+        ),
+        "aliases": [
+            "ara odemeli katilma",
+            "ara odemeli katilma hesabi",
+            "ara ödemeli katılma",
+            "ara ödemeli katılma hesabı",
+            "ara donem kar odemeli",
+            "ara dönem kâr ödemeli",
+        ],
         "is_forbidden_conventional": False,
     },
     {
@@ -271,10 +311,41 @@ GLOSSARY_SEED: list[dict[str, Any]] = [
         "conventional_equivalent": None,
         "category": "oran",
         "definition": (
-            "Katılma hesabında bankanın dağıttığı kârdan müşteriye düşen oran "
-            "(ör. %90 müşteri / %10 banka)."
+            "Katılma hesabında bankanın dağıttığı kârdan müşteriye düşen pay "
+            "(ör. %90 müşteri / %10 banka). Dağıtılan kâr payı (getiri) yüzdesi "
+            "değildir; iki gösterge ayrı tablolarda yer alır."
         ),
         "aliases": ["kar paylasim orani", "kâr paylaşım oranı", "kar paylaşım oranı"],
+        "is_forbidden_conventional": False,
+    },
+    {
+        "term": "Dağıtılan Kâr Payı (Getiri)",
+        "conventional_equivalent": "mevduat faizi",
+        "category": "oran",
+        "definition": (
+            "Katılma hesabında dönem sonunda müşteriye aktarılan yıllık getiri "
+            "oranıdır (TKBB veri peteğinde vade vade yayımlanır). Kâr paylaşım "
+            "oranından farklıdır; getiri hesabında bu oran kullanılır."
+        ),
+        "aliases": [
+            "dagitilan kar payi",
+            "dağıtılan kâr payı",
+            "katilma getirisi",
+            "katılma getirisi",
+            "katilma hesabi getiri",
+        ],
+        "is_forbidden_conventional": False,
+    },
+    {
+        "term": "Stopaj (Katılma Getirisi)",
+        "conventional_equivalent": "vergi kesintisi",
+        "category": "vergi",
+        "definition": (
+            "Katılma hesabından elde edilen kâr payı getirisine uygulanan kaynakta "
+            "kesinti. Brüt getiriden düşülerek net getiri hesaplanır; oranlar "
+            "mevzuat ve Cumhurbaşkanı Kararı ile belirlenir."
+        ),
+        "aliases": ["stopaj", "stopaj orani", "stopaj kesintisi", "vergi kesintisi"],
         "is_forbidden_conventional": False,
     },
     {

@@ -260,6 +260,81 @@ class ChatTopMatch(BaseModel):
     )
 
 
+class ChatAction(BaseModel):
+    """Kullanıcıyı ilgili sayfaya veya netleştirmeye yönlendiren aksiyon."""
+
+    kind: str = Field(description="navigate | prefill | refine")
+    label: str
+    path: str | None = Field(
+        default=None,
+        description="Arayüz yolu: /simulator, /compare, /financing, /katilim-hesabi",
+    )
+    params: dict[str, str] = Field(
+        default_factory=dict,
+        description="URL sorgu parametreleri (amount, term, product_type, …)",
+    )
+    reason: str | None = None
+
+
+class ChatOfferItem(BaseModel):
+    """Araç katmanının ürettiği finansman / getiri teklifi (en fazla 3)."""
+
+    bank_code: str
+    bank_name: str
+    product_id: int | None = None
+    product_name: str | None = None
+    product_type: str | None = None
+    profit_rate_pct: Decimal | None = None
+    monthly_payment_try: Decimal | None = None
+    total_cost_try: Decimal | None = None
+    term_months: int | None = None
+    term_exact_match: bool | None = None
+    is_binding: bool | None = None
+    source_url: str | None = None
+    summary: str | None = None
+    action: ChatAction | None = None
+
+
+class ChatToolRun(BaseModel):
+    """Hangi aracın hangi girdilerle çalıştığı — erişim şeffaflığına benzer."""
+
+    tool: str = Field(
+        description="finansman_teklif | bddk_limit | katilma_getiri | urun_karsilastir"
+    )
+    inputs: dict[str, str] = Field(default_factory=dict)
+    summary: str
+    elapsed_ms: int = 0
+    note: str | None = None
+
+
+class ChatBddkBlock(BaseModel):
+    """BDDK limit sorgusunun yapısal sonucu."""
+
+    asset_type: str
+    asset_value_try: Decimal
+    energy_class: str | None = None
+    first_home: bool | None = None
+    value_band_label: str | None = None
+    max_financing_ratio_pct: Decimal | None = None
+    max_financing_amount_try: Decimal | None = None
+    max_allowed_term_months: int | None = None
+    is_financing_allowed: bool = True
+    legal_reference: str | None = None
+
+
+class RoutingReport(BaseModel):
+    """Alan yönlendirmesinin şeffaflık raporu."""
+
+    domain: str
+    confidence: float
+    scores: dict[str, float] = Field(default_factory=dict)
+    is_ambiguous: bool = False
+    runner_up: str | None = None
+    llm_used: bool = False
+    rejected_slots: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+
+
 class ChatResponse(BaseModel):
     """Kanıtlı arama yanıtı.
 
@@ -296,6 +371,12 @@ class ChatResponse(BaseModel):
         description="kampanya | finansman | katilma | tanim | kapsam_disi | sohbet",
     )
     top_matches: list[ChatTopMatch] = Field(default_factory=list)
+    # ── Araç / aksiyon katmanı (yalnızca ekleme) ──────────
+    actions: list[ChatAction] = Field(default_factory=list)
+    offers: list[ChatOfferItem] = Field(default_factory=list)
+    tool_runs: list[ChatToolRun] = Field(default_factory=list)
+    bddk: ChatBddkBlock | None = None
+    routing: RoutingReport | None = None
     # ── Oturum (eklemeli) ─────────────────────────────────
     session_id: str | None = Field(default=None, description="Sohbet oturum anahtarı (UUID)")
     turn_index: int | None = Field(default=None, description="Bu turdaki sıra numarası (0 tabanlı)")

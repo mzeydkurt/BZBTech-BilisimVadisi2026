@@ -166,6 +166,9 @@ def _iter_amounts(lowered: str) -> list[Decimal]:
     Para birimine bitişik tutarlar önceliklidir; hiç yoksa çıplak sayılara düşülür.
     Bu öncelik, "6026'ya SMS gönderin, 500 TL kazanın" gibi metinlerde SMS
     numarasının tutar sanılmasını önler.
+
+    ⚠️ Çıplak sayı + vade birimi tutar DEĞİLDİR: "120 ay vadeli konut" ifadesinde
+    120 tutar sanılırsa simülasyon 120 TL / 120 ay ile çalışır (ölçüldü).
     """
     amounts: list[Decimal] = []
     for pattern in (_AMOUNT_BEFORE_CUR_RE, _AMOUNT_AFTER_CUR_RE):
@@ -177,6 +180,13 @@ def _iter_amounts(lowered: str) -> list[Decimal]:
             return amounts
 
     for match in _BARE_AMOUNT_RE.finditer(lowered):
+        # "120 ay", "36 aylık", "2 yıl", "365 gün", "48 vade" → süre, tutar değil.
+        after = lowered[match.end() : match.end() + 16].lstrip()
+        if re.match(
+            r"(?:bin|milyon|milyar)?\s*(?:ay(?:lik|lık)?|vade|yil|yıl|gun|gün)\b",
+            after,
+        ):
+            continue
         value = parse_decimal_tr(match.group(1))
         if value is not None:
             amounts.append(_apply_multiplier(value, match.group(2)))

@@ -126,13 +126,13 @@ class Settings(BaseSettings):
     # Yeniden sıralama modeli. Boş bırakılırsa erişim RRF sıralamasıyla
     # kalır — yeniden sıralama bir iyileştirmedir, zorunluluk değil.
     evren_rerank_model: str = "rerank"
-    #  SOHBET VE TOPLU ÇIKARIM AYNI ZAMAN AŞIMINI PAYLAŞAMAZ.
-    # `llm_timeout_seconds` (180) gece çalışan toplu çıkarım için doğru: orada
-    # beklemek ücretsizdir. Sohbette ise 180 saniye bekleyen bir arayüz ÖLMÜŞ
-    # görünür. EVREN tüm takımlarca paylaşıldığı için gecikme dalgalanıyor
-    # (ölçüldü: aynı sorgu 4,1 sn · 4,9 sn · 30,5 sn). Sohbet bu süreyi aşınca
-    # şablon yanıta düşer ve kanıtlar yine gösterilir.
+    # ── Sohbet zaman aşımı (toplu çıkarımdan ayrı) ─────────
     chat_timeout_seconds: float = 25.0
+    # Düşük güvenli alan yönlendirmesinde LLM router açılsın mı?
+    # Kapalıyken sistem tamamen deterministik kalır.
+    chat_router_llm: bool = True
+    # Bu güvenin altında (veya belirsizlikte) LLM router çağrılır.
+    chat_router_confidence_threshold: float = 0.55
 
     # ── Qdrant vektör veritabanı ──────────────────────────
     # ⚠️ QDRANT ZORUNLU DEĞİL. Erişilemediğinde arama `embeddings` tablosuna

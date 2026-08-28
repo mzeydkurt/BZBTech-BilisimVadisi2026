@@ -65,6 +65,32 @@ log = structlog.get_logger(__name__)
 # bir eşik değil, aylık oran OLMADIĞINI kanıtlayan sınırdır.
 AYLIK_ORAN_TAVANI: Final[Decimal] = Decimal("20")
 
+# Ölçülen finansman kâr payı ortalaması ~%3.9. %0.05–%1 arası değerler çoğu
+# zaman ücret tarifesinden sızar (PTT %0.1, işlem %0.5) veya hatalı probe'dur.
+# Promosyon sıfır hariç bu bant product_rates'e yazılmaz / servis edilmez.
+SUPHELI_DUSUK_ORAN_TAVANI: Final[Decimal] = Decimal("1")
+
+# Ücret tarifesi / menü sayfası — finansman ürünü sanılmamalı.
+_UCRET_TARIFESI_ADLARI: Final[tuple[str, ...]] = (
+    "urun ve hizmet ucretleri",
+    "urun & hizmet ucretleri",
+    "urun hizmet ucretleri",
+    "urun-hizmet ucretleri",
+    "ucret tarifesi",
+    "ucretler tarifesi",
+    "masraf ve komisyon",
+)
+
+
+def is_fee_schedule_product(name: str | None) -> bool:
+    """Ürün adı ücret tarifesi / menü sayfası mı?"""
+    if not name:
+        return False
+    from app.core.normalization.text import ascii_fold_tr, lower_tr
+
+    ad = ascii_fold_tr(lower_tr(name))
+    return any(a in ad for a in _UCRET_TARIFESI_ADLARI)
+
 
 def is_zero_rate_promotional(
     *,
@@ -75,35 +101,35 @@ def is_zero_rate_promotional(
     rate_type: str | None = None,
     variant_label: str | None = None,
 ) -> bool:
-    """Ürünün meşru bir sıfır kâr payı / faizsiz finansman olup olmadığını denetler."""
+    """Ürünün meşru bir sıfır kâr payı / faizsiz finansman olup olmadığını denetler.
+
+    ⚠️ Konut vb. uzun tanıtım `description` içindeki "sıfır kâr / vade farksız"
+    cümleleri tek başına yetmez (Emlak "Gönlüne Göre Konut" sahte %0).
+
+    ✅ Marka alışveriş finansmanı (LC Waikiki vb.) ve Togg / karz-ı hasen /
+    açık %0 ifadeleri meşru kampanyadır — silinmez.
+    """
     if rate_type == "interest_free_benevolent_loan" or product_type == "karz_i_hasen":
         return True
 
     from app.core.normalization.text import ascii_fold_tr, lower_tr
 
-    bilesik = " ".join(
-        filter(
-            None,
-            [
-                product_name,
-                description,
-                evidence_text,
-                variant_label,
-            ],
-        )
-    )
-    if not bilesik:
-        return False
+    def _fold(*parcalar: str | None) -> str:
+        return ascii_fold_tr(lower_tr(" ".join(filter(None, parcalar))))
 
-    metin = ascii_fold_tr(lower_tr(bilesik))
-    anahtarlar = (
+    ad_metin = _fold(product_name, variant_label)
+
+    # Marka alışveriş finansmanı kampanyaları tipik olarak vade farksız / %0'dır.
+    if "alisveris" in ad_metin:
+        return True
+
+    guclu = (
         "sifir kar payi",
         "sifir kar orani",
         "0 kar payi",
         "0 kar orani",
         "%0 kar payi",
         "%0 kar orani",
-        "vade farksiz",
         "0 faiz",
         "%0 faiz",
         "faizsiz finansman",
@@ -113,7 +139,53 @@ def is_zero_rate_promotional(
         "karzi hasen",
         "togg",
     )
-    return any(a in metin for a in anahtarlar)
+
+    # Ad / varyant / kanıt — genel konut/taşıt açıklama metni hariç.
+    birincil = _fold(product_name, variant_label, evidence_text)
+    if birincil and any(a in birincil for a in guclu):
+        return True
+
+    # "vade farksız" ürün adında / varyantta.
+    if ad_metin and "vade farksiz" in ad_metin:
+        return True
+
+    # Alışveriş dışı: description'da geçen sıfır/vade farksız pazarlama sayılmaz.
+    _ = description
+    return False
+
+def finansman_orani_gosterilebilir_mi(
+    *,
+    profit_rate_pct: Decimal | None,
+    product_name: str | None = None,
+    description: str | None = None,
+    evidence_text: str | None = None,
+    product_type: str | None = None,
+    rate_type: str | None = None,
+    variant_label: str | None = None,
+) -> bool:
+    """Listeleme / karşılaştırma / simülatörde gösterilecek finansman oranı mı?
+
+    Probe yazım kapısından (G1 bayat okuma) bağımsızdır: okuma anında plan
+    verisi yok. Yalnızca oran bandı + promosyon ayrımı.
+    """
+    if profit_rate_pct is None or profit_rate_pct < 0:
+        return False
+    if profit_rate_pct > AYLIK_ORAN_TAVANI:
+        return False
+
+    promo = is_zero_rate_promotional(
+        product_name=product_name,
+        description=description,
+        evidence_text=evidence_text,
+        product_type=product_type,
+        rate_type=rate_type,
+        variant_label=variant_label,
+    )
+    if profit_rate_pct <= Decimal("0.05"):
+        return promo
+    if profit_rate_pct < SUPHELI_DUSUK_ORAN_TAVANI and not promo:
+        return False
+    return True
 
 
 def _plan_vadesi(
@@ -157,19 +229,33 @@ def probe_orani_guvenilir_mi(
     if profit_rate_pct < 0:
         return False, f"negatif oran: %{profit_rate_pct}"
 
-    # G3 — Sıfır kâr payı: üründe açıkça sıfır kâr payı / vade farksız kampanya
-    # belirtilmemişse 0 veya 0.05 altı oranlar geçersizdir (API hatası veya limit aşımı).
-    if profit_rate_pct <= Decimal("0.05") and not is_zero_rate_promotional(
+    promo = is_zero_rate_promotional(
         product_name=product_name,
         description=description,
         evidence_text=evidence_text,
         product_type=product_type,
         rate_type=rate_type,
-    ):
+    )
+
+    # G3 — Sıfır kâr payı: üründe açıkça sıfır kâr payı / faizsiz kampanya
+    # belirtilmemişse 0 veya 0.05 altı oranlar geçersizdir (API hatası veya limit aşımı).
+    if profit_rate_pct <= Decimal("0.05") and not promo:
         return (
             False,
             f"sıfır/geçersiz kâr payı: %{profit_rate_pct} "
             "(üründe sıfır kâr payı koşulu belirtilmemiş)",
+        )
+
+    # G4 — Ücret yüzdesi bandı: PTT %0.1, işlem %0.5 gibi. Meşru aylık
+    # finansman kâr payı pratikte nadiren %1 altındadır (ölçülen ~%3.9).
+    if (
+        Decimal("0.05") < profit_rate_pct < SUPHELI_DUSUK_ORAN_TAVANI
+        and not promo
+    ):
+        return (
+            False,
+            f"şüpheli düşük kâr payı: %{profit_rate_pct} "
+            f"(<%{SUPHELI_DUSUK_ORAN_TAVANI}; ücret yüzdesi olabilir)",
         )
 
     return True, None

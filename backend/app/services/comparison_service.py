@@ -251,7 +251,7 @@ def rank_products(
             (ProductRate.term_days_min.is_(None)) | (ProductRate.term_days_min <= term_days),
             (ProductRate.term_days_max.is_(None)) | (ProductRate.term_days_max >= term_days),
         )
-    from app.services.calculator_probe_service import is_zero_rate_promotional
+    from app.services.calculator_probe_service import finansman_orani_gosterilebilir_mi
     from app.services.product_rate_current import rate_covers_amount, select_current_rates
 
     ham_satirlar = list(session.execute(stmt).all())
@@ -262,18 +262,14 @@ def rank_products(
     for oran, urun, banka in ham_satirlar:
         if oran.id not in guncel_idler:
             continue
-        # Meşru bir 0 kâr payı kampanyası değilse ve oran <= 0.05 ise sıralamaya sokma
-        if (
-            oran.rate_type == "financing_rate"
-            and oran.profit_rate_pct is not None
-            and oran.profit_rate_pct <= Decimal("0.05")
-            and not is_zero_rate_promotional(
-                product_name=urun.name,
-                description=urun.description,
-                evidence_text=oran.evidence_text,
-                product_type=urun.product_type,
-                rate_type=oran.rate_type,
-            )
+        if oran.rate_type == "financing_rate" and not finansman_orani_gosterilebilir_mi(
+            profit_rate_pct=oran.profit_rate_pct,
+            product_name=urun.name,
+            description=urun.description,
+            evidence_text=oran.evidence_text,
+            product_type=urun.product_type,
+            rate_type=oran.rate_type,
+            variant_label=urun.variant_label,
         ):
             continue
         if amount_try is not None and not rate_covers_amount(
