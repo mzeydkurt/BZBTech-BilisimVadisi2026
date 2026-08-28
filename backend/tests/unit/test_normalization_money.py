@@ -91,6 +91,19 @@ class TestParseMoney:
         assert parse_money("36 aylık taşıt") == (None, "TRY")
         assert parse_money("400.000 TL 48 ay vadeli") == (Decimal("400000"), "TRY")
 
+    def test_ikinci_el_tutar_sanilmaz(self) -> None:
+        """'2.el' ikinci el araçtır; ilk sayı 2 TL uydurulmamalı (ölçüldü)."""
+        assert parse_money("ben 2. el araba alacağım ancak 500bin tutarında bir eksiğim var") == (
+            Decimal("500000"),
+            "TRY",
+        )
+        assert parse_money("2.el araç finansmanı") == (None, "TRY")
+        assert parse_money("2.el araç 500.000 TL") == (Decimal("500000"), "TRY")
+        assert parse_money("2 el araba 500 bin") == (Decimal("500000"), "TRY")
+
+    def test_hafta_tutar_sanilmaz(self) -> None:
+        assert parse_money("2 hafta sonra 500 bin TL taşıt") == (Decimal("500000"), "TRY")
+
 
 class TestDetectCurrency:
     @pytest.mark.parametrize(

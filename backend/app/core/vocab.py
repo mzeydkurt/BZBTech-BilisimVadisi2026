@@ -182,6 +182,25 @@ RATE_TYPES: Final[tuple[str, ...]] = (
     "interest_free_benevolent_loan",
 )
 
+# Kullanıcıya gösterilecek Türkçe karşılık.
+#
+# ⚠️ SLUG CÜMLEYE YAZILMAZ. Ölçüldü: `rate_type.replace("_", " ")` ile kurulan
+# yanıt kapalı ağ kurulumunda "En düşük financing rate %2.8800 ile Türkiye
+# Finans" cümlesini üretiyordu — hem İngilizce hem de projenin bağlayıcı
+# terminoloji kuralına aykırı.
+RATE_TYPE_LABELS: Final[dict[str, str]] = {
+    "financing_rate": "finansman oranı",
+    "participation_yield": "katılma getirisi",
+    "profit_sharing_ratio": "katılımcı payı",
+    "interest_free_benevolent_loan": "karz-ı hasen oranı",
+}
+
+
+def rate_type_label(rate_type: str) -> str:
+    """Oran türünün Türkçe karşılığı; bilinmeyen tür ham hâliyle döner."""
+    return RATE_TYPE_LABELS.get(rate_type, rate_type)
+
+
 # ⚠️ FARKLI TÜRLER ASLA AYNI SIRALAMAYA GİRMEZ. Karşılaştırma ucu
 # `rate_type` parametresini ZORUNLU tutar; varsayılan seçmez.
 #

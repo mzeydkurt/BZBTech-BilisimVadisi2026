@@ -50,6 +50,19 @@ class TestExtractSlots:
         )
         assert "amount_try" in missing_for_tool("finansman_teklif", slots)
 
+    def test_ikinci_el_araba_500bin(self) -> None:
+        """'2.el' tutar değil; 500 bin + 12 ay taşıt olarak okunur (ölçüldü)."""
+        q = (
+            "ben 2. el araba alacağım ancak 500bin tutaarında bir eksiğim var "
+            "bunu hangi bankadan faizsiz bir şekilde eksiğimi giderebilirim "
+            "ben aracı 2 hafta sonra alcam 12 ayda da öderim ama 12 ayı geçen "
+            "senaryoda 50 bin ödeyebilirim anca"
+        )
+        slots = extract_slots(q)
+        assert slots.amount_try == Decimal("500000")
+        assert slots.term_months == 12
+        assert slots.product_type == "tasit_finansmani"
+
     def test_coklu_vade(self) -> None:
         slots = extract_slots(
             "1 milyon liralık araç, en mantıklı finansman hangisi 12 veya 24 vade"

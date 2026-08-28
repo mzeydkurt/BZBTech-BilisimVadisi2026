@@ -29,7 +29,7 @@ from app.ai.validation.terminology import check_terminology, load_forbidden_term
 from app.config import get_settings
 from app.core.normalization.text import ascii_fold_tr, lower_tr, normalize_text
 from app.core.rate_direction import yon_notu
-from app.core.vocab import KATILIM_HESABI_VADE_ETIKETI
+from app.core.vocab import KATILIM_HESABI_VADE_ETIKETI, rate_type_label
 from app.db.models.bank import Bank
 from app.logging_config import get_logger
 from app.retrieval import aggregate
@@ -1773,7 +1773,7 @@ async def _aggregate_response(
             else:
                 yon = "en yüksek" if spec.direction == "max" else "en düşük"
                 metin = (
-                    f"{yon.capitalize()} {kazanan_oran.rate_type.replace('_', ' ')} "
+                    f"{yon.capitalize()} {rate_type_label(kazanan_oran.rate_type)} "
                     f"%{kazanan_deger} ile {kazanan_oran.bank_name} "
                     f"({kazanan_oran.product_name})."
                 )

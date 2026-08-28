@@ -172,13 +172,14 @@ def extract_slots(raw: str, *, bank_codes: tuple[str, ...] = ()) -> QuerySlots:
     # ⚠️ "120 ay" tutar değildir — vade birimi varsa atla.
     if slots.amount_try is None:
         bare = re.search(
-            r"(\d[\d.]*)\s*(bin|milyon|milyar)?(?!\s*(?:ay|vade|yil|yıl|gun|gün))"
+            r"(\d[\d.]*)\s*(bin|milyon|milyar)?"
+            r"(?!\s*(?:ay|vade|yil|yıl|gun|gün|hafta|el|km))"
             r"\s*(?:tl|₺|try)?(?!\w)",
             katlanmis,
         )
         if bare:
-            sonrasi = katlanmis[bare.end() : bare.end() + 12].lstrip()
-            if not re.match(r"(?:ay|vade|yil|yıl|gun|gün)\b", sonrasi):
+            sonrasi = katlanmis[bare.end() : bare.end() + 16].lstrip(" .'`")
+            if not re.match(r"(?:ay|vade|yil|yıl|gun|gün|hafta|el|km)\b", sonrasi):
                 deger = parse_decimal_tr(bare.group(1))
                 if deger is not None:
                     carpan = {"bin": 1000, "milyon": 1_000_000, "milyar": 1_000_000_000}.get(

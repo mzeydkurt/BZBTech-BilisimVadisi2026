@@ -72,6 +72,19 @@ _AMOUNT_AFTER_CUR_RE: Final[re.Pattern[str]] = re.compile(rf"{_CUR}\s*({_NUM}){_
 # Para birimi olmadan çıplak tutar — son çare.
 _BARE_AMOUNT_RE: Final[re.Pattern[str]] = re.compile(rf"({_NUM}){_MULT}")
 
+# Çıplak sayıdan sonra gelen birimler tutar DEĞİLDİR.
+#   "120 ay" / "2 yıl" / "2 hafta"  → süre
+#   "2. el" / "2.el" / "2 el"       → ikinci el araç (ölçüldü: 2 TL uyduruluyordu)
+#   "0 km"                         → sıfır kilometre
+_BARE_NON_AMOUNT_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?:"
+    r"(?:bin|milyon|milyar)?\s*(?:ay(?:lik|lık)?|vade|yil|yıl|gun|gün|hafta)\b"
+    r"|['`]?(?:nci|inci)\s*el\b"
+    r"|el\b"
+    r"|km\b"
+    r")"
+)
+
 # Açık aralık ifadesi: "50.000 - 2.000.000 TL", "5 bin ile 10 bin TL"
 # Gerekçe: bu tür ifadelerde para birimi çoğunlukla YALNIZCA ikinci tutara bitişiktir.
 # Para birimine bitişiklik önceliği tek başına kullanılsaydı alt sınır kaybolurdu.
@@ -169,6 +182,10 @@ def _iter_amounts(lowered: str) -> list[Decimal]:
 
     ⚠️ Çıplak sayı + vade birimi tutar DEĞİLDİR: "120 ay vadeli konut" ifadesinde
     120 tutar sanılırsa simülasyon 120 TL / 120 ay ile çalışır (ölçüldü).
+
+    ⚠️ "2. el" / "2.el" ikinci el araçtır, 2 TL değildir. İlk çıplak sayı
+    alınırsa "2. el araba 500 bin" sorgusu 2 TL / 12 ay simülasyonuna düşer
+    (ölçüldü).
     """
     amounts: list[Decimal] = []
     for pattern in (_AMOUNT_BEFORE_CUR_RE, _AMOUNT_AFTER_CUR_RE):
@@ -180,12 +197,10 @@ def _iter_amounts(lowered: str) -> list[Decimal]:
             return amounts
 
     for match in _BARE_AMOUNT_RE.finditer(lowered):
-        # "120 ay", "36 aylık", "2 yıl", "365 gün", "48 vade" → süre, tutar değil.
-        after = lowered[match.end() : match.end() + 16].lstrip()
-        if re.match(
-            r"(?:bin|milyon|milyar)?\s*(?:ay(?:lik|lık)?|vade|yil|yıl|gun|gün)\b",
-            after,
-        ):
+        # Sıra işareti artığı ("2.el" → eşleşme "2.", artan "el") ve
+        # "2'nci el" tırnağı birimden önce gelebilir.
+        after = lowered[match.end() : match.end() + 20].lstrip(" .'`")
+        if _BARE_NON_AMOUNT_RE.match(after):
             continue
         value = parse_decimal_tr(match.group(1))
         if value is not None:
