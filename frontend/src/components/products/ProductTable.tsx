@@ -2,6 +2,7 @@ import { ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { taxonomyLabel } from "@/lib/taxonomy";
+import { BankLogo } from "@/components/common/BankLogo";
 import { RateTypeBadge } from "@/components/products/RateTypeBadge";
 import {
   Table,
@@ -160,7 +161,9 @@ function ProductGroupRows({ group }: { group: ProductGroup }) {
             </span>
           )}
         </TableCell>
-        <TableCell className="text-text-500">{formatText(parent.bank_name)}</TableCell>
+        <TableCell>
+          <BankLogo bankCode={parent.bank_code} bankName={parent.bank_name} size="sm" className="h-6 max-w-[105px]" />
+        </TableCell>
         <TableCell className="text-text-500">
           {parent.product_type ? taxonomyLabel(parent.product_type) : "—"}
         </TableCell>
@@ -185,7 +188,9 @@ function ProductGroupRows({ group }: { group: ProductGroup }) {
               ↳ {formatText(variant.variant_label, variant.name)}
             </Link>
           </TableCell>
-          <TableCell className="text-text-500">{formatText(variant.bank_name)}</TableCell>
+          <TableCell>
+            <BankLogo bankCode={variant.bank_code} bankName={variant.bank_name} size="sm" className="h-6 max-w-[105px]" />
+          </TableCell>
           <TableCell className="text-text-500">
             {variant.product_type ? taxonomyLabel(variant.product_type) : "—"}
           </TableCell>
