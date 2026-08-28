@@ -384,6 +384,7 @@ export function ComparePage() {
                     items={productMutation.data.ranked}
                     winnerId={productMutation.data.winner?.product_id}
                     rateType={productMutation.data.rate_type}
+                    logoOnly={true}
                   />
                 </>
               ) : (
@@ -463,6 +464,7 @@ export function ComparePage() {
                     items={campaignMutation.data.ranked}
                     winnerId={campaignMutation.data.winner?.campaign_id}
                     criterion={campaignMutation.data.criterion}
+                    logoOnly={true}
                   />
                 </>
               ) : (
