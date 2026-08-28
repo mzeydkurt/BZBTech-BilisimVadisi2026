@@ -993,5 +993,13 @@ export interface ExtractResponse {
   model: ModelInfoOut;
   latency_ms: number;
   mode: string;
+  /**
+   * Birleştirmeden ÖNCE her yöntemin ürettiği alan sayısı.
+   * ⚠️ `fields` birleştirme SONRASIDIR: aynı alanı hem kural hem model
+   * bulduğunda kural kazanır ve model satırı görünmez.
+   */
+  method_summary?: Record<string, number>;
+  /** Hibritte kural çözdüğü için modele hiç sorulmayan alanlar. */
+  llm_skipped_fields?: string[];
   extras: Record<string, unknown>;
 }
