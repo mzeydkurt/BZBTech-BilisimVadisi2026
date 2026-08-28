@@ -1,6 +1,7 @@
 import { ExternalLink } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { BankLogo } from "@/components/common/BankLogo";
 import { MissingValue } from "@/components/common/MissingValue";
 import {
   Table,
@@ -19,10 +20,12 @@ export function RankedCampaignTable({
   items,
   winnerId,
   criterion,
+  logoOnly = false,
 }: {
   items: RankedCampaign[];
   winnerId?: number;
   criterion: string;
+  logoOnly?: boolean;
 }) {
   const showReward = criterion === "en_yuksek_odul" || items.some((i) => i.reward_amount_try);
   const showCashback =
@@ -70,7 +73,16 @@ export function RankedCampaignTable({
                   {item.title}
                 </Link>
               </TableCell>
-              <TableCell className="text-text-500">{item.bank_name}</TableCell>
+              <TableCell>
+                {logoOnly ? (
+                  <BankLogo bankCode={item.bank_code} bankName={item.bank_name} size="sm" className="h-6 max-w-[105px]" />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <BankLogo bankCode={item.bank_code} bankName={item.bank_name} size="sm" />
+                    <span className="text-text-700">{item.bank_name}</span>
+                  </div>
+                )}
+              </TableCell>
               <TableCell className="text-xs text-text-500">
                 {taxonomyLabel(item.status)}
               </TableCell>
