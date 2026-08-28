@@ -250,7 +250,7 @@ def calculate_financing_simulation(
     tahsis_dahil = False
 
     for banka in bankalar:
-        from app.services.calculator_probe_service import is_zero_rate_promotional
+        from app.services.calculator_probe_service import finansman_orani_gosterilebilir_mi
         from app.services.product_rate_current import rate_covers_amount, select_current_rates
 
         satirlar = list(
@@ -283,16 +283,14 @@ def calculate_financing_simulation(
             urun = urun_by_id.get(o.product_id)
             if urun is None:
                 continue
-            if (
-                o.profit_rate_pct is not None
-                and o.profit_rate_pct <= Decimal("0.05")
-                and not is_zero_rate_promotional(
-                    product_name=urun.name,
-                    description=urun.description,
-                    evidence_text=o.evidence_text,
-                    product_type=urun.product_type,
-                    rate_type=o.rate_type,
-                )
+            if not finansman_orani_gosterilebilir_mi(
+                profit_rate_pct=o.profit_rate_pct,
+                product_name=urun.name,
+                description=urun.description,
+                evidence_text=o.evidence_text,
+                product_type=urun.product_type,
+                rate_type=o.rate_type,
+                variant_label=urun.variant_label,
             ):
                 continue
             if rate_covers_amount(

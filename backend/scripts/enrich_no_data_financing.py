@@ -198,7 +198,21 @@ def calistir(*, bank_code: str | None, dry_run: bool) -> dict:
             # Oran (yoksa)
             if not urun.rates:
                 oran, kanit = extract_profit_rate_from_text(metin)
+                from app.services.calculator_probe_service import probe_orani_guvenilir_mi
+
+                guvenilir = False
                 if oran is not None:
+                    guvenilir, _ = probe_orani_guvenilir_mi(
+                        profit_rate_pct=oran,
+                        term_months=urun.term_months_max or 0,
+                        monthly_installment=None,
+                        total_repayment=None,
+                        product_name=urun.name,
+                        description=urun.description,
+                        evidence_text=kanit,
+                        product_type=urun.product_type,
+                    )
+                if oran is not None and guvenilir:
                     ozet["oran_yazilan"] += 1
                     ozet["ornekler"].append(
                         {

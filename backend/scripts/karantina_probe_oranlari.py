@@ -32,7 +32,7 @@ from app.db.models.product import Product, ProductRate
 from app.db.session import SessionLocal
 from app.services.calculator_probe_service import probe_orani_guvenilir_mi
 
-PROBE_KAYNAKLARI = ("calculator_playwright", "calculator_api")
+PROBE_KAYNAKLARI = ("calculator_playwright", "calculator_api", "text")
 
 
 def _probe_bul(
@@ -63,6 +63,7 @@ def main() -> int:
             .where(
                 ProductRate.rate_source.in_(PROBE_KAYNAKLARI),
                 ProductRate.profit_rate_pct.is_not(None),
+                ProductRate.rate_type == "financing_rate",
             )
             .order_by(Bank.code, Product.name)
         ).all()
@@ -71,12 +72,21 @@ def main() -> int:
         red: list[tuple[str, str, ProductRate, str]] = []
 
         for oran_satiri, urun, banka in satirlar:
+            # Meşru %0 kampanyalar: Togg, marka alışveriş finansmanı.
+            ad = (urun.name or "").casefold()
+            if "togg" in ad or "alışveriş" in ad or "alisveris" in ad:
+                continue
             probe = _probe_bul(session, urun.id, oran_satiri.amount_min, oran_satiri.term_months)
             tamam, neden = probe_orani_guvenilir_mi(
                 profit_rate_pct=oran_satiri.profit_rate_pct,
                 term_months=oran_satiri.term_months or 0,
                 monthly_installment=probe.monthly_installment if probe else None,
                 total_repayment=probe.total_repayment if probe else None,
+                product_name=urun.name,
+                description=urun.description,
+                evidence_text=oran_satiri.evidence_text,
+                product_type=urun.product_type,
+                rate_type=oran_satiri.rate_type,
             )
             if not tamam:
                 red.append((banka.code, urun.name, oran_satiri, neden or "?"))

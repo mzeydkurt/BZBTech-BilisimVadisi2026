@@ -83,6 +83,14 @@ class TestParseMoney:
         parsed, _ = parse_money("masrafsız 50.000 TL finansman")
         assert parsed == Decimal("50000")
 
+    def test_vade_tutar_sanilmaz(self) -> None:
+        assert parse_money("Bana 120 ay vadeli bir konut finansmanı önerir misin") == (
+            None,
+            "TRY",
+        )
+        assert parse_money("36 aylık taşıt") == (None, "TRY")
+        assert parse_money("400.000 TL 48 ay vadeli") == (Decimal("400000"), "TRY")
+
 
 class TestDetectCurrency:
     @pytest.mark.parametrize(
