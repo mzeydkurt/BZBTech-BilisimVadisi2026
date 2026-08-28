@@ -11,6 +11,7 @@ import {
 } from "recharts";
 
 import { ExactTermMatchWarning } from "@/components/simulator/ExactTermMatchWarning";
+import { BankLogo } from "@/components/common/BankLogo";
 import { EvidenceText } from "@/components/common/EvidenceText";
 import { Button } from "@/components/ui/button";
 import {
@@ -323,13 +324,20 @@ export function FinancingResults({ result }: { result: FinancingSimulationRespon
                       </button>
                     </TableCell>
                     <TableCell className="font-medium text-text-900">
-                      {offer.bank_name}
-                      {offer.is_best_offer && (
-                        <span className="ml-2 rounded-sm bg-brand-500 px-1.5 py-0.5 text-xs font-medium text-white">
-                          En uygun
-                        </span>
-                      )}
-                      <p className="text-xs font-normal text-text-500">{offer.product_name}</p>
+                      <div className="flex items-center gap-2.5">
+                        <BankLogo bankCode={offer.bank_code} bankName={offer.bank_name} size="sm" />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span>{offer.bank_name}</span>
+                            {offer.is_best_offer && (
+                              <span className="rounded-sm bg-brand-500 px-1.5 py-0.5 text-xs font-medium text-white">
+                                En uygun
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs font-normal text-text-500">{offer.product_name}</p>
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell className="tabular text-right text-text-900">
                       {formatPercent(offer.profit_rate_pct)}
