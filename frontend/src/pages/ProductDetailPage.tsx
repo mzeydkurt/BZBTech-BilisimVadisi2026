@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import { taxonomyLabel } from "@/lib/taxonomy";
 import { BddkLimitsBanner } from "@/components/financing/BddkLimitsBanner";
+import { BankLogo } from "@/components/common/BankLogo";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { ProductLimitTable } from "@/components/products/ProductLimitTable";
@@ -37,7 +38,10 @@ export function ProductDetailPage() {
   return (
     <div className="space-y-5">
       <div>
-        <p className="text-sm text-text-500">{formatText(product.bank_name)}</p>
+        <div className="flex items-center gap-2.5 mb-1">
+          <BankLogo bankCode={product.bank_code} bankName={product.bank_name} size="md" />
+          <p className="text-sm font-medium text-text-500">{formatText(product.bank_name)}</p>
+        </div>
         <h1 className="mt-0.5 text-xl font-semibold text-text-900">{product.name}</h1>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-text-500">
           {product.product_type && (
